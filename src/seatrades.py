@@ -122,6 +122,24 @@ class Seatrades:
                 == 0,
                 f"{c}_prefers_not_these_seatrades.",
             )
+        # Constraint 5: Campers guaranteed one of their top 2 choices.
+        # In other words, they cannot be assigned 3rd and 4th choices together.
+        for c, preferences in self.camper_prefs.items():
+            problem += (
+                pulp.lpSum(
+                        # Use indicator function from assignment
+                        # multiplied by linear preference penalty
+                        # from index.
+                    [
+                        assignments[c][f"1_{s}"] * (preferences.index(s))
+                        for s in preferences
+                    ] + [
+                        assignments[c][f"2_{s}"] * (preferences.index(s))
+                        for s in preferences
+                    ]
+                ) <= 4,  # indexing of 0 means 3rd + 4th index is 5.
+            f"{c} guaranteed one of the first two seatrades."
+            )
 
         # OBJECTIVE:
         obj = 0
@@ -133,14 +151,13 @@ class Seatrades:
                         # Use indicator function from assignment
                         # multiplied by linear preference penalty
                         # from index.
-                        assignments[c][f"{block}_{s}"] * (preferences.index(s) + 1)
+                        assignments[c][f"{block}_{s}"] * (preferences.index(s))
                         for s in preferences
                     ]
                 )
         problem += obj
 
         # Solve and save assignments:
-        print(problem)
         status = problem.solve()
         self.assignments = pd.DataFrame(assignments).applymap(pulp.value).transpose()
         self.status = status
@@ -168,7 +185,7 @@ class Seatrades:
             .reset_index()
             .rename(columns={"index": "camper"})
         )
-        # Helper lookup function
+        
         def lookup_preference(row) -> int:
             """
             Returns the preference number of the
@@ -179,7 +196,7 @@ class Seatrades:
             if row.assignment:
                 row_camper_prefs = self.camper_prefs[row.camper]
                 if row.seatrade[2:] in row_camper_prefs:
-                    pref_rank = row_camper_prefs.index(row.seatrade[2:])
+                    pref_rank = row_camper_prefs.index(row.seatrade[2:]) + 1
                 else:
                     pref_rank = 999
             else:
@@ -193,11 +210,48 @@ class Seatrades:
         """
         Displays the assignments of the seatrades visually for inference.
         """
-        if not self.assigments:
+        if not self.status:
             raise ValueError(
-                "Seatrades.assignments not found."
+                "Seatrades.assignments (and status code) not found."
                 "Did you remember to run Seatrades.assign() first?"
             )
+        df = self.wrangle_assignments_to_longform(self.assignments)
+
+        # Matrix Assignment chart.
+        assignment_base = (
+            alt.Chart(df)
+            .encode(
+                x=alt.X("seatrade", sort=self.seatrades_full, title=None),
+                y=alt.Y("camper", sort=self.campers, title=None),
+            )
+            .properties(
+                title={
+                    "text": "Seatrades.",
+                    "subtitle": "Assignments by Preference.",
+                    "fontSize": 20,
+                    "anchor": "start",
+                }
+            )
+        )
+        assignment_rectangles = assignment_base.mark_rect(
+            stroke="black", strokeWidth=0.1
+        ).encode(
+            color=alt.Color(
+                "preference:O",
+                # scale=alt.Scale(
+                #     domain=list(self.colors.keys()), range=list(self.colors.values())
+                # ),
+                title="Camper Preferences",
+                legend=None,
+            )
+        )
+        assignment_text = (
+            assignment_base.mark_text(color="white")
+            .encode(text="preference:O")
+            .transform_filter(alt.datum.preference > 0)
+        )
+        assignment_chart = assignment_rectangles + assignment_text
+        return assignment_chart
 
     def export_assignments_to_csv(self, filepath: str = "assignments.csv"):
         """
