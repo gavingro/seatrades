@@ -2,8 +2,7 @@
 name: Test Code
 
 on:
-  push:
-    branches: [ $default-branch ]
+  push
   pull_request:
     branches: [ $default-branch ]
 
