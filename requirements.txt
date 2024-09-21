@@ -1,3 +1,4 @@
 pulp
 pandas
+pandera
 altair
