@@ -1,3 +1,7 @@
+"""
+This file contains tools to assign seatrades to campers based on their preferences.
+"""
+
 from typing import Dict, Literal, List, Optional
 from time import time
 import logging
@@ -27,6 +31,7 @@ class Seatrades:
             A json-like dict containing the seatrade-minsize-maxsize
             information.
         """
+
         # Helper Function
         def flatten(outer_list: List[list]):
             """Flattens the 2d input list into 1d."""
@@ -127,18 +132,20 @@ class Seatrades:
         for c, preferences in self.camper_prefs.items():
             problem += (
                 pulp.lpSum(
-                        # Use indicator function from assignment
-                        # multiplied by linear preference penalty
-                        # from index.
+                    # Use indicator function from assignment
+                    # multiplied by linear preference penalty
+                    # from index.
                     [
                         assignments[c][f"1_{s}"] * (preferences.index(s))
                         for s in preferences
-                    ] + [
+                    ]
+                    + [
                         assignments[c][f"2_{s}"] * (preferences.index(s))
                         for s in preferences
                     ]
-                ) <= 4,  # indexing of 0 means 3rd + 4th index is 5.
-            f"{c} guaranteed one of the first two seatrades."
+                )
+                <= 4,  # indexing of 0 means 3rd + 4th index is 5.
+                f"{c} guaranteed one of the first two seatrades.",
             )
 
         # OBJECTIVE:
@@ -185,7 +192,7 @@ class Seatrades:
             .reset_index()
             .rename(columns={"index": "camper"})
         )
-        
+
         def lookup_preference(row) -> int:
             """
             Returns the preference number of the
@@ -204,6 +211,20 @@ class Seatrades:
             return pref_rank
 
         df["preference"] = df.apply(lookup_preference, axis=1)
+
+        def lookup_cabin(row) -> str:
+            """
+            Returns the cabin name that a camper is in.
+            """
+            camper = row.camper
+            for cabin, camper_prefs in self.cabin_camper_prefs.items():
+                if camper in list(camper_prefs.keys()):
+                    return cabin
+            return None
+
+        df["cabin"] = df.apply(lookup_cabin, axis=1)
+        df[["block", "seatrade"]] = df["seatrade"].str.split("_", expand=True)
+
         return df
 
     def display_assignments(self) -> alt.Chart:
@@ -218,20 +239,9 @@ class Seatrades:
         df = self.wrangle_assignments_to_longform(self.assignments)
 
         # Matrix Assignment chart.
-        assignment_base = (
-            alt.Chart(df)
-            .encode(
-                x=alt.X("seatrade", sort=self.seatrades_full, title=None),
-                y=alt.Y("camper", sort=self.campers, title=None),
-            )
-            .properties(
-                title={
-                    "text": "Seatrades.",
-                    "subtitle": "Assignments by Preference.",
-                    "fontSize": 20,
-                    "anchor": "start",
-                }
-            )
+        assignment_base = alt.Chart(df).encode(
+            x=alt.X("seatrade", sort=self.seatrades_full, title=None),
+            y=alt.Y("camper", sort=self.campers, title=None),
         )
         assignment_rectangles = assignment_base.mark_rect(
             stroke="black", strokeWidth=0.1
@@ -241,8 +251,6 @@ class Seatrades:
                 # scale=alt.Scale(
                 #     domain=list(self.colors.keys()), range=list(self.colors.values())
                 # ),
-                title="Camper Preferences",
-                legend=None,
             )
         )
         assignment_text = (
@@ -250,7 +258,20 @@ class Seatrades:
             .encode(text="preference:O")
             .transform_filter(alt.datum.preference > 0)
         )
-        assignment_chart = assignment_rectangles + assignment_text
+        assignment_chart = (
+            (assignment_rectangles + assignment_text)
+            .facet(row="cabin", column="block", spacing={"row": 2})
+            .resolve_scale(y="independent")
+            .properties(
+                title={
+                    "text": "Seatrades.",
+                    "subtitle": "Assignments by Preference.",
+                    "fontSize": 20,
+                    "anchor": "start",
+                }
+            )
+        )
+
         return assignment_chart
 
     def export_assignments_to_csv(self, filepath: str = "assignments.csv"):
