@@ -10,43 +10,47 @@ import pulp
 import pandas as pd
 import altair as alt
 
+from seatrades.preferences import SeatradesConfig, CamperSeatradePreferences
+
 
 class Seatrades:
     """A class to handle LP problems to solve seatrade assignment."""
 
     def __init__(
         self,
-        cabin_camper_prefs: Dict[str, Dict[str, List[str]]],
-        seatrades_prefs: Dict[str, Dict[str, int]],
+        cabin_camper_prefs: CamperSeatradePreferences,
+        seatrades_prefs: SeatradesConfig,
     ):
         """
         A class to handle LP problems to solve seatrade assignment.
 
         Parameters
         ----------
-        cabin_camper_prefs : dict
-            A json-like dict containing the camper-cabin-seatrade
+        cabin_camper_prefs : CamperSeatradePreferences
+            A dataframe containing the camper-cabin-seatrade
             preferences information.
-        seatrades_prefs : dict
-            A json-like dict containing the seatrade-minsize-maxsize
+        seatrades_prefs : SeatradesConfig
+            A dataframe containing the seatrade-minsize-maxsize
             information.
         """
 
-        self.cabin_camper_prefs = cabin_camper_prefs
-        self.cabins = list(cabin_camper_prefs.keys())
-        self.camper_prefs = self._flatten(self.cabin_camper_prefs)
-        self.campers = list(self.camper_prefs.keys())
+        self.cabin_camper_prefs = cabin_camper_prefs.set_index("camper")
+        self.cabins = cabin_camper_prefs["cabin"].tolist()
+        self.camper_prefs = cabin_camper_prefs.set_index("camper")[
+            ["seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]
+        ].apply(list, axis="columns")
+        self.campers = cabin_camper_prefs["camper"].tolist()
 
         # Seatrades for block 1 and block 2.
-        self.seatrades_prefs = seatrades_prefs
-        self.seatrades = list(seatrades_prefs.keys())
+        self.seatrades_prefs = seatrades_prefs.set_index("seatrade")
+        self.seatrades = seatrades_prefs["seatrade"]
         self.seatrades1 = [f"1_{seatrade}" for seatrade in self.seatrades]
         self.seatrades2 = [f"2_{seatrade}" for seatrade in self.seatrades]
         self.seatrades_full = self.seatrades1 + self.seatrades2
         self.assignments: pd.DataFrame
 
     # Helper Function
-    def _flatten(outer_list: List[list]):
+    def _flatten(self, outer_list: List[list]):
         """Flattens the 2d input list into 1d."""
         return {
             key: value
@@ -97,15 +101,17 @@ class Seatrades:
         # Constraint 3: Each seatrade is assigned between min and max campers.
         for s in self.seatrades_full:
             seatrade = s[2:]  # Remove block index for matching.
+            seatrade_campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
             problem += (
                 pulp.lpSum([assignments[c][s] for c in self.campers])
-                >= self.seatrades_prefs[seatrade]["campers_min"],
-                f"More_than_{self.seatrades_prefs[seatrade]['campers_min']}_in_{s}",
+                >= seatrade_campers_min,
+                f"More_than_{seatrade_campers_min}_in_{s}",
             )
+            seatrade_campers_max = self.seatrades_prefs.loc[seatrade, "campers_max"]
             problem += (
                 pulp.lpSum([assignments[c][s] for c in self.campers])
-                <= self.seatrades_prefs[seatrade]["campers_max"],
-                f"Less_than_{self.seatrades_prefs[seatrade]['campers_max']}_in_{s}",
+                <= seatrade_campers_max,
+                f"Less_than_{seatrade_campers_max}_in_{s}",
             )
         # Constraint 4: Campers cannot be assigned un-requested seatrades.
         for c, seatrade_prefs in self.camper_prefs.items():
