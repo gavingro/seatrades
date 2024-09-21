@@ -32,27 +32,11 @@ class Seatrades:
             information.
         """
 
-        # Helper Function
-        def flatten(outer_list: List[list]):
-            """Flattens the 2d input list into 1d."""
-            return {
-                key: value
-                for inner_dict in outer_list.values()
-                for key, value in inner_dict.items()
-            }
-
-        # def flatten_dict(outer_dict: Dict[dict]):
-        #     """Flattens the 2d input dict into 1d."""
-        #     output_dict = {}
-        #     for inner_dict in outer_dict.values():
-        #         for key, value in inner_dict.items():
-        #             output_dict[key] = value
-        #     return output_dict
-
         self.cabin_camper_prefs = cabin_camper_prefs
         self.cabins = list(cabin_camper_prefs.keys())
-        self.camper_prefs = flatten(self.cabin_camper_prefs)
+        self.camper_prefs = self._flatten(self.cabin_camper_prefs)
         self.campers = list(self.camper_prefs.keys())
+
         # Seatrades for block 1 and block 2.
         self.seatrades_prefs = seatrades_prefs
         self.seatrades = list(seatrades_prefs.keys())
@@ -60,6 +44,15 @@ class Seatrades:
         self.seatrades2 = [f"2_{seatrade}" for seatrade in self.seatrades]
         self.seatrades_full = self.seatrades1 + self.seatrades2
         self.assignments: pd.DataFrame
+
+    # Helper Function
+    def _flatten(outer_list: List[list]):
+        """Flattens the 2d input list into 1d."""
+        return {
+            key: value
+            for inner_dict in outer_list.values()
+            for key, value in inner_dict.items()
+        }
 
     def assign(self) -> int:
         """
@@ -172,11 +165,11 @@ class Seatrades:
 
     def get_assignments_by_cabin(self, assignments: pd.DataFrame) -> dict:
         """Get the assignments organized by Cabin -> Camper -> Seatrade."""
-        ...
+        raise NotImplementedError
 
     def get_assignments_by_seatrade(self, assignments: pd.DataFrame) -> dict:
         """Get the assignments organized by seatrade -> Cabin -> Camper."""
-        ...
+        raise NotImplementedError
 
     def wrangle_assignments_to_longform(
         self, assignments: pd.DataFrame
@@ -227,54 +220,7 @@ class Seatrades:
 
         return df
 
-    def display_assignments(self) -> alt.Chart:
-        """
-        Displays the assignments of the seatrades visually for inference.
-        """
-        if not self.status:
-            raise ValueError(
-                "Seatrades.assignments (and status code) not found."
-                "Did you remember to run Seatrades.assign() first?"
-            )
-        df = self.wrangle_assignments_to_longform(self.assignments)
-
-        # Matrix Assignment chart.
-        assignment_base = alt.Chart(df).encode(
-            x=alt.X("seatrade", sort=self.seatrades_full, title=None),
-            y=alt.Y("camper", sort=self.campers, title=None),
-        )
-        assignment_rectangles = assignment_base.mark_rect(
-            stroke="black", strokeWidth=0.1
-        ).encode(
-            color=alt.Color(
-                "preference:O",
-                # scale=alt.Scale(
-                #     domain=list(self.colors.keys()), range=list(self.colors.values())
-                # ),
-            )
-        )
-        assignment_text = (
-            assignment_base.mark_text(color="white")
-            .encode(text="preference:O")
-            .transform_filter(alt.datum.preference > 0)
-        )
-        assignment_chart = (
-            (assignment_rectangles + assignment_text)
-            .facet(row="cabin", column="block", spacing={"row": 2})
-            .resolve_scale(y="independent")
-            .properties(
-                title={
-                    "text": "Seatrades.",
-                    "subtitle": "Assignments by Preference.",
-                    "fontSize": 20,
-                    "anchor": "start",
-                }
-            )
-        )
-
-        return assignment_chart
-
-    def export_assignments_to_csv(self, filepath: str = "assignments.csv"):
+    def export_assignments_to_csv(self, filepath: str):
         """
         Exports the seatrade assignments to a CSV file at the
         given path.
