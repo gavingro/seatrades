@@ -4,7 +4,7 @@ This file contains tools to display the results of seatrades assignment.
 
 import altair as alt
 
-from src.seatrades import Seatrades
+from seatrades.seatrades import Seatrades
 
 
 def display_assignments(seatrades: Seatrades) -> alt.Chart:
