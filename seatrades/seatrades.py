@@ -58,7 +58,7 @@ class Seatrades:
             for key, value in inner_dict.items()
         }
 
-    def assign(self) -> int:
+    def assign(self, preference_temperature: float = 5.0) -> int:
         """
         Uses the objects campers_df and seatrades_df to solve a Linear Programming
         problem to assign each camper to their ideal seatrades while respecting
@@ -146,13 +146,24 @@ class Seatrades:
                 <= 4,  # indexing of 0 means 3rd + 4th index is 5.
                 f"{c} guaranteed one of the first two seatrades.",
             )
+        # Contraint 6: For each seatrade, a cabin can contribute no
+        # more than 4 campers.
+        for s in self.seatrades_full:
+            for cabin in self.cabins:
+                cabin_campers = self.cabin_camper_prefs.loc[
+                    self.cabin_camper_prefs["cabin"] == cabin
+                ].index.tolist()
+                problem += (
+                    pulp.lpSum([assignments[c][s] for c in cabin_campers]) <= 4,
+                    f"{cabin} must contribute <= 4 campers to {s}.",
+                )
 
         # OBJECTIVE:
         obj = 0
         # Penalize giving lower-preference seatrades.
         for c, preferences in self.camper_prefs.items():
             for block in [1, 2]:
-                obj += pulp.lpSum(
+                obj += preference_temperature * pulp.lpSum(
                     [
                         # Use indicator function from assignment
                         # multiplied by linear preference penalty
@@ -161,6 +172,9 @@ class Seatrades:
                         for s in preferences
                     ]
                 )
+        # Penalize for having less
+        # (Reward for assigning friends together).
+
         problem += obj
 
         # Solve and save assignments:
