@@ -35,7 +35,7 @@ class Seatrades:
         """
 
         self.cabin_camper_prefs = cabin_camper_prefs.set_index("camper")
-        self.cabins = cabin_camper_prefs["cabin"].tolist()
+        self.cabins = cabin_camper_prefs["cabin"].unique().tolist()
         self.camper_prefs = cabin_camper_prefs.set_index("camper")[
             ["seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]
         ].apply(list, axis="columns")
@@ -216,8 +216,8 @@ class Seatrades:
             Returns the cabin name that a camper is in.
             """
             camper = row.camper
-            for cabin, camper_prefs in self.cabin_camper_prefs.items():
-                if camper in list(camper_prefs.keys()):
+            for campers, cabin in self.cabin_camper_prefs["cabin"].items():
+                if camper in campers:
                     return cabin
             return None
 
