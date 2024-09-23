@@ -37,7 +37,7 @@ def display_assignments(seatrades: Seatrades) -> alt.Chart:
     )
     assignment_chart = (
         (assignment_rectangles + assignment_text)
-        .facet(row="cabin", column="block", spacing={"row": 3})
+        .facet(row="cabin", column="block", spacing={"row": 2})
         .resolve_scale(y="independent")
         .properties(
             title={
