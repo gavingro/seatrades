@@ -3,15 +3,14 @@ This file contains tools to assign seatrades to campers based on their preferenc
 """
 
 from typing import Dict, Literal, List, Optional
-from time import time
 import logging
 
 import pulp
-import numpy as np
 import pandas as pd
-import altair as alt
 
 from seatrades.preferences import SeatradesConfig, CamperSeatradePreferences
+
+logger = logging.getLogger(__name__)
 
 
 class Seatrades:
@@ -70,6 +69,7 @@ class Seatrades:
         cabins_weight: Optional[float] = None,
         sparsity_weight: Optional[float] = None,
         max_seatrades_per_fleet: Optional[int] = None,
+        solver: Optional[pulp.core.LpSolver] = None,
     ) -> pulp.LpProblem:
         """
                 Uses the objects campers_df and seatrades_df to solve a Linear Programming
@@ -93,6 +93,7 @@ class Seatrades:
             The maximum number of seatrade activities to be assigned across all campers
             within each fleet if present, by default None
 
+
         Returns
         -------
         pulp.LpProblem
@@ -100,6 +101,7 @@ class Seatrades:
             The convergence of the problem can be found under the .status attribute.
         """
         # Setup problem and parameters.
+        logger.info("Setting Up Problem Variables")
         problem = pulp.LpProblem(name="seatrades_assignment")
         camper_assignments = pulp.LpVariable.dicts(
             "Camper_Assignments",
@@ -172,6 +174,7 @@ class Seatrades:
                     )
 
         # CONSTRAINTS:
+        logger.info("Adding Variable Constraints")
         # Constraint 1: Each camper is assigned 1 seatrade in each of 2 blocks (1ab and 2ab).
         for block_index, seatrades in enumerate(
             [self.seatrades1a + self.seatrades1b, self.seatrades2a + self.seatrades2b],
@@ -316,6 +319,7 @@ class Seatrades:
                 )
 
         # OBJECTIVE:
+        logger.info("Setting Up Objective Function")
         obj = 0
         # PENALTY 1: Penalize giving lower-preference seatrades.
         for c, preferences in self.camper_prefs.items():
@@ -344,14 +348,18 @@ class Seatrades:
                 for s in self.seatrades:
                     obj += sparsity_weight * seatrade_assignment[fleet][s]
 
-        print("Solving Problem")
+        logger.info("Solving Problem.")
         # Solve and save assignments:
         problem += obj
-        status = problem.solve()
+
+        if solver:
+            status = problem.solve(solver)
+        else:
+            status = problem.solve()
+        self.status = status if status else -1
         self.assignments = (
             pd.DataFrame(camper_assignments).applymap(pulp.value).transpose()
         )
-        self.status = status
         return problem
 
     def get_assignments_by_cabin(self, assignments: pd.DataFrame) -> dict:

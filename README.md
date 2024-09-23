@@ -18,6 +18,7 @@ A tool to help assign seatrades at Keats Camps using math.
 
 ### To Implement
 
+- [ ] Introduce constraint such that only one girl cannot be assigned to a seatrade of all boys (is this actually a problem? Currently our strategy of keeping cabins together would prioritize assigning cabins together, which would include friends).
 - [ ] Introduce camper/cabin age to optimizer to ensure each seatrade is approximately the same ages.
 - [ ] Create demo web app.
 - [ ] Introduce .csv import/export to web app.
@@ -28,6 +29,7 @@ A tool to help assign seatrades at Keats Camps using math.
 
 ### Implemented
 
+- [x] Implement early stopping with timeouts and "good enough" solutions.
 - [x] Basic Data structures to hold Cabin preferences and Seatrades configurations.
 - [x] Basic Linear Programming Optimizer to maximize
 camper preferences with ideal seatrade assignments.
