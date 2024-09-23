@@ -58,7 +58,9 @@ class Seatrades:
             for key, value in inner_dict.items()
         }
 
-    def assign(self, preference_temperature: float = 5.0) -> int:
+    def assign(
+        self, preference_temperature: float = 5.0, cabins_temperature: float = 5.0
+    ) -> pulp.LpProblem:
         """
         Uses the objects campers_df and seatrades_df to solve a Linear Programming
         problem to assign each camper to their ideal seatrades while respecting
@@ -74,20 +76,39 @@ class Seatrades:
         """
         # Setup problem and parameters.
         problem = pulp.LpProblem(name="seatrades_assignment")
-        assignments = pulp.LpVariable.dicts(
-            "Assignment",
+        camper_assignments = pulp.LpVariable.dicts(
+            "Camper_Assignments",
             (self.campers, self.seatrades_full),
             lowBound=0,
             upBound=1,
-            cat=pulp.LpInteger,
+            cat=pulp.LpBinary,
         )
+        # Helper Param: Cabin Assignment is 1 if any camper
+        # from cabin in seatrade, else 0.
+        # Requires clever constraint by comparing camper assignment for each camper in seatrade.
+        cabin_assignments = pulp.LpVariable.dicts(
+            "Cabin Assignment",
+            (self.cabins, self.seatrades_full),
+            lowBound=0,
+            upBound=1,
+            cat=pulp.LpBinary,
+        )
+        for s in self.seatrades_full:
+            for cabin in self.cabins:
+                cabin_campers = self.cabin_camper_prefs.loc[
+                    self.cabin_camper_prefs["cabin"] == cabin,
+                ].index.tolist()
+                for c in cabin_campers:
+                    # Cabin assignment is ge than camper assignment.
+                    # Ensures if any campers are assigned, cabin is assigned.
+                    problem += cabin_assignments[cabin][s] >= camper_assignments[c][s]
 
         # CONSTRAINTS:
         # Constraint 1: Each camper is assigned 1 seatrade in each of 2 blocks.
         for block_index, seatrades in enumerate([self.seatrades1, self.seatrades2]):
             for c in self.campers:
                 problem += (
-                    pulp.lpSum([assignments[c][s] for s in seatrades]) == 1,
+                    pulp.lpSum([camper_assignments[c][s] for s in seatrades]) == 1,
                     f"{c}_in_only_1_seatrade_block_{block_index}",
                 )
         # Constraint 2: Each camper cannot be assigned the same seatrade
@@ -95,7 +116,8 @@ class Seatrades:
         for s1, s2 in zip(self.seatrades1, self.seatrades2):
             for c in self.campers:
                 problem += (
-                    pulp.lpSum([assignments[c][s1], assignments[c][s2]]) <= 1,
+                    pulp.lpSum([camper_assignments[c][s1], camper_assignments[c][s2]])
+                    <= 1,
                     f"{c} can't take {s1[2:]} in both blocks",
                 )
         # Constraint 3: Each seatrade is assigned between min and max campers.
@@ -103,13 +125,13 @@ class Seatrades:
             seatrade = s[2:]  # Remove block index for matching.
             seatrade_campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
             problem += (
-                pulp.lpSum([assignments[c][s] for c in self.campers])
+                pulp.lpSum([camper_assignments[c][s] for c in self.campers])
                 >= seatrade_campers_min,
                 f"More_than_{seatrade_campers_min}_in_{s}",
             )
             seatrade_campers_max = self.seatrades_prefs.loc[seatrade, "campers_max"]
             problem += (
-                pulp.lpSum([assignments[c][s] for c in self.campers])
+                pulp.lpSum([camper_assignments[c][s] for c in self.campers])
                 <= seatrade_campers_max,
                 f"Less_than_{seatrade_campers_max}_in_{s}",
             )
@@ -118,7 +140,7 @@ class Seatrades:
             problem += (
                 pulp.lpSum(
                     [
-                        assignments[c][s]
+                        camper_assignments[c][s]
                         for s in self.seatrades_full
                         if s[2:] not in seatrade_prefs
                     ]
@@ -135,11 +157,11 @@ class Seatrades:
                     # multiplied by linear preference penalty
                     # from index.
                     [
-                        assignments[c][f"1_{s}"] * (preferences.index(s))
+                        camper_assignments[c][f"1_{s}"] * (preferences.index(s))
                         for s in preferences
                     ]
                     + [
-                        assignments[c][f"2_{s}"] * (preferences.index(s))
+                        camper_assignments[c][f"2_{s}"] * (preferences.index(s))
                         for s in preferences
                     ]
                 )
@@ -154,7 +176,7 @@ class Seatrades:
                     self.cabin_camper_prefs["cabin"] == cabin
                 ].index.tolist()
                 problem += (
-                    pulp.lpSum([assignments[c][s] for c in cabin_campers]) <= 4,
+                    pulp.lpSum([camper_assignments[c][s] for c in cabin_campers]) <= 4,
                     f"{cabin} must contribute <= 4 campers to {s}.",
                 )
 
@@ -168,20 +190,26 @@ class Seatrades:
                         # Use indicator function from assignment
                         # multiplied by linear preference penalty
                         # from index.
-                        assignments[c][f"{block}_{s}"] * (preferences.index(s))
+                        camper_assignments[c][f"{block}_{s}"] * (preferences.index(s))
                         for s in preferences
                     ]
                 )
-        # Penalize for having less
+        # Penalize for number of cabins assigned.
         # (Reward for assigning friends together).
+        for s in self.seatrades_full:
+            obj += cabins_temperature * pulp.lpSum(
+                [cabin_assignments[cabin][s] for c in self.cabins]
+            )
 
         problem += obj
 
         # Solve and save assignments:
         status = problem.solve()
-        self.assignments = pd.DataFrame(assignments).applymap(pulp.value).transpose()
+        self.assignments = (
+            pd.DataFrame(camper_assignments).applymap(pulp.value).transpose()
+        )
         self.status = status
-        return self.status
+        return problem
 
     def get_assignments_by_cabin(self, assignments: pd.DataFrame) -> dict:
         """Get the assignments organized by Cabin -> Camper -> Seatrade."""
