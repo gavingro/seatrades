@@ -234,6 +234,17 @@ class Seatrades:
                     pulp.lpSum([fleet_assignment[cabin][f] for f in fleet_blocks]) == 1,
                     f"{cabin}_in_only_1_fleet_{fleet_blocks}",
                 )
+        # Constraint 8: Divide the number of cabins up equally between the two
+        # fleets.
+        # If each fleet needs at least half the cabins (rounded down), then cabins
+        # should be split equally if even and fairly if odd.
+        half_of_the_cabins_min = len(self.cabins) // 2
+        for fleet in self.fleets:
+            problem += (
+                pulp.lpSum([fleet_assignment[cabin][fleet] for cabin in self.cabins])
+                >= half_of_the_cabins_min,
+                f"Roughly_half_of_cabins_in_fleet_{fleet}",
+            )
 
         # OBJECTIVE:
         obj = 0
@@ -253,7 +264,7 @@ class Seatrades:
         # (Reward for assigning friends together).
         for s in self.seatrades_full:
             obj += cabins_temperature * pulp.lpSum(
-                [cabin_assignments[cabin][s] for c in self.cabins]
+                [cabin_assignments[cabin][s] for cabin in self.cabins]
             )
 
         problem += obj
