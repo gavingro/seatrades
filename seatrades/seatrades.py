@@ -189,6 +189,7 @@ class Seatrades:
             )
         # Constraint 5: Campers guaranteed one of their top 2 choices.
         # In other words, they cannot be assigned 3rd and 4th choices together.
+        # In other words, their combined preference totals must be less than 3+4=7.
         for c, preferences in self.camper_prefs.items():
             problem += (
                 pulp.lpSum(
@@ -212,7 +213,7 @@ class Seatrades:
                         for s in preferences
                     ]
                 )
-                <= 5 - 1,  # indexing of 0 means 3rd + 4th index is 5.
+                <= 5 - 1,  # indexing of 0 means 3rd + 4th index is 2+3=5.
                 f"{c} guaranteed one of the first two seatrades.",
             )
         # Constraint 6: For each seatrade, a cabin can contribute no
@@ -245,6 +246,22 @@ class Seatrades:
                 >= half_of_the_cabins_min,
                 f"Roughly_half_of_cabins_in_fleet_{fleet}",
             )
+        # Constraint 9: Divide the number of girls and boys cabins roughly equally between the
+        # fleets.
+        cabin_genders = self.cabin_camper_prefs.groupby("cabin")["gender"].agg(
+            lambda grp: pd.Series.mode(grp)[0]
+        )
+        for gender in self.cabin_camper_prefs["gender"].unique():
+            gender_cabins = cabin_genders[cabin_genders == gender].index.tolist()
+            half_of_the_gender_cabins_min = len(gender_cabins) // 2
+            for fleet in self.fleets:
+                problem += (
+                    pulp.lpSum(
+                        [fleet_assignment[cabin][fleet] for cabin in gender_cabins]
+                    )
+                    >= half_of_the_gender_cabins_min,
+                    f"Roughly_half_of_{gender}_cabins_in_fleet_{fleet}",
+                )
 
         # OBJECTIVE:
         obj = 0
@@ -260,7 +277,7 @@ class Seatrades:
                         for s in preferences
                     ]
                 )
-        # Penalize for number of cabins assigned.
+        # Penalize for number of cabins assigned to a single seatrade.
         # (Reward for assigning friends together).
         for s in self.seatrades_full:
             obj += cabins_temperature * pulp.lpSum(

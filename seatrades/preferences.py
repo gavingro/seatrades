@@ -21,6 +21,7 @@ class CamperSeatradePreferences(DataFrameModel):
 
     cabin: str
     camper: str
+    gender: str
     seatrade_1: str
     seatrade_2: str
     seatrade_3: str

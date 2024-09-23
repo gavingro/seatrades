@@ -16,8 +16,6 @@ A tool to help assign seatrades at Keats Camps using math.
 
 ### Currently Implementing
 
-- [ ] Introduce Genders to the cabins, and ensure each fleet is has roughly the same amount of girls and boys.
-
 ### To Implement
 
 - [ ] Introduce camper/cabin age to optimizer to ensure each seatrade is approximately the same ages.
@@ -27,6 +25,7 @@ A tool to help assign seatrades at Keats Camps using math.
 - [ ] Implement basic visualization for seatrade preferences to allow for better seatrade config.
 - [ ] Implement seatrade selection for week. If problem is infeasible based on minimum seatrade numbers, remove least preferable seatrade and re-run.
 - [ ] Infer popularity of seatrade from preferences, and balance popuparity between protected categories (genders? Ages?)
+- [ ] Use indicator function to count number of seatrades with non-zero member counts, and penalize for amount of total seatrades (encourage sparsity).
 
 ### Implemented
 
@@ -34,6 +33,7 @@ A tool to help assign seatrades at Keats Camps using math.
 - [x] Penalize assigning campers from the same cabin to different seatrades (eg reward friends being placed together).
 - [x] Max cabin limits on a per-seatrade basis. Penalize OR constrain having too many campers of the same cabin assigned to the same seatrade.
 - [x] Assign each camper to a block-1 or block-2 fleet time. This should be done in an optimal manner, perhaps as a first pass with a separate optimizer.
+- [x] Introduce Genders to the cabins, and ensure each fleet is has roughly the same amount of girls and boys.
 
 ---
 
