@@ -7,6 +7,7 @@ from time import time
 import logging
 
 import pulp
+import numpy as np
 import pandas as pd
 import altair as alt
 
@@ -224,6 +225,14 @@ class Seatrades:
                 problem += (
                     pulp.lpSum([camper_assignments[c][s] for c in cabin_campers]) <= 4,
                     f"{cabin} must contribute <= 4 campers to {s}.",
+                )
+        # # Constraint 7: Each cabin can only be assigned to a single
+        # # fleet (cabin has to be assigned together).
+        for fleet_blocks in [["1a", "1b"], ["2a", "2b"]]:
+            for cabin in self.cabins:
+                problem += (
+                    pulp.lpSum([fleet_assignment[cabin][f] for f in fleet_blocks]) == 1,
+                    f"{cabin}_in_only_1_fleet_{fleet_blocks}",
                 )
 
         # OBJECTIVE:
