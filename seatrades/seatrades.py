@@ -7,6 +7,7 @@ from time import time
 import logging
 
 import pulp
+import numpy as np
 import pandas as pd
 import altair as alt
 
@@ -44,9 +45,14 @@ class Seatrades:
         # Seatrades for block 1 and block 2.
         self.seatrades_prefs = seatrades_prefs.set_index("seatrade")
         self.seatrades = seatrades_prefs["seatrade"]
-        self.seatrades1 = [f"1_{seatrade}" for seatrade in self.seatrades]
-        self.seatrades2 = [f"2_{seatrade}" for seatrade in self.seatrades]
-        self.seatrades_full = self.seatrades1 + self.seatrades2
+        self.seatrades1a = [f"1a_{seatrade}" for seatrade in self.seatrades]
+        self.seatrades1b = [f"1b_{seatrade}" for seatrade in self.seatrades]
+        self.seatrades2a = [f"2a_{seatrade}" for seatrade in self.seatrades]
+        self.seatrades2b = [f"2b_{seatrade}" for seatrade in self.seatrades]
+        self.seatrades_full = (
+            self.seatrades1a + self.seatrades1b + self.seatrades2a + self.seatrades2b
+        )
+        self.fleets = ["1a", "1b", "2a", "2b"]
         self.assignments: pd.DataFrame
 
     # Helper Function
@@ -103,9 +109,35 @@ class Seatrades:
                     # Ensures if any campers are assigned, cabin is assigned.
                     problem += cabin_assignments[cabin][s] >= camper_assignments[c][s]
 
+        # Helper Param: Fleet Assignment is 1 if any camper
+        # from cabin in fleet, else 0.
+        # Requires clever constraint by comparing camper assignment fr each camper in fleet.
+        fleet_assignment = pulp.LpVariable.dicts(
+            "Cabin Fleet Assignment",
+            (self.cabins, self.fleets),
+            lowBound=0,
+            upBound=1,
+            cat=pulp.LpBinary,
+        )
+        for fleet in self.fleets:
+            for seatrade in self.seatrades:
+                s = f"{fleet}_{seatrade}"
+                for cabin in self.cabins:
+                    cabin_campers = self.cabin_camper_prefs.loc[
+                        self.cabin_camper_prefs["cabin"] == cabin,
+                    ].index.tolist()
+                    for c in cabin_campers:
+                        # Fleet assignment is ge than camper assignment.
+                        # Ensures if any campers are assigned, cabin is assigned to fleet.
+                        problem += (
+                            fleet_assignment[cabin][fleet] >= camper_assignments[c][s]
+                        )
+
         # CONSTRAINTS:
-        # Constraint 1: Each camper is assigned 1 seatrade in each of 2 blocks.
-        for block_index, seatrades in enumerate([self.seatrades1, self.seatrades2]):
+        # Constraint 1: Each camper is assigned 1 seatrade in each of 2 blocks (1ab and 2ab).
+        for block_index, seatrades in enumerate(
+            [self.seatrades1a + self.seatrades1b, self.seatrades2a + self.seatrades2b],
+        ):
             for c in self.campers:
                 problem += (
                     pulp.lpSum([camper_assignments[c][s] for s in seatrades]) == 1,
@@ -113,16 +145,23 @@ class Seatrades:
                 )
         # Constraint 2: Each camper cannot be assigned the same seatrade
         # in both blocks.
-        for s1, s2 in zip(self.seatrades1, self.seatrades2):
+        for seatrade in self.seatrades:
             for c in self.campers:
                 problem += (
-                    pulp.lpSum([camper_assignments[c][s1], camper_assignments[c][s2]])
+                    pulp.lpSum(
+                        [
+                            camper_assignments[c][f"1a_{seatrade}"],
+                            camper_assignments[c][f"1b_{seatrade}"],
+                            camper_assignments[c][f"2a_{seatrade}"],
+                            camper_assignments[c][f"2b_{seatrade}"],
+                        ]
+                    )
                     <= 1,
-                    f"{c} can't take {s1[2:]} in both blocks",
+                    f"{c} can't take {seatrade} in both blocks",
                 )
         # Constraint 3: Each seatrade is assigned between min and max campers.
         for s in self.seatrades_full:
-            seatrade = s[2:]  # Remove block index for matching.
+            seatrade = s[3:]  # Remove block index for matching.
             seatrade_campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
             problem += (
                 pulp.lpSum([camper_assignments[c][s] for c in self.campers])
@@ -142,7 +181,7 @@ class Seatrades:
                     [
                         camper_assignments[c][s]
                         for s in self.seatrades_full
-                        if s[2:] not in seatrade_prefs
+                        if s[3:] not in seatrade_prefs
                     ]
                 )
                 == 0,
@@ -150,6 +189,7 @@ class Seatrades:
             )
         # Constraint 5: Campers guaranteed one of their top 2 choices.
         # In other words, they cannot be assigned 3rd and 4th choices together.
+        # In other words, their combined preference totals must be less than 3+4=7.
         for c, preferences in self.camper_prefs.items():
             problem += (
                 pulp.lpSum(
@@ -157,18 +197,26 @@ class Seatrades:
                     # multiplied by linear preference penalty
                     # from index.
                     [
-                        camper_assignments[c][f"1_{s}"] * (preferences.index(s))
+                        camper_assignments[c][f"1a_{s}"] * (preferences.index(s))
                         for s in preferences
                     ]
                     + [
-                        camper_assignments[c][f"2_{s}"] * (preferences.index(s))
+                        camper_assignments[c][f"1b_{s}"] * (preferences.index(s))
+                        for s in preferences
+                    ]
+                    + [
+                        camper_assignments[c][f"2a_{s}"] * (preferences.index(s))
+                        for s in preferences
+                    ]
+                    + [
+                        camper_assignments[c][f"2b_{s}"] * (preferences.index(s))
                         for s in preferences
                     ]
                 )
-                <= 4,  # indexing of 0 means 3rd + 4th index is 5.
+                <= 5 - 1,  # indexing of 0 means 3rd + 4th index is 2+3=5.
                 f"{c} guaranteed one of the first two seatrades.",
             )
-        # Contraint 6: For each seatrade, a cabin can contribute no
+        # Constraint 6: For each seatrade, a cabin can contribute no
         # more than 4 campers.
         for s in self.seatrades_full:
             for cabin in self.cabins:
@@ -179,12 +227,47 @@ class Seatrades:
                     pulp.lpSum([camper_assignments[c][s] for c in cabin_campers]) <= 4,
                     f"{cabin} must contribute <= 4 campers to {s}.",
                 )
+        # # Constraint 7: Each cabin can only be assigned to a single
+        # # fleet (cabin has to be assigned together).
+        for fleet_blocks in [["1a", "1b"], ["2a", "2b"]]:
+            for cabin in self.cabins:
+                problem += (
+                    pulp.lpSum([fleet_assignment[cabin][f] for f in fleet_blocks]) == 1,
+                    f"{cabin}_in_only_1_fleet_{fleet_blocks}",
+                )
+        # Constraint 8: Divide the number of cabins up equally between the two
+        # fleets.
+        # If each fleet needs at least half the cabins (rounded down), then cabins
+        # should be split equally if even and fairly if odd.
+        half_of_the_cabins_min = len(self.cabins) // 2
+        for fleet in self.fleets:
+            problem += (
+                pulp.lpSum([fleet_assignment[cabin][fleet] for cabin in self.cabins])
+                >= half_of_the_cabins_min,
+                f"Roughly_half_of_cabins_in_fleet_{fleet}",
+            )
+        # Constraint 9: Divide the number of girls and boys cabins roughly equally between the
+        # fleets.
+        cabin_genders = self.cabin_camper_prefs.groupby("cabin")["gender"].agg(
+            lambda grp: pd.Series.mode(grp)[0]
+        )
+        for gender in self.cabin_camper_prefs["gender"].unique():
+            gender_cabins = cabin_genders[cabin_genders == gender].index.tolist()
+            half_of_the_gender_cabins_min = len(gender_cabins) // 2
+            for fleet in self.fleets:
+                problem += (
+                    pulp.lpSum(
+                        [fleet_assignment[cabin][fleet] for cabin in gender_cabins]
+                    )
+                    >= half_of_the_gender_cabins_min,
+                    f"Roughly_half_of_{gender}_cabins_in_fleet_{fleet}",
+                )
 
         # OBJECTIVE:
         obj = 0
         # Penalize giving lower-preference seatrades.
         for c, preferences in self.camper_prefs.items():
-            for block in [1, 2]:
+            for block in ["1a", "1b", "2a", "2b"]:
                 obj += preference_temperature * pulp.lpSum(
                     [
                         # Use indicator function from assignment
@@ -194,11 +277,11 @@ class Seatrades:
                         for s in preferences
                     ]
                 )
-        # Penalize for number of cabins assigned.
+        # Penalize for number of cabins assigned to a single seatrade.
         # (Reward for assigning friends together).
         for s in self.seatrades_full:
             obj += cabins_temperature * pulp.lpSum(
-                [cabin_assignments[cabin][s] for c in self.cabins]
+                [cabin_assignments[cabin][s] for cabin in self.cabins]
             )
 
         problem += obj
@@ -243,8 +326,8 @@ class Seatrades:
             """
             if row.assignment:
                 row_camper_prefs = self.camper_prefs[row.camper]
-                if row.seatrade[2:] in row_camper_prefs:
-                    pref_rank = row_camper_prefs.index(row.seatrade[2:]) + 1
+                if row.seatrade[3:] in row_camper_prefs:
+                    pref_rank = row_camper_prefs.index(row.seatrade[3:]) + 1
                 else:
                     pref_rank = 999
             else:
