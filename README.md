@@ -18,14 +18,14 @@ A tool to help assign seatrades at Keats Camps using math.
 
 ### To Implement
 
+- [ ] Mock cabin/camper/seatrade preferences using actual keats cabins/ages/genders and actual seatrades/sizes/popularity for better tooling.
 - [ ] Introduce constraint such that only one girl cannot be assigned to a seatrade of all boys (is this actually a problem? Currently our strategy of keeping cabins together would prioritize assigning cabins together, which would include friends).
 - [ ] Introduce camper/cabin age to optimizer to ensure each seatrade is approximately the same ages.
 - [ ] Create demo web app.
 - [ ] Introduce .csv import/export to web app.
 - [ ] Allow for "temperature" knobs on optimizer cost function areas (preferences vs cabin vs age, etc).
 - [ ] Implement basic visualization for seatrade preferences to allow for better seatrade config.
-- [ ] Implement seatrade selection for week. If problem is infeasible based on minimum seatrade numbers, remove least preferable seatrade and re-run.
-- [ ] Infer popularity of seatrade from preferences, and balance popuparity between protected categories (genders? Ages?)
+- [ ] Infer popularity of seatrade from preferences, and balance popuparity between protected categories (genders? Ages?). Eg) Tubing shouldn't be JUST senior boys in all 4 blocks or something.
 
 ### Implemented
 
