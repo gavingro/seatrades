@@ -16,9 +16,6 @@ A tool to help assign seatrades at Keats Camps using math.
 
 ### Currently Implementing
 
-- [ ] Penalize assigning campers from the same cabin to different seatrades (eg reward friends being placed together).
-- [ ] Max cabin limits on a per-seatrade basis. Penalize OR constrain having too many campers of the same cabin assigned to the same seatrade. (Can we penalize having 1 camper assigned, but not 0 campers?).
-
 ### To Implement
 
 - [ ] Assign each camper to a block-1 or block-2 fleet time. This should be done in an optimal manner, perhaps as a first pass with a separate optimizer.
@@ -27,10 +24,14 @@ A tool to help assign seatrades at Keats Camps using math.
 - [ ] Introduce .csv import/export to web app.
 - [ ] Allow for "temperature" knobs on optimizer cost function areas (preferences vs cabin vs age, etc).
 - [ ] Implement basic visualization for seatrade preferences to allow for better seatrade config.
+- [ ] Implement seatrade selection for week. If problem is infeasible based on minimum seatrade numbers, remove least preferable seatrade and re-run.
+- [ ] Infer popularity of seatrade from preferences, and balance popuparity between protected categories (genders? Ages?)
 
 ### Implemented
 
 - [x] Basic Data structures to hold Cabin preferences and Seatrades configurations.
+- [x] Penalize assigning campers from the same cabin to different seatrades (eg reward friends being placed together).
+- [x] Max cabin limits on a per-seatrade basis. Penalize OR constrain having too many campers of the same cabin assigned to the same seatrade.
 
 ---
 
