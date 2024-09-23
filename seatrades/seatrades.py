@@ -3,15 +3,14 @@ This file contains tools to assign seatrades to campers based on their preferenc
 """
 
 from typing import Dict, Literal, List, Optional
-from time import time
 import logging
 
 import pulp
-import numpy as np
 import pandas as pd
-import altair as alt
 
 from seatrades.preferences import SeatradesConfig, CamperSeatradePreferences
+
+logger = logging.getLogger(__name__)
 
 
 class Seatrades:
@@ -65,22 +64,44 @@ class Seatrades:
         }
 
     def assign(
-        self, preference_temperature: float = 5.0, cabins_temperature: float = 5.0
+        self,
+        preference_weight: float = 5.0,
+        cabins_weight: Optional[float] = None,
+        sparsity_weight: Optional[float] = None,
+        max_seatrades_per_fleet: Optional[int] = None,
+        solver: Optional[pulp.core.LpSolver] = None,
     ) -> pulp.LpProblem:
         """
-        Uses the objects campers_df and seatrades_df to solve a Linear Programming
+                Uses the objects campers_df and seatrades_df to solve a Linear Programming
         problem to assign each camper to their ideal seatrades while respecting
         size constraints.
 
         Details found in documentation/seatrades_assignment_math.md.
 
+        Parameters
+        ----------
+        preference_weight : float, optional
+            A scalar to weight the importance of camper
+            preferences on seatrade assignments, by default 5.0
+        cabins_weight : Optional[float], optional
+            A scalar to weight the importance of putting cabinmates
+            together on seatrade assignements (if not none), by default None
+        sparsity_weight : Optional[float], optional
+            A scalar to weight the importance of having fewer seatrades
+            in each block (if not none), by default None
+        max_seatrades_per_fleet : Optional[int], optional
+            The maximum number of seatrade activities to be assigned across all campers
+            within each fleet if present, by default None
+
+
         Returns
         -------
-        int
-            A status code representing feasibility of the problem.
-            1 if failure, 0 if success.
+        pulp.LpProblem
+            The underlying LpProblem instance that is being solved.
+            The convergence of the problem can be found under the .status attribute.
         """
         # Setup problem and parameters.
+        logger.info("Setting Up Problem Variables")
         problem = pulp.LpProblem(name="seatrades_assignment")
         camper_assignments = pulp.LpVariable.dicts(
             "Camper_Assignments",
@@ -132,8 +153,28 @@ class Seatrades:
                         problem += (
                             fleet_assignment[cabin][fleet] >= camper_assignments[c][s]
                         )
+        # Helper Param: Seatrade Assignment is 1 if any camper is
+        # assigned to the seatrade, else 0.
+        # Requires clever constraint by comparing camper assignment for each camper in seatrade.
+        seatrade_assignment = pulp.LpVariable.dicts(
+            "Seatrade Fleet Assignment",
+            (self.fleets, self.seatrades),
+            lowBound=0,
+            upBound=1,
+            cat=pulp.LpBinary,
+        )
+        for fleet in self.fleets:
+            for seatrade in self.seatrades:
+                s = f"{fleet}_{seatrade}"
+                for c in self.campers:
+                    # Fleet assignment is ge than camper assignment.
+                    # Ensures if any campers are assigned, cabin is assigned to fleet.
+                    problem += (
+                        seatrade_assignment[fleet][seatrade] >= camper_assignments[c][s]
+                    )
 
         # CONSTRAINTS:
+        logger.info("Adding Variable Constraints")
         # Constraint 1: Each camper is assigned 1 seatrade in each of 2 blocks (1ab and 2ab).
         for block_index, seatrades in enumerate(
             [self.seatrades1a + self.seatrades1b, self.seatrades2a + self.seatrades2b],
@@ -262,13 +303,28 @@ class Seatrades:
                     >= half_of_the_gender_cabins_min,
                     f"Roughly_half_of_{gender}_cabins_in_fleet_{fleet}",
                 )
+        # (Optional) Constraint 10: Ensure no more than max_seatrades_per_fleet are
+        # assigned within each fleet.
+        if max_seatrades_per_fleet:
+            for fleet in self.fleets:
+                problem += (
+                    pulp.lpSum(
+                        [
+                            seatrade_assignment[fleet][f"{seatrade}"]
+                            for seatrade in self.seatrades
+                        ]
+                    )
+                    <= max_seatrades_per_fleet,
+                    f"Ensure_{fleet}_has_less_than_{max_seatrades_per_fleet}_seatrades.",
+                )
 
         # OBJECTIVE:
+        logger.info("Setting Up Objective Function")
         obj = 0
-        # Penalize giving lower-preference seatrades.
+        # PENALTY 1: Penalize giving lower-preference seatrades.
         for c, preferences in self.camper_prefs.items():
-            for block in ["1a", "1b", "2a", "2b"]:
-                obj += preference_temperature * pulp.lpSum(
+            for block in self.fleets:
+                obj += preference_weight * pulp.lpSum(
                     [
                         # Use indicator function from assignment
                         # multiplied by linear preference penalty
@@ -277,21 +333,33 @@ class Seatrades:
                         for s in preferences
                     ]
                 )
-        # Penalize for number of cabins assigned to a single seatrade.
+        # OPTIONAL PENALTY 2: Penalize for number of cabins assigned to a single seatrade.
         # (Reward for assigning friends together).
-        for s in self.seatrades_full:
-            obj += cabins_temperature * pulp.lpSum(
-                [cabin_assignments[cabin][s] for cabin in self.cabins]
-            )
+        if cabins_weight:
+            for s in self.seatrades_full:
+                obj += cabins_weight * pulp.lpSum(
+                    [cabin_assignments[cabin][s] for cabin in self.cabins]
+                )
 
+        # OPTIONAL PENALTY 3: Penalize for number of seatrades assigned to a fleet.
+        # (Reward for sparsity, meaning less staff needing to be scheduled).
+        if sparsity_weight:
+            for fleet in self.fleets:
+                for s in self.seatrades:
+                    obj += sparsity_weight * seatrade_assignment[fleet][s]
+
+        logger.info("Solving Problem.")
+        # Solve and save assignments:
         problem += obj
 
-        # Solve and save assignments:
-        status = problem.solve()
+        if solver:
+            status = problem.solve(solver)
+        else:
+            status = problem.solve()
+        self.status = status if status else -1
         self.assignments = (
             pd.DataFrame(camper_assignments).applymap(pulp.value).transpose()
         )
-        self.status = status
         return problem
 
     def get_assignments_by_cabin(self, assignments: pd.DataFrame) -> dict:
