@@ -254,7 +254,7 @@ class Seatrades:
                         for s in preferences
                     ]
                 )
-                <= 5 - 1,  # indexing of 0 means 3rd + 4th index is 2+3=5.
+                <= 5 - 1,  # indexing of 0 means 3rd + 4th preference index is 2+3=5.
                 f"{c} guaranteed one of the first two seatrades.",
             )
         # Constraint 6: For each seatrade, a cabin can contribute no
