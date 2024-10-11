@@ -2,3 +2,4 @@ pulp
 pandas
 pandera
 altair
+streamlit
