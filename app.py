@@ -67,47 +67,42 @@ class OptimizationConfig:
 def main():
     # Config
     st.title("Keats Seatrade Scheduler")
-    temp_status = st.text("Initial")
-    simulation_config = get_simulation_config()
-    optimization_config = get_optimization_config()
-    temp_status = st.text("Config Initialized.")
+    simulation_config = _get_simulation_config()
+    optimization_config = _get_optimization_config()
 
     # Mock Data
-    seatrade_preferences = get_seatrade_preferences(simulation_config)
-    cabin_camper_prefs = get_cabin_camper_preferences(
+    seatrade_preferences = _get_seatrade_preferences(simulation_config)
+    cabin_camper_prefs = _get_cabin_camper_preferences(
         simulation_config, seatrade_preferences
     )
-    temp_status = st.text("Mock Data Initialized.")
 
     # Initialize Seatrades model
-    seatrades_model = create_seatrades(
+    seatrades_model = _create_seatrades(
         cabin_camper_preferences=cabin_camper_prefs,
         seatrade_preferences=seatrade_preferences,
     )
-    temp_status = st.text("Seatrades Initialized.")
 
     # Run optimization
-    assigned_seatrades = assign_seatrades(
+    assigned_seatrades = _assign_seatrades(
         seatrades=seatrades_model, optimization_config=optimization_config
     )
-    temp_status = st.text("Seatrades Assigned.")
 
     # Display results
     results_chart = results.display_assignments(assigned_seatrades)
     st.altair_chart(results_chart)
 
 
-def get_simulation_config():
+def _get_simulation_config():
     """Generate / Return config for the mock data parameters."""
     return SimulationConfig()
 
 
-def get_optimization_config():
+def _get_optimization_config():
     """Generate / Return config for the optimization parameters."""
     return OptimizationConfig()
 
 
-def get_seatrade_preferences(
+def _get_seatrade_preferences(
     simulation_config: SimulationConfig,
 ) -> preferences.SeatradesConfig:
     """Get our seatrade preferences for our optimization problem."""
@@ -129,7 +124,7 @@ def get_seatrade_preferences(
     return preferences.SeatradesConfig.validate(seatrades_prefs)
 
 
-def get_cabin_camper_preferences(
+def _get_cabin_camper_preferences(
     simulation_config: SimulationConfig,
     seatrade_preferences: preferences.SeatradesConfig,
 ) -> preferences.CamperSeatradePreferences:
@@ -182,14 +177,14 @@ def get_cabin_camper_preferences(
     return preferences.CamperSeatradePreferences.validate(cabin_camper_prefs)
 
 
-def create_seatrades(
+def _create_seatrades(
     cabin_camper_preferences: preferences.CamperSeatradePreferences,
     seatrade_preferences: preferences.SeatradesConfig,
 ) -> seatrades.Seatrades:
     return seatrades.Seatrades(cabin_camper_preferences, seatrade_preferences)
 
 
-def assign_seatrades(
+def _assign_seatrades(
     seatrades: seatrades.Seatrades, optimization_config: OptimizationConfig
 ) -> seatrades.Seatrades:
     handler = setup_logging()
