@@ -1,8 +1,212 @@
+from dataclasses import dataclass
+from random import sample
+from typing import Optional
+import logging
+import re
+
 import streamlit as st
+import pandas as pd
+import numpy as np
+import pulp
+
+from seatrades import seatrades, preferences, results
 
 
-def app():
-    st.title("hello world")
+class StreamlitLogHandler(logging.Handler):
+    # Initializes a custom log handler with a Streamlit container for displaying logs
+    def __init__(self, container):
+        super().__init__()
+        # Store the Streamlit container for log output
+        self.container = container
+        self.ansi_escape = re.compile(
+            r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
+        )  # Regex to remove ANSI codes
+        self.log_area = (
+            self.container.empty()
+        )  # Prepare an empty conatiner for log output
+
+    def emit(self, record):
+        msg = self.format(record)
+        clean_msg = self.ansi_escape.sub("", msg)  # Strip ANSI codes
+        self.log_area.markdown(clean_msg)
+
+    def clear_logs(self):
+        self.log_area.empty()  # Clear previous logs
 
 
-app()
+# Set up logging to capture all info level logs from the root logger
+def setup_logging():
+    root_logger = logging.getLogger()  # Get the root logger
+    log_container = st.container()  # Create a container within which we display logs
+    handler = StreamlitLogHandler(log_container)
+    handler.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
+    return handler
+
+
+@dataclass
+class SimulationConfig:
+    num_seatrades: int = 16
+    num_cabins: int = 24
+    num_preferences: int = 4
+    camper_per_seatrade_min: int = 8
+    camper_per_seatrade_max: int = 15
+    camper_per_cabin_min: int = 8
+    camper_per_cabin_max: int = 12
+
+
+@dataclass
+class OptimizationConfig:
+    preference_weight: int = 3
+    cabins_weight: int = 2
+    sparsity_weight: int = 1
+    max_seatrades_per_fleet: Optional[int] = None
+    solver: pulp.apis.LpSolver = pulp.apis.PULP_CBC_CMD(timeLimit=60, gapRel=0.10)
+
+
+def main():
+    # Config
+    st.title("Keats Seatrade Scheduler")
+    temp_status = st.text("Initial")
+    simulation_config = get_simulation_config()
+    optimization_config = get_optimization_config()
+    temp_status = st.text("Config Initialized.")
+
+    # Mock Data
+    seatrade_preferences = get_seatrade_preferences(simulation_config)
+    cabin_camper_prefs = get_cabin_camper_preferences(
+        simulation_config, seatrade_preferences
+    )
+    temp_status = st.text("Mock Data Initialized.")
+
+    # Initialize Seatrades model
+    seatrades_model = create_seatrades(
+        cabin_camper_preferences=cabin_camper_prefs,
+        seatrade_preferences=seatrade_preferences,
+    )
+    temp_status = st.text("Seatrades Initialized.")
+
+    # Run optimization
+    assigned_seatrades = assign_seatrades(
+        seatrades=seatrades_model, optimization_config=optimization_config
+    )
+    temp_status = st.text("Seatrades Assigned.")
+
+    # Display results
+    results_chart = results.display_assignments(assigned_seatrades)
+    st.altair_chart(results_chart)
+
+
+def get_simulation_config():
+    """Generate / Return config for the mock data parameters."""
+    return SimulationConfig()
+
+
+def get_optimization_config():
+    """Generate / Return config for the optimization parameters."""
+    return OptimizationConfig()
+
+
+def get_seatrade_preferences(
+    simulation_config: SimulationConfig,
+) -> preferences.SeatradesConfig:
+    """Get our seatrade preferences for our optimization problem."""
+    # Mock Data for Now
+    seatrades_prefs_dict = {
+        f"Seatrade{n:0>2}": {
+            "campers_min": (temp := np.random.randint(0, 1)),
+            "campers_max": temp
+            + (
+                np.random.randint(
+                    simulation_config.camper_per_seatrade_min,
+                    simulation_config.camper_per_seatrade_max,
+                )
+            ),
+        }
+        for n in range(simulation_config.num_seatrades)
+    }
+    seatrades_prefs = pd.DataFrame(seatrades_prefs_dict).T.reset_index(names="seatrade")
+    return preferences.SeatradesConfig.validate(seatrades_prefs)
+
+
+def get_cabin_camper_preferences(
+    simulation_config: SimulationConfig,
+    seatrade_preferences: preferences.SeatradesConfig,
+) -> preferences.CamperSeatradePreferences:
+    """Get our cabin-camper preferences for our optimization problem."""
+    # Mock Cabins for Now
+    cabins = [f"Cabin{i:0>2}" for i in range(simulation_config.num_cabins)]
+
+    # Mock Campers and Preferences for Now
+    camper_prefs = {}
+    num_campers = 0
+    for cabin in cabins:
+        cabin_info = {}
+        for camper in range(
+            np.random.randint(
+                simulation_config.camper_per_cabin_min,
+                simulation_config.camper_per_cabin_max,
+            )
+        ):
+            camper_name = f"Camper{num_campers:0>3}"
+            seatrade_prefs = sample(
+                seatrade_preferences["seatrade"].tolist(),
+                simulation_config.num_preferences,
+            )
+            cabin_info[camper_name] = seatrade_prefs
+            num_campers += 1
+        camper_prefs[cabin] = cabin_info
+
+    cabin_camper_prefs = (
+        pd.DataFrame(camper_prefs)
+        .reset_index(names="camper")
+        .melt(id_vars=["camper"], var_name="cabin", value_name="seatrade")
+        .dropna(subset="seatrade")
+        .reset_index(drop=True)
+    )
+    # Add Gender based on Cabin
+    for cabin in cabin_camper_prefs["cabin"].unique():
+        cabin_camper_prefs.loc[cabin_camper_prefs["cabin"] == cabin, "gender"] = (
+            np.random.choice(["male", "female"])
+        )
+
+    # This is inefficient from a wrangling point of view but it's okay it's just to start.
+    cabin_camper_prefs = cabin_camper_prefs.drop(columns="seatrade").join(
+        pd.DataFrame(
+            cabin_camper_prefs["seatrade"].to_list(),
+            columns=[
+                f"seatrade_{i+1}" for i in range(simulation_config.num_preferences)
+            ],
+        )
+    )
+    return preferences.CamperSeatradePreferences.validate(cabin_camper_prefs)
+
+
+def create_seatrades(
+    cabin_camper_preferences: preferences.CamperSeatradePreferences,
+    seatrade_preferences: preferences.SeatradesConfig,
+) -> seatrades.Seatrades:
+    return seatrades.Seatrades(cabin_camper_preferences, seatrade_preferences)
+
+
+def assign_seatrades(
+    seatrades: seatrades.Seatrades, optimization_config: OptimizationConfig
+) -> seatrades.Seatrades:
+    handler = setup_logging()
+    with st.spinner("Assigning Seatrades..."):
+        solved_problem = seatrades.assign(
+            preference_weight=optimization_config.preference_weight,
+            cabins_weight=optimization_config.cabins_weight,
+            sparsity_weight=optimization_config.sparsity_weight,
+            max_seatrades_per_fleet=optimization_config.max_seatrades_per_fleet,
+            solver=optimization_config.solver,
+        )
+    if seatrades.status and seatrades.status > 0:
+        print("Solved!")
+        handler.clear_logs()  # Clear logs after conversion
+
+    return seatrades
+
+
+if __name__ == "__main__":
+    main()
