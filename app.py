@@ -67,8 +67,10 @@ class OptimizationConfig:
 
 def main():
     # Setup Base Config and Data before Preferences
-    _update_optimization_config(OptimizationConfig())
-    _update_simulation_config(SimulationConfig())
+    if "optimization_config" not in st.session_state:
+        _update_optimization_config(OptimizationConfig())
+    if "simulation_config" not in st.session_state:
+        _update_simulation_config(SimulationConfig())
 
     # Config
     with st.sidebar as sidebar:
@@ -177,6 +179,7 @@ def _simulation_config_form():
 def _update_simulation_config(simulation_config: SimulationConfig):
     """Update config for the mock data parameters."""
     st.session_state["simulation_config"] = simulation_config
+    _clear_optimization_results()
 
 
 def _optimization_config_form():
@@ -246,7 +249,13 @@ def _optimization_config_form():
 
 def _update_optimization_config(optimization_config: OptimizationConfig):
     """Update config for the optimization parameters."""
+    _clear_optimization_results()
     st.session_state["optimization_config"] = optimization_config
+
+
+def _clear_optimization_results():
+    st.session_state["optimization_success"] = None
+    st.session_state["assigned_seatrades"] = None
 
 
 def _get_seatrade_preferences(
