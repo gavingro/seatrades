@@ -85,13 +85,15 @@ def main():
     )
 
     # Run optimization
-    assigned_seatrades = _assign_seatrades(
-        seatrades=seatrades_model, optimization_config=optimization_config
-    )
+    button_pressed = st.button("Schedule Seatrades.")
+    if button_pressed:
+        assigned_seatrades = _assign_seatrades(
+            seatrades=seatrades_model, optimization_config=optimization_config
+        )
 
-    # Display results
-    results_chart = results.display_assignments(assigned_seatrades)
-    st.altair_chart(results_chart)
+        # Display results
+        results_chart = results.display_assignments(assigned_seatrades)
+        st.altair_chart(results_chart)
 
 
 def _get_simulation_config():
