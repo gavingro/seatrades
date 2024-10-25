@@ -74,10 +74,12 @@ def main():
         _optimization_config_form()
         _simulation_config_form()
     # Initialize Mock Data
-    seatrade_preferences = _get_seatrade_preferences(st.session_state["simulation_config"])
+    seatrade_preferences = _get_seatrade_preferences(
+        st.session_state["simulation_config"]
+    )
     cabin_camper_prefs = _get_cabin_camper_preferences(
-        simulation_config=st.session_state["simulation_config"], 
-        seatrade_preferences=seatrade_preferences
+        simulation_config=st.session_state["simulation_config"],
+        seatrade_preferences=seatrade_preferences,
     )
     # Initialize Seatrades model
     seatrades_model = _create_seatrades(
@@ -90,7 +92,8 @@ def main():
     button_pressed = st.button("Assign Seatrades.")
     if button_pressed:
         assigned_seatrades = _assign_seatrades(
-            seatrades=seatrades_model, optimization_config=st.session_state["optimization_config"]
+            seatrades=seatrades_model,
+            optimization_config=st.session_state["optimization_config"],
         )
 
         # Display results
@@ -175,23 +178,66 @@ def _optimization_config_form():
     """Component: Optimization Config Form"""
     with st.form("Optimization Config") as simulation_config_form:
         st.header("Optimization Config")
-        preference_weight=st.slider("preference_weight", min_value=0, max_value=5, value=OptimizationConfig().preference_weight)
-        cabins_weight=st.slider("cabins_weight", min_value=0, max_value=5, value=OptimizationConfig().cabins_weight)
-        sparsity_weight=st.slider("sparsity_weight", min_value=0, max_value=5, value=OptimizationConfig().sparsity_weight)
-        max_seatrades_per_fleet=st.slider("max_seatrades_per_fleet", min_value=0, max_value=st.session_state["num_seatrades"], value=OptimizationConfig().max_seatrades_per_fleet)
-        
+        preference_weight = st.slider(
+            "preference_weight",
+            min_value=0,
+            max_value=5,
+            value=OptimizationConfig().preference_weight,
+        )
+        cabins_weight = st.slider(
+            "cabins_weight",
+            min_value=0,
+            max_value=5,
+            value=OptimizationConfig().cabins_weight,
+        )
+        sparsity_weight = st.slider(
+            "sparsity_weight",
+            min_value=0,
+            max_value=5,
+            value=OptimizationConfig().sparsity_weight,
+        )
+        max_seatrades_per_fleet = st.slider(
+            "max_seatrades_per_fleet",
+            min_value=0,
+            max_value=(
+                st.session_state["num_seatrades"]
+                if "num_seatrades" in st.session_state
+                else SimulationConfig().num_seatrades
+            ),
+            value=OptimizationConfig().max_seatrades_per_fleet,
+        )
+        timeout_limit_minutes = st.slider(
+            "timeout_limit_minutes",
+            min_value=1,
+            max_value=10,
+            value=OptimizationConfig().solver.timeLimit // 60,
+            format="%d minutes",
+        )
+        optimality_gap = st.slider(
+            "optimization_gap_pct",
+            min_value=0,
+            max_value=100,
+            step=1,
+            value=10,
+            format="%d%%",
+        )
+
         optimization_config = OptimizationConfig(
             preference_weight=preference_weight,
             cabins_weight=cabins_weight,
             sparsity_weight=sparsity_weight,
             max_seatrades_per_fleet=max_seatrades_per_fleet,
+            solver=pulp.apis.PULP_CBC_CMD(
+                timeLimit=timeout_limit_minutes * 60, gapRel=optimality_gap / 100
+            ),
         )
-        
+
         st.form_submit_button(
             "Submit",
             on_click=_update_optimization_config,
             kwargs={"optimization_config": optimization_config},
         )
+
 
 def _get_optimization_config():
     """Generate / Return config for the optimization parameters."""
@@ -300,6 +346,9 @@ def _assign_seatrades(
     if seatrades.status and seatrades.status > 0:
         print("Solved!")
         handler.clear_logs()  # Clear logs after conversion
+    else:
+        print("Failed to solve!")
+        handler.log_error("Failed to solve!")  # Log error after conversion
 
     return seatrades
 
