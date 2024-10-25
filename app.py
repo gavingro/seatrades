@@ -85,7 +85,7 @@ def main():
     )
 
     # Run optimization
-    button_pressed = st.button("Schedule Seatrades.")
+    button_pressed = st.button("Assign Seatrades.")
     if button_pressed:
         assigned_seatrades = _assign_seatrades(
             seatrades=seatrades_model, optimization_config=optimization_config
