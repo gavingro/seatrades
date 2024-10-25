@@ -68,7 +68,9 @@ def main():
     # Config
     st.title("Keats Seatrade Scheduler")
     simulation_config = _get_simulation_config()
-    optimization_config = _get_optimization_config()
+    with st.sidebar:
+        st.header("Optimization Config")
+        optimization_config = _get_optimization_config()
 
     # Mock Data
     seatrade_preferences = _get_seatrade_preferences(simulation_config)
