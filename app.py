@@ -74,30 +74,31 @@ def main():
         _optimization_config_form()
         _simulation_config_form()
     # Initialize Mock Data
-    seatrade_preferences = _get_seatrade_preferences(
+    st.session_state["seatrade_preferences"] = _get_seatrade_preferences(
         st.session_state["simulation_config"]
     )
-    cabin_camper_prefs = _get_cabin_camper_preferences(
+    st.session_state["cabin_camper_prefs"] = _get_cabin_camper_preferences(
         simulation_config=st.session_state["simulation_config"],
-        seatrade_preferences=seatrade_preferences,
+        seatrade_preferences=st.session_state["seatrade_preferences"],
     )
     # Initialize Seatrades model
-    seatrades_model = _create_seatrades(
-        cabin_camper_preferences=cabin_camper_prefs,
-        seatrade_preferences=seatrade_preferences,
+    st.session_state["seatrades_model"] = _create_seatrades(
+        cabin_camper_preferences=st.session_state["cabin_camper_prefs"],
+        seatrade_preferences=st.session_state["seatrade_preferences"],
     )
 
     # Main Page: Run Optimization
     st.title("Keats Seatrade Scheduler")
     button_pressed = st.button("Assign Seatrades.")
     if button_pressed:
-        assigned_seatrades = _assign_seatrades(
-            seatrades=seatrades_model,
+        st.session_state["assigned_seatrades"] = _assign_seatrades(
+            seatrades=st.session_state["seatrades_model"],
             optimization_config=st.session_state["optimization_config"],
         )
 
+    if st.session_state.get("assigned_seatrades"):
         # Display results
-        results_chart = results.display_assignments(assigned_seatrades)
+        results_chart = results.display_assignments(st.session_state["assigned_seatrades"])
         st.altair_chart(results_chart)
 
 
@@ -162,11 +163,6 @@ def _simulation_config_form():
             on_click=_update_simulation_config,
             kwargs={"simulation_config": simulation_config},
         )
-
-
-def _get_simulation_config():
-    """Generate / Return config for the mock data parameters."""
-    return SimulationConfig()
 
 
 def _update_simulation_config(simulation_config: SimulationConfig):
@@ -237,11 +233,6 @@ def _optimization_config_form():
             on_click=_update_optimization_config,
             kwargs={"optimization_config": optimization_config},
         )
-
-
-def _get_optimization_config():
-    """Generate / Return config for the optimization parameters."""
-    return OptimizationConfig()
 
 
 def _update_optimization_config(optimization_config: OptimizationConfig):
