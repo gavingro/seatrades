@@ -3,6 +3,7 @@ from random import sample
 from typing import Optional
 import logging
 import re
+from copy import deepcopy
 
 import streamlit as st
 import pandas as pd
@@ -89,16 +90,24 @@ def main():
 
     # Main Page: Run Optimization
     st.title("Keats Seatrade Scheduler")
-    button_pressed = st.button("Assign Seatrades.")
-    if button_pressed:
-        st.session_state["assigned_seatrades"] = _assign_seatrades(
-            seatrades=st.session_state["seatrades_model"],
-            optimization_config=st.session_state["optimization_config"],
-        )
+    st.button(
+        "Assign Seatrades.",
+        on_click=_assign_seatrades,
+        kwargs={
+            "seatrades": st.session_state["seatrades_model"],
+            "optimization_config": st.session_state["optimization_config"],
+        },
+    )
 
     if st.session_state.get("assigned_seatrades"):
         # Display results
-        results_chart = results.display_assignments(st.session_state["assigned_seatrades"])
+        if not st.session_state["optimization_success"]:
+            st.write("Optimization not successful.")
+        else:
+            st.write("Optimization Success. Seatrades assigned for each camper.")
+        results_chart = results.display_assignments(
+            st.session_state["assigned_seatrades"]
+        )
         st.altair_chart(results_chart)
 
 
@@ -335,12 +344,14 @@ def _assign_seatrades(
             solver=optimization_config.solver,
         )
     if seatrades.status and seatrades.status > 0:
+        st.session_state["optimization_success"] = True
         print("Solved!")
         handler.clear_logs()  # Clear logs after conversion
     else:
+        st.session_state["optimization_success"] = False
         print("Failed to solve!")
         handler.log_error("Failed to solve!")  # Log error after conversion
-
+    st.session_state["assigned_seatrades"] = deepcopy(seatrades)
     return seatrades
 
 
