@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from random import sample
 from typing import Optional
 import logging
@@ -65,12 +65,16 @@ class OptimizationConfig:
 
 
 def main():
+    # Setup Base Config and Data before Preferences
+    _update_optimization_config(OptimizationConfig())
+    _update_simulation_config(SimulationConfig())
+
     # Config
     st.title("Keats Seatrade Scheduler")
     simulation_config = _get_simulation_config()
-    with st.sidebar:
-        st.header("Optimization Config")
-        optimization_config = _get_optimization_config()
+    with st.sidebar as sidebar:
+        _optimization_config_form()
+        _simulation_config_form()
 
     # Mock Data
     seatrade_preferences = _get_seatrade_preferences(simulation_config)
@@ -96,14 +100,130 @@ def main():
         st.altair_chart(results_chart)
 
 
+def _simulation_config_form():
+    """Component: Simulation Config Form"""
+    with st.form("Simulation Config") as simulation_config_form:
+        st.header("Simulation Config")
+        num_seatrades = st.slider(
+            "num_seatrades",
+            min_value=1,
+            max_value=30,
+            value=SimulationConfig().num_seatrades,
+        )
+        num_cabins = st.slider(
+            "num_cabins",
+            min_value=1,
+            max_value=30,
+            value=SimulationConfig().num_cabins,
+        )
+        num_preferences = st.slider(
+            "num_preferences",
+            min_value=1,
+            max_value=30,
+            value=SimulationConfig().num_preferences,
+        )
+        camper_per_seatrade_min = st.slider(
+            "camper_per_seatrade_min",
+            min_value=1,
+            max_value=30,
+            value=SimulationConfig().camper_per_seatrade_min,
+        )
+        camper_per_seatrade_max = st.slider(
+            "camper_per_seatrade_max",
+            min_value=1,
+            max_value=30,
+            value=SimulationConfig().camper_per_seatrade_max,
+        )
+        camper_per_cabin_min = st.slider(
+            "camper_per_cabin_min",
+            min_value=1,
+            max_value=30,
+            value=SimulationConfig().camper_per_cabin_min,
+        )
+        camper_per_cabin_max = st.slider(
+            "camper_per_cabin_max",
+            min_value=1,
+            max_value=30,
+            value=SimulationConfig().camper_per_cabin_max,
+        )
+
+        simulation_config = SimulationConfig(
+            num_seatrades=num_seatrades,
+            num_cabins=num_cabins,
+            num_preferences=num_preferences,
+            camper_per_seatrade_min=camper_per_seatrade_min,
+            camper_per_seatrade_max=camper_per_seatrade_max,
+            camper_per_cabin_min=camper_per_cabin_min,
+            camper_per_cabin_max=camper_per_cabin_max,
+        )
+        st.form_submit_button(
+            "Submit",
+            on_click=_update_simulation_config,
+            kwargs={"simulation_config": simulation_config},
+        )
+
+
 def _get_simulation_config():
     """Generate / Return config for the mock data parameters."""
     return SimulationConfig()
 
 
+def _update_simulation_config(simulation_config: SimulationConfig):
+    """Update config for the mock data parameters."""
+    for config, setting in asdict(simulation_config).items():
+        st.session_state[config] = setting
+
+
+def _optimization_config_form():
+    """Component: Optimization Config Form"""
+    with st.form("Optimization Config") as simulation_config_form:
+        st.header("Optimization Config")
+        preference_weight=st.slider("preference_weight", min_value=0, max_value=5, value=OptimizationConfig().preference_weight)
+        cabins_weight=st.slider("cabins_weight", min_value=0, max_value=5, value=OptimizationConfig().cabins_weight)
+        sparsity_weight=st.slider("sparsity_weight", min_value=0, max_value=5, value=OptimizationConfig().sparsity_weight)
+        max_seatrades_per_fleet=st.slider("max_seatrades_per_fleet", min_value=0, max_value=st.session_state["num_seatrades"], value=OptimizationConfig().max_seatrades_per_fleet)
+        
+        optimization_config = OptimizationConfig(
+            preference_weight=preference_weight,
+            cabins_weight=cabins_weight,
+            sparsity_weight=sparsity_weight,
+            max_seatrades_per_fleet=max_seatrades_per_fleet,
+        )
+        
+        st.form_submit_button(
+            "Submit",
+            on_click=_update_optimization_config,
+            kwargs={"optimization_config": optimization_config},
+        )
+
 def _get_optimization_config():
     """Generate / Return config for the optimization parameters."""
     return OptimizationConfig()
+
+
+def _update_optimization_config(optimization_config: OptimizationConfig):
+    """Update config for the optimization parameters."""
+    for config, setting in asdict(optimization_config).items():
+        st.session_state[config] = setting
+
+
+# def _create_seatrades(
+#     cabin_camper_preferences: preferences.CamperSeatradePreferences,
+#     seatrade_preferences: preferences.SeatradesConfig,
+# ) -> seatrades.Seatrades:
+#     """Create a seatrades model for our optimization problem."""
+#     # Mock Seatrades for Now
+#     seatrades_dict = {
+#         f"Seatrade{n:0>2}": {
+#             "campers": np.random.randint(
+#                 simulation_config.camper_per_seatrade_min,
+#                 simulation_config.camper_per_seatrade_max,
+#             ),
+#             "preferences": seatrade_preferences.loc[
+#                 seatrade_preferences["seatrade"] == f"Seatrade{n:0>2}"
+#             ].squeeze(),
+#         }
+#     }
 
 
 def _get_seatrade_preferences(
