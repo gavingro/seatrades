@@ -70,29 +70,27 @@ def main():
     _update_simulation_config(SimulationConfig())
 
     # Config
-    st.title("Keats Seatrade Scheduler")
-    simulation_config = _get_simulation_config()
     with st.sidebar as sidebar:
         _optimization_config_form()
         _simulation_config_form()
-
-    # Mock Data
-    seatrade_preferences = _get_seatrade_preferences(simulation_config)
+    # Initialize Mock Data
+    seatrade_preferences = _get_seatrade_preferences(st.session_state["simulation_config"])
     cabin_camper_prefs = _get_cabin_camper_preferences(
-        simulation_config, seatrade_preferences
+        simulation_config=st.session_state["simulation_config"], 
+        seatrade_preferences=seatrade_preferences
     )
-
     # Initialize Seatrades model
     seatrades_model = _create_seatrades(
         cabin_camper_preferences=cabin_camper_prefs,
         seatrade_preferences=seatrade_preferences,
     )
 
-    # Run optimization
+    # Main Page: Run Optimization
+    st.title("Keats Seatrade Scheduler")
     button_pressed = st.button("Assign Seatrades.")
     if button_pressed:
         assigned_seatrades = _assign_seatrades(
-            seatrades=seatrades_model, optimization_config=optimization_config
+            seatrades=seatrades_model, optimization_config=st.session_state["optimization_config"]
         )
 
         # Display results
@@ -170,8 +168,7 @@ def _get_simulation_config():
 
 def _update_simulation_config(simulation_config: SimulationConfig):
     """Update config for the mock data parameters."""
-    for config, setting in asdict(simulation_config).items():
-        st.session_state[config] = setting
+    st.session_state["simulation_config"] = simulation_config
 
 
 def _optimization_config_form():
@@ -203,27 +200,7 @@ def _get_optimization_config():
 
 def _update_optimization_config(optimization_config: OptimizationConfig):
     """Update config for the optimization parameters."""
-    for config, setting in asdict(optimization_config).items():
-        st.session_state[config] = setting
-
-
-# def _create_seatrades(
-#     cabin_camper_preferences: preferences.CamperSeatradePreferences,
-#     seatrade_preferences: preferences.SeatradesConfig,
-# ) -> seatrades.Seatrades:
-#     """Create a seatrades model for our optimization problem."""
-#     # Mock Seatrades for Now
-#     seatrades_dict = {
-#         f"Seatrade{n:0>2}": {
-#             "campers": np.random.randint(
-#                 simulation_config.camper_per_seatrade_min,
-#                 simulation_config.camper_per_seatrade_max,
-#             ),
-#             "preferences": seatrade_preferences.loc[
-#                 seatrade_preferences["seatrade"] == f"Seatrade{n:0>2}"
-#             ].squeeze(),
-#         }
-#     }
+    st.session_state["optimization_config"] = optimization_config
 
 
 def _get_seatrade_preferences(
