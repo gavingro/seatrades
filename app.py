@@ -77,10 +77,10 @@ def main():
         _optimization_config_form()
         _simulation_config_form()
     # Initialize Mock Data
-    st.session_state["seatrade_preferences"] = _get_seatrade_preferences(
+    st.session_state["seatrade_preferences"] = _simulate_seatrade_preferences(
         st.session_state["simulation_config"]
     )
-    st.session_state["cabin_camper_prefs"] = _get_cabin_camper_preferences(
+    st.session_state["cabin_camper_prefs"] = _simulate_cabin_camper_preferences(
         simulation_config=st.session_state["simulation_config"],
         seatrade_preferences=st.session_state["seatrade_preferences"],
     )
@@ -178,13 +178,28 @@ def _simulation_config_form():
 
 def _update_simulation_config(simulation_config: SimulationConfig):
     """Update config for the mock data parameters."""
+    if (
+        simulation_config.camper_per_seatrade_min
+        > simulation_config.camper_per_seatrade_max
+    ):
+        st.toast(
+            "Error updating simulation configuration.\n Camper per seatrade min must be less than camper per cabin max."
+        )
+        return
+    if simulation_config.camper_per_cabin_min > simulation_config.camper_per_cabin_max:
+        st.toast(
+            "Error updating simulation configuration.\n Camper per cabin min must be less than camper per cabin max."
+        )
+        return
+
     st.session_state["simulation_config"] = simulation_config
+    st.toast("Updated Simulation Configuration.")
     _clear_optimization_results()
 
 
 def _optimization_config_form():
     """Component: Optimization Config Form"""
-    with st.form("Optimization Config") as simulation_config_form:
+    with st.form("Optimization Config") as optimization_config_form:
         st.header("Optimization Config")
         preference_weight = st.slider(
             "preference_weight",
@@ -249,16 +264,19 @@ def _optimization_config_form():
 
 def _update_optimization_config(optimization_config: OptimizationConfig):
     """Update config for the optimization parameters."""
-    _clear_optimization_results()
     st.session_state["optimization_config"] = optimization_config
+    st.toast("Updated Simulation Configuration.")
+    _clear_optimization_results()
 
 
 def _clear_optimization_results():
+    if st.session_state.get("assigned_seatrades") is not None:
+        st.toast("Clearing Previous Optimization Results.")
     st.session_state["optimization_success"] = None
     st.session_state["assigned_seatrades"] = None
 
 
-def _get_seatrade_preferences(
+def _simulate_seatrade_preferences(
     simulation_config: SimulationConfig,
 ) -> preferences.SeatradesConfig:
     """Get our seatrade preferences for our optimization problem."""
@@ -280,7 +298,7 @@ def _get_seatrade_preferences(
     return preferences.SeatradesConfig.validate(seatrades_prefs)
 
 
-def _get_cabin_camper_preferences(
+def _simulate_cabin_camper_preferences(
     simulation_config: SimulationConfig,
     seatrade_preferences: preferences.SeatradesConfig,
 ) -> preferences.CamperSeatradePreferences:
@@ -344,6 +362,7 @@ def _assign_seatrades(
     seatrades: seatrades.Seatrades, optimization_config: OptimizationConfig
 ) -> seatrades.Seatrades:
     handler = setup_logging()
+    st.toast("Beginning Seatrade Optimization.")
     with st.spinner("Assigning Seatrades..."):
         solved_problem = seatrades.assign(
             preference_weight=optimization_config.preference_weight,
@@ -352,13 +371,14 @@ def _assign_seatrades(
             max_seatrades_per_fleet=optimization_config.max_seatrades_per_fleet,
             solver=optimization_config.solver,
         )
+    st.toast("Seatrade Optimization Concluded.")
     if seatrades.status and seatrades.status > 0:
         st.session_state["optimization_success"] = True
-        print("Solved!")
+        st.toast("Optimization Problem Solved!")
         handler.clear_logs()  # Clear logs after conversion
     else:
         st.session_state["optimization_success"] = False
-        print("Failed to solve!")
+        st.toast("Failed to solve optimization problem.")
         handler.log_error("Failed to solve!")  # Log error after conversion
     st.session_state["assigned_seatrades"] = deepcopy(seatrades)
     return seatrades
