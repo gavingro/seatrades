@@ -180,20 +180,24 @@ def _update_simulation_config(simulation_config: SimulationConfig):
     """Update config for the mock data parameters."""
     if (
         simulation_config.camper_per_seatrade_min
-        > simulation_config.camper_per_seatrade_max
+        >= simulation_config.camper_per_seatrade_max
     ):
         st.toast(
-            "Error updating simulation configuration.\n Camper per seatrade min must be less than camper per cabin max."
+            "Error updating simulation configuration.\n Camper per seatrade min must be strictly less than camper per cabin max.\n"
+            f"Instead found {simulation_config.camper_per_seatrade_min} >= {simulation_config.camper_per_seatrade_max}.",
+            icon="🚨",
         )
         return
-    if simulation_config.camper_per_cabin_min > simulation_config.camper_per_cabin_max:
+    if simulation_config.camper_per_cabin_min >= simulation_config.camper_per_cabin_max:
         st.toast(
-            "Error updating simulation configuration.\n Camper per cabin min must be less than camper per cabin max."
+            "Error updating simulation configuration.\n Camper per cabin min must be strictly less than camper per cabin max.\n"
+            f"Instead found {simulation_config.camper_per_cabin_min} >= {simulation_config.camper_per_cabin_max}.",
+            icon="🚨",
         )
         return
-
+    if st.session_state.get("simulation_config") is not None:
+        st.toast(f"Updating Simulation Configuration.\n\n{simulation_config}")
     st.session_state["simulation_config"] = simulation_config
-    st.toast("Updated Simulation Configuration.")
     _clear_optimization_results()
 
 
@@ -264,8 +268,9 @@ def _optimization_config_form():
 
 def _update_optimization_config(optimization_config: OptimizationConfig):
     """Update config for the optimization parameters."""
+    if st.session_state.get("optimization_config") is not None:
+        st.toast(f"Updating Optimization Configuration.\n\n{optimization_config}")
     st.session_state["optimization_config"] = optimization_config
-    st.toast("Updated Simulation Configuration.")
     _clear_optimization_results()
 
 
@@ -374,11 +379,11 @@ def _assign_seatrades(
     st.toast("Seatrade Optimization Concluded.")
     if seatrades.status and seatrades.status > 0:
         st.session_state["optimization_success"] = True
-        st.toast("Optimization Problem Solved!")
+        st.toast("Optimization Problem Solved!", icon="🎉")
         handler.clear_logs()  # Clear logs after conversion
     else:
         st.session_state["optimization_success"] = False
-        st.toast("Failed to solve optimization problem.")
+        st.toast("Failed to solve optimization problem.", icon="🚨")
         handler.log_error("Failed to solve!")  # Log error after conversion
     st.session_state["assigned_seatrades"] = deepcopy(seatrades)
     return seatrades
