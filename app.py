@@ -48,7 +48,7 @@ def setup_logging():
 @dataclass
 class SimulationConfig:
     num_seatrades: int = 16
-    num_cabins: int = 24
+    num_cabins: int = 8
     num_preferences: int = 4
     camper_per_seatrade_min: int = 8
     camper_per_seatrade_max: int = 15
@@ -72,10 +72,13 @@ def main():
     if "simulation_config" not in st.session_state:
         _update_simulation_config(SimulationConfig())
 
-    # Config
+    # Overall title and "GO" button is obvious.
+    st.title("Keats Seatrade Scheduler")
+
+    # Sidebar: Config
     with st.sidebar as sidebar:
-        _optimization_config_form()
-        _simulation_config_form()
+        st.text("Sidebar Placeholder.")
+
     # Initialize Mock Data
     st.session_state["seatrade_preferences"] = _simulate_seatrade_preferences(
         st.session_state["simulation_config"]
@@ -89,28 +92,49 @@ def main():
         cabin_camper_preferences=st.session_state["cabin_camper_prefs"],
         seatrade_preferences=st.session_state["seatrade_preferences"],
     )
-
-    # Main Page: Run Optimization
-    st.title("Keats Seatrade Scheduler")
-    st.button(
-        "Assign Seatrades.",
-        on_click=_assign_seatrades,
-        kwargs={
-            "seatrades": st.session_state["seatrades_model"],
-            "optimization_config": st.session_state["optimization_config"],
-        },
+    # Setup Tabs
+    (
+        assignments_tab,
+        seatrades_tab,
+        camper_pref_tab,
+        simulation_config_tab,
+        optimization_config_tab,
+    ) = st.tabs(
+        [
+            "Assignments",
+            "Seatrade Setup",
+            "Camper Setup",
+            "Simulation Setup",
+            "Optimization Setup",
+        ]
     )
 
-    if st.session_state.get("assigned_seatrades"):
-        # Display results
-        if not st.session_state["optimization_success"]:
-            st.write("Optimization not successful.")
-        else:
-            st.write("Optimization Success. Seatrades assigned for each camper.")
-        results_chart = results.display_assignments(
-            st.session_state["assigned_seatrades"]
+    # Main Page Results: Run Optimization
+    with assignments_tab:
+        st.button(
+            "Assign Seatrades.",
+            on_click=_assign_seatrades,
+            kwargs={
+                "seatrades": st.session_state["seatrades_model"],
+                "optimization_config": st.session_state["optimization_config"],
+            },
         )
-        st.altair_chart(results_chart)
+        if st.session_state.get("assigned_seatrades"):
+            # Display results
+            if not st.session_state["optimization_success"]:
+                st.write("Optimization not successful.")
+            else:
+                st.write("Optimization Success. Seatrades assigned for each camper.")
+            results_chart = results.display_assignments(
+                st.session_state["assigned_seatrades"]
+            )
+            st.altair_chart(results_chart)
+
+    # Setup in other tabs
+    with simulation_config_tab:
+        _simulation_config_form()
+    with optimization_config_tab:
+        _optimization_config_form()
 
 
 def _simulation_config_form():
