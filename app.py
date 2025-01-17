@@ -14,32 +14,14 @@ from seatrades_app.tabs.simulation_config_tab import _simulate_seatrade_preferen
 
 # Set up logging to capture all info level logs from the root logger
 def main():
-    # Setup Base Config and Data before Preferences
-    if "optimization_config" not in st.session_state:
-        _update_optimization_config(OptimizationConfig())
-    if "simulation_config" not in st.session_state:
-        _update_simulation_config(SimulationConfig())
+    _initial_page_setup()
 
-    # Overall title and "GO" button is obvious.
+    # Page Content
     st.title("Keats Seatrade Scheduler")
 
-    # Sidebar: Config
     with st.sidebar as sidebar:
         st.text("Sidebar Placeholder.")
 
-    # Initialize Mock Data
-    st.session_state["seatrade_preferences"] = _simulate_seatrade_preferences(
-        st.session_state["simulation_config"]
-    )
-    st.session_state["cabin_camper_prefs"] = _simulate_cabin_camper_preferences(
-        camper_simulation_config=st.session_state["simulation_config"],
-        seatrade_preferences=st.session_state["seatrade_preferences"],
-    )
-    # Initialize Seatrades model
-    st.session_state["seatrades_model"] = _create_seatrades(
-        cabin_camper_preferences=st.session_state["cabin_camper_prefs"],
-        seatrade_preferences=st.session_state["seatrade_preferences"],
-    )
     # Setup Tabs
     (
         assignments_tab,
@@ -56,22 +38,38 @@ def main():
             "Optimization Setup",
         ]
     )
-
-    # Main Page Results: Run Optimization
     with assignments_tab:
         AssignmentsTab().generate()
-
-    # Setup in other tabs
     with simulation_config_tab:
         SimulationConfigTab().generate()
-
     with optimization_config_tab:
         OptimizationConfigForm().generate()
-
     st.caption(st.session_state["simulation_config"])
     st.caption(st.session_state["optimization_config"])
 
 
-# todo split simulation config into camper/seatrade sim config.
+def _initial_page_setup():
+    """Setup initial config and simulation preferences before user imput."""
+    # Setup Base Config and Data before Preferences
+    if "optimization_config" not in st.session_state:
+        _update_optimization_config(OptimizationConfig())
+    if "simulation_config" not in st.session_state:
+        _update_simulation_config(SimulationConfig())
+
+    # Initialize Mock Data
+    st.session_state["seatrade_preferences"] = _simulate_seatrade_preferences(
+        st.session_state["simulation_config"]
+    )
+    st.session_state["cabin_camper_prefs"] = _simulate_cabin_camper_preferences(
+        camper_simulation_config=st.session_state["simulation_config"],
+        seatrade_preferences=st.session_state["seatrade_preferences"],
+    )
+    # Initialize Seatrades model
+    st.session_state["seatrades_model"] = _create_seatrades(
+        cabin_camper_preferences=st.session_state["cabin_camper_prefs"],
+        seatrade_preferences=st.session_state["seatrade_preferences"],
+    )
+
+
 if __name__ == "__main__":
     main()
