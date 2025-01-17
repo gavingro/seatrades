@@ -44,8 +44,13 @@ def main():
         SimulationConfigTab().generate()
     with optimization_config_tab:
         OptimizationConfigForm().generate()
-    st.caption(st.session_state["simulation_config"])
-    st.caption(st.session_state["optimization_config"])
+    # Temp for Debugging
+    st.write("---")
+    st.dataframe(st.session_state["simulation_config"])
+    st.dataframe(st.session_state["optimization_config"])
+    st.write("")
+    st.dataframe(st.session_state["seatrade_preferences"])
+    st.dataframe(st.session_state["cabin_camper_prefs"])
 
 
 def _initial_page_setup():
