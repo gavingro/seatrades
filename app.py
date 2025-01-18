@@ -5,7 +5,10 @@ from seatrades_app.tabs.assignments_tab import _create_seatrades
 from seatrades_app.tabs.optimization_config_tab import OptimizationConfig
 from seatrades_app.tabs.optimization_config_tab import OptimizationConfigForm
 from seatrades_app.tabs.optimization_config_tab import _update_optimization_config
-from seatrades_app.tabs.simulation_config_tab import SimulationConfigTab
+from seatrades_app.tabs.simulation_config_tab import (
+    CamperSimulationConfigTab,
+    SeatradeSimulationConfigTab,
+)
 from seatrades_app.tabs.simulation_config_tab import (
     CamperSimulationConfig,
     SeatradeSimulationConfig,
@@ -47,7 +50,8 @@ def main():
     with assignments_tab:
         AssignmentsTab().generate()
     with simulation_config_tab:
-        SimulationConfigTab().generate()
+        SeatradeSimulationConfigTab().generate()
+        CamperSimulationConfigTab().generate()
     with optimization_config_tab:
         OptimizationConfigForm().generate()
     # Temp for Debugging

@@ -25,80 +25,91 @@ class SeatradeSimulationConfig:
     camper_per_seatrade_max: int = 15
 
 
-class SimulationConfigTab:
+class SeatradeSimulationConfigTab:
     """Component: Simulation Config Form"""
 
     def generate(self):
-        with st.form("Simulation Config") as seatrade_simulation_config_form:
-            st.header("Seatrade Simulation Config")
-            num_seatrades = st.slider(
-                "num_seatrades",
-                min_value=1,
-                max_value=30,
-                value=SeatradeSimulationConfig().num_seatrades,
-            )
-            camper_per_seatrade_min = st.slider(
-                "camper_capacity_per_seatrade_min",
-                min_value=1,
-                max_value=30,
-                value=SeatradeSimulationConfig().camper_per_seatrade_min,
-            )
-            camper_per_seatrade_max = st.slider(
-                "camper_capacity_per_seatrade_max",
-                min_value=1,
-                max_value=30,
-                value=SeatradeSimulationConfig().camper_per_seatrade_max,
-            )
+        with st.expander("No Seatrades Data? Simulate Seatrades Here."):
+            with st.form(
+                "Simulation Config", border=False
+            ) as seatrade_simulation_config_form:
+                st.subheader("Seatrade Simulation Config")
+                num_seatrades = st.slider(
+                    "num_seatrades",
+                    min_value=1,
+                    max_value=30,
+                    value=SeatradeSimulationConfig().num_seatrades,
+                )
+                camper_per_seatrade_min = st.slider(
+                    "camper_capacity_per_seatrade_min",
+                    min_value=1,
+                    max_value=30,
+                    value=SeatradeSimulationConfig().camper_per_seatrade_min,
+                )
+                camper_per_seatrade_max = st.slider(
+                    "camper_capacity_per_seatrade_max",
+                    min_value=1,
+                    max_value=30,
+                    value=SeatradeSimulationConfig().camper_per_seatrade_max,
+                )
 
-            seatrade_simulation_config = SeatradeSimulationConfig(
-                num_seatrades=num_seatrades,
-                camper_per_seatrade_min=camper_per_seatrade_min,
-                camper_per_seatrade_max=camper_per_seatrade_max,
-            )
-            st.form_submit_button(
-                "Submit",
-                on_click=_update_seatrade_simulation_config,
-                kwargs={"seatrade_simulation_config": seatrade_simulation_config},
-            )
+                seatrade_simulation_config = SeatradeSimulationConfig(
+                    num_seatrades=num_seatrades,
+                    camper_per_seatrade_min=camper_per_seatrade_min,
+                    camper_per_seatrade_max=camper_per_seatrade_max,
+                )
+                st.form_submit_button(
+                    "Update Seatrade Simulation Settings",
+                    on_click=_update_seatrade_simulation_config,
+                    kwargs={"seatrade_simulation_config": seatrade_simulation_config},
+                )
 
-        with st.form("Camper Simulation Config") as camper_simulation_config_form:
-            st.header("Camper Simulation Config")
-            num_cabins = st.slider(
-                "num_cabins",
-                min_value=1,
-                max_value=30,
-                value=CamperSimulationConfig().num_cabins,
-            )
-            camper_per_cabin_min = st.slider(
-                "camper_per_cabin_min",
-                min_value=1,
-                max_value=30,
-                value=CamperSimulationConfig().camper_per_cabin_min,
-            )
-            camper_per_cabin_max = st.slider(
-                "camper_per_cabin_max",
-                min_value=1,
-                max_value=30,
-                value=CamperSimulationConfig().camper_per_cabin_max,
-            )
-            num_preferences = st.slider(
-                "num_seatrade_preferences_per_camper",
-                min_value=1,
-                max_value=30,
-                value=CamperSimulationConfig().num_preferences,
-            )
 
-            camper_simulation_config = CamperSimulationConfig(
-                num_cabins=num_cabins,
-                num_preferences=num_preferences,
-                camper_per_cabin_min=camper_per_cabin_min,
-                camper_per_cabin_max=camper_per_cabin_max,
-            )
-            st.form_submit_button(
-                "Submit",
-                on_click=_update_camper_simulation_config,
-                kwargs={"camper_simulation_config": camper_simulation_config},
-            )
+class CamperSimulationConfigTab:
+    """Component: Simulation Config Form"""
+
+    def generate(self):
+        with st.expander("No Camper Data? Simulate Cabins Here."):
+            with st.form(
+                "Camper Simulation Config", border=False
+            ) as camper_simulation_config_form:
+                st.subheader("Camper Simulation Config")
+                num_cabins = st.slider(
+                    "num_cabins",
+                    min_value=1,
+                    max_value=30,
+                    value=CamperSimulationConfig().num_cabins,
+                )
+                camper_per_cabin_min = st.slider(
+                    "camper_per_cabin_min",
+                    min_value=1,
+                    max_value=30,
+                    value=CamperSimulationConfig().camper_per_cabin_min,
+                )
+                camper_per_cabin_max = st.slider(
+                    "camper_per_cabin_max",
+                    min_value=1,
+                    max_value=30,
+                    value=CamperSimulationConfig().camper_per_cabin_max,
+                )
+                num_preferences = st.slider(
+                    "num_seatrade_preferences_per_camper",
+                    min_value=1,
+                    max_value=30,
+                    value=CamperSimulationConfig().num_preferences,
+                )
+
+                camper_simulation_config = CamperSimulationConfig(
+                    num_cabins=num_cabins,
+                    num_preferences=num_preferences,
+                    camper_per_cabin_min=camper_per_cabin_min,
+                    camper_per_cabin_max=camper_per_cabin_max,
+                )
+                st.form_submit_button(
+                    "Update Camper Simulation Settings",
+                    on_click=_update_camper_simulation_config,
+                    kwargs={"camper_simulation_config": camper_simulation_config},
+                )
 
 
 def _update_camper_simulation_config(camper_simulation_config: CamperSimulationConfig):

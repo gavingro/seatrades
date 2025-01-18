@@ -37,7 +37,7 @@ def _assign_seatrades(
 ) -> seatrades.Seatrades:
     handler = setup_logging()
     st.toast("Beginning Seatrade Optimization.")
-    with st.spinner("Assigning Seatrades..."):
+    with st.status("Assigning Seatrades..."):
         solved_problem = seatrades.assign(
             preference_weight=optimization_config.preference_weight,
             cabins_weight=optimization_config.cabins_weight,
