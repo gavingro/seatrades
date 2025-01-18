@@ -2,11 +2,33 @@ from dataclasses import dataclass
 
 
 import numpy as np
+import random
 import pandas as pd
 import streamlit as st
 
 from seatrades import preferences
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
+
+# From Keats Website (and memory)
+SEATRADE_EXAMPLES = [
+    "Low Ropes",
+    "High Ropes",
+    "Giant Swing",
+    "Laser Tag",
+    "Frisbee Golf",
+    "Field Sports",  # Lmao
+    "Climbing",
+    "Crafts",
+    "Archery",
+    "Seal Spotting",
+    "Wakeboarding",
+    "Tubing",
+    "Swimming",
+    "Sailing",
+    "Paddleboarding",
+    "Canoeing and Kayaking",
+    "Wibit",
+]
 
 
 @dataclass
@@ -14,28 +36,6 @@ class SeatradeSimulationConfig:
     num_seatrades: int = 16
     camper_per_seatrade_min: int = 8
     camper_per_seatrade_max: int = 15
-
-
-def _update_seatrade_simulation_config(
-    seatrade_simulation_config: SeatradeSimulationConfig,
-):
-    """Update config for the mock data parameters."""
-    if (
-        seatrade_simulation_config.camper_per_seatrade_min
-        >= seatrade_simulation_config.camper_per_seatrade_max
-    ):
-        st.toast(
-            "Error updating simulation configuration.\n Camper per Seatrade min must be strictly less than camper per Seatrade max.\n"
-            f"Instead found {seatrade_simulation_config.camper_per_seatrade_min} >= {seatrade_simulation_config.camper_per_seatrade_max}.",
-            icon="🚨",
-        )
-        return
-    if st.session_state.get("seatrade_simulation_config") is not None:
-        st.toast(
-            f"Updating Seatrade Simulation Configuration.\n\n{seatrade_simulation_config}"
-        )
-    st.session_state["seatrade_simulation_config"] = seatrade_simulation_config
-    _clear_optimization_results()
 
 
 class SeatradeSimulationConfigTab:
@@ -50,7 +50,7 @@ class SeatradeSimulationConfigTab:
                 num_seatrades = st.slider(
                     "num_seatrades",
                     min_value=1,
-                    max_value=30,
+                    max_value=17,
                     value=SeatradeSimulationConfig().num_seatrades,
                 )
                 camper_per_seatrade_min = st.slider(
@@ -83,8 +83,12 @@ def _simulate_seatrade_preferences(
 ) -> preferences.SeatradesConfig:
     """Get our seatrade preferences for our optimization problem."""
     # Mock Data for Now
+    seatrade_name_sample = random.sample(
+        SEATRADE_EXAMPLES, k=seatrade_simulation_config.num_seatrades
+    )
+
     seatrades_prefs_dict = {
-        f"Seatrade{n:0>2}": {
+        f"{seatrade}": {
             "campers_min": (temp := np.random.randint(0, 1)),
             "campers_max": temp
             + (
@@ -94,7 +98,29 @@ def _simulate_seatrade_preferences(
                 )
             ),
         }
-        for n in range(seatrade_simulation_config.num_seatrades)
+        for seatrade in seatrade_name_sample
     }
     seatrades_prefs = pd.DataFrame(seatrades_prefs_dict).T.reset_index(names="seatrade")
     return preferences.SeatradesConfig.validate(seatrades_prefs)
+
+
+def _update_seatrade_simulation_config(
+    seatrade_simulation_config: SeatradeSimulationConfig,
+):
+    """Update config for the mock data parameters."""
+    if (
+        seatrade_simulation_config.camper_per_seatrade_min
+        >= seatrade_simulation_config.camper_per_seatrade_max
+    ):
+        st.toast(
+            "Error updating simulation configuration.\n Camper per Seatrade min must be strictly less than camper per Seatrade max.\n"
+            f"Instead found {seatrade_simulation_config.camper_per_seatrade_min} >= {seatrade_simulation_config.camper_per_seatrade_max}.",
+            icon="🚨",
+        )
+        return
+    if st.session_state.get("seatrade_simulation_config") is not None:
+        st.toast(
+            f"Updating Seatrade Simulation Configuration.\n\n{seatrade_simulation_config}"
+        )
+    st.session_state["seatrade_simulation_config"] = seatrade_simulation_config
+    _clear_optimization_results()
