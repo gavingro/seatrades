@@ -6,8 +6,14 @@ from seatrades_app.tabs.optimization_config_tab import OptimizationConfig
 from seatrades_app.tabs.optimization_config_tab import OptimizationConfigForm
 from seatrades_app.tabs.optimization_config_tab import _update_optimization_config
 from seatrades_app.tabs.simulation_config_tab import SimulationConfigTab
-from seatrades_app.tabs.simulation_config_tab import _update_simulation_config
-from seatrades_app.tabs.simulation_config_tab import SimulationConfig
+from seatrades_app.tabs.simulation_config_tab import (
+    CamperSimulationConfig,
+    SeatradeSimulationConfig,
+)
+from seatrades_app.tabs.simulation_config_tab import (
+    _update_camper_simulation_config,
+    _update_seatrade_simulation_config,
+)
 from seatrades_app.tabs.simulation_config_tab import _simulate_cabin_camper_preferences
 from seatrades_app.tabs.simulation_config_tab import _simulate_seatrade_preferences
 
@@ -46,27 +52,39 @@ def main():
         OptimizationConfigForm().generate()
     # Temp for Debugging
     st.write("---")
-    st.dataframe(st.session_state["simulation_config"])
+    st.caption("Camper Simulation Config")
+    st.dataframe(st.session_state["camper_simulation_config"])
+    st.caption("Seatrade Simulation Config")
+    st.dataframe(st.session_state["seatrade_simulation_config"])
+    st.caption("Optimization Config")
     st.dataframe(st.session_state["optimization_config"])
     st.write("")
+    st.write("Seatrade Preferences")
     st.dataframe(st.session_state["seatrade_preferences"])
+    st.write("Camper Preferences")
     st.dataframe(st.session_state["cabin_camper_prefs"])
 
 
 def _initial_page_setup():
     """Setup initial config and simulation preferences before user imput."""
     # Setup Base Config and Data before Preferences
-    if "optimization_config" not in st.session_state:
-        _update_optimization_config(OptimizationConfig())
-    if "simulation_config" not in st.session_state:
-        _update_simulation_config(SimulationConfig())
+    if st.session_state.get("optimization_config") == None:
+        _update_optimization_config(optimization_config=OptimizationConfig())
+    if st.session_state.get("seatrade_simulation_config") == None:
+        _update_seatrade_simulation_config(
+            seatrade_simulation_config=SeatradeSimulationConfig()
+        )
+    if st.session_state.get("camper_simulation_config") == None:
+        _update_camper_simulation_config(
+            camper_simulation_config=CamperSimulationConfig()
+        )
 
     # Initialize Mock Data
     st.session_state["seatrade_preferences"] = _simulate_seatrade_preferences(
-        st.session_state["simulation_config"]
+        st.session_state["seatrade_simulation_config"]
     )
     st.session_state["cabin_camper_prefs"] = _simulate_cabin_camper_preferences(
-        camper_simulation_config=st.session_state["simulation_config"],
+        camper_simulation_config=st.session_state["camper_simulation_config"],
         seatrade_preferences=st.session_state["seatrade_preferences"],
     )
     # Initialize Seatrades model

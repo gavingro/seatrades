@@ -11,114 +11,136 @@ import streamlit as st
 
 
 @dataclass
-class SimulationConfig:
-    num_seatrades: int = 16
+class CamperSimulationConfig:
     num_cabins: int = 8
     num_preferences: int = 4
-    camper_per_seatrade_min: int = 8
-    camper_per_seatrade_max: int = 15
     camper_per_cabin_min: int = 8
     camper_per_cabin_max: int = 12
+
+
+@dataclass
+class SeatradeSimulationConfig:
+    num_seatrades: int = 16
+    camper_per_seatrade_min: int = 8
+    camper_per_seatrade_max: int = 15
 
 
 class SimulationConfigTab:
     """Component: Simulation Config Form"""
 
     def generate(self):
-        with st.form("Simulation Config") as simulation_config_form:
-            st.header("Simulation Config")
+        with st.form("Simulation Config") as seatrade_simulation_config_form:
+            st.header("Seatrade Simulation Config")
             num_seatrades = st.slider(
                 "num_seatrades",
                 min_value=1,
                 max_value=30,
-                value=SimulationConfig().num_seatrades,
+                value=SeatradeSimulationConfig().num_seatrades,
             )
+            camper_per_seatrade_min = st.slider(
+                "camper_capacity_per_seatrade_min",
+                min_value=1,
+                max_value=30,
+                value=SeatradeSimulationConfig().camper_per_seatrade_min,
+            )
+            camper_per_seatrade_max = st.slider(
+                "camper_capacity_per_seatrade_max",
+                min_value=1,
+                max_value=30,
+                value=SeatradeSimulationConfig().camper_per_seatrade_max,
+            )
+
+            seatrade_simulation_config = SeatradeSimulationConfig(
+                num_seatrades=num_seatrades,
+                camper_per_seatrade_min=camper_per_seatrade_min,
+                camper_per_seatrade_max=camper_per_seatrade_max,
+            )
+            st.form_submit_button(
+                "Submit",
+                on_click=_update_seatrade_simulation_config,
+                kwargs={"seatrade_simulation_config": seatrade_simulation_config},
+            )
+
+        with st.form("Camper Simulation Config") as camper_simulation_config_form:
+            st.header("Camper Simulation Config")
             num_cabins = st.slider(
                 "num_cabins",
                 min_value=1,
                 max_value=30,
-                value=SimulationConfig().num_cabins,
-            )
-            num_preferences = st.slider(
-                "num_preferences",
-                min_value=1,
-                max_value=30,
-                value=SimulationConfig().num_preferences,
-            )
-            camper_per_seatrade_min = st.slider(
-                "camper_per_seatrade_min",
-                min_value=1,
-                max_value=30,
-                value=SimulationConfig().camper_per_seatrade_min,
-            )
-            camper_per_seatrade_max = st.slider(
-                "camper_per_seatrade_max",
-                min_value=1,
-                max_value=30,
-                value=SimulationConfig().camper_per_seatrade_max,
+                value=CamperSimulationConfig().num_cabins,
             )
             camper_per_cabin_min = st.slider(
                 "camper_per_cabin_min",
                 min_value=1,
                 max_value=30,
-                value=SimulationConfig().camper_per_cabin_min,
+                value=CamperSimulationConfig().camper_per_cabin_min,
             )
             camper_per_cabin_max = st.slider(
                 "camper_per_cabin_max",
                 min_value=1,
                 max_value=30,
-                value=SimulationConfig().camper_per_cabin_max,
+                value=CamperSimulationConfig().camper_per_cabin_max,
+            )
+            num_preferences = st.slider(
+                "num_seatrade_preferences_per_camper",
+                min_value=1,
+                max_value=30,
+                value=CamperSimulationConfig().num_preferences,
             )
 
-            simulation_config = SimulationConfig(
-                num_seatrades=num_seatrades,
+            camper_simulation_config = CamperSimulationConfig(
                 num_cabins=num_cabins,
                 num_preferences=num_preferences,
-                camper_per_seatrade_min=camper_per_seatrade_min,
-                camper_per_seatrade_max=camper_per_seatrade_max,
                 camper_per_cabin_min=camper_per_cabin_min,
                 camper_per_cabin_max=camper_per_cabin_max,
             )
             st.form_submit_button(
                 "Submit",
-                on_click=_update_simulation_config,
-                kwargs={"simulation_config": simulation_config},
+                on_click=_update_camper_simulation_config,
+                kwargs={"camper_simulation_config": camper_simulation_config},
             )
-        st.caption(st.session_state["simulation_config"])
-        st.caption(st.session_state["optimization_config"])
 
 
-def _update_simulation_config(simulation_config: SimulationConfig):
+def _update_camper_simulation_config(camper_simulation_config: CamperSimulationConfig):
     """Update config for the mock data parameters."""
     if (
-        simulation_config.camper_per_seatrade_min
-        >= simulation_config.camper_per_seatrade_max
+        camper_simulation_config.camper_per_cabin_min
+        >= camper_simulation_config.camper_per_cabin_max
     ):
         st.toast(
-            "Error updating simulation configuration.\n Camper per seatrade min must be strictly less than camper per cabin max.\n"
-            f"Instead found {simulation_config.camper_per_seatrade_min} >= {simulation_config.camper_per_seatrade_max}.",
-            icon="🚨",
-        )
-        return
-    if simulation_config.camper_per_cabin_min >= simulation_config.camper_per_cabin_max:
-        st.toast(
             "Error updating simulation configuration.\n Camper per cabin min must be strictly less than camper per cabin max.\n"
-            f"Instead found {simulation_config.camper_per_cabin_min} >= {simulation_config.camper_per_cabin_max}.",
+            f"Instead found {camper_simulation_config.camper_per_cabin_min} >= {camper_simulation_config.camper_per_cabin_max}.",
             icon="🚨",
         )
         return
-    if st.session_state.get("simulation_config") is not None:
-        st.toast(f"Updating Simulation Configuration.\n\n{simulation_config}")
-    st.session_state["simulation_config"] = simulation_config
+    if st.session_state.get("camper_simulation_config") is not None:
+        st.toast(
+            f"Updating Camper Simulation Configuration.\n\n{camper_simulation_config}"
+        )
+    st.session_state["camper_simulation_config"] = camper_simulation_config
     _clear_optimization_results()
 
 
-@dataclass
-class CamperSimulationConfig:
-    num_cabins: int = 8
-    num_preferences: int = 4
-    camper_per_cabin_min: int = 8
-    camper_per_cabin_max: int = 12
+def _update_seatrade_simulation_config(
+    seatrade_simulation_config: SeatradeSimulationConfig,
+):
+    """Update config for the mock data parameters."""
+    if (
+        seatrade_simulation_config.camper_per_seatrade_min
+        >= seatrade_simulation_config.camper_per_seatrade_max
+    ):
+        st.toast(
+            "Error updating simulation configuration.\n Camper per Seatrade min must be strictly less than camper per Seatrade max.\n"
+            f"Instead found {seatrade_simulation_config.camper_per_seatrade_min} >= {seatrade_simulation_config.camper_per_seatrade_max}.",
+            icon="🚨",
+        )
+        return
+    if st.session_state.get("seatrade_simulation_config") is not None:
+        st.toast(
+            f"Updating Seatrade Simulation Configuration.\n\n{seatrade_simulation_config}"
+        )
+    st.session_state["seatrade_simulation_config"] = seatrade_simulation_config
+    _clear_optimization_results()
 
 
 def _simulate_cabin_camper_preferences(
@@ -175,13 +197,6 @@ def _simulate_cabin_camper_preferences(
         )
     )
     return preferences.CamperSeatradePreferences.validate(cabin_camper_prefs)
-
-
-@dataclass
-class SeatradeSimulationConfig:
-    num_seatrades: int = 16
-    camper_per_seatrade_min: int = 8
-    camper_per_seatrade_max: int = 15
 
 
 def _simulate_seatrade_preferences(
