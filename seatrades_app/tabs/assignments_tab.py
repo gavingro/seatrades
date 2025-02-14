@@ -37,7 +37,7 @@ def _assign_seatrades(
 ) -> seatrades.Seatrades:
     handler = setup_logging()
     st.toast("Beginning Seatrade Optimization.")
-    with st.status("Assigning Seatrades..."):
+    with st.status("Assigning Seatrades...") as status:
         solved_problem = seatrades.assign(
             preference_weight=optimization_config.preference_weight,
             cabins_weight=optimization_config.cabins_weight,
@@ -45,15 +45,17 @@ def _assign_seatrades(
             max_seatrades_per_fleet=optimization_config.max_seatrades_per_fleet,
             solver=optimization_config.solver,
         )
-    st.toast("Seatrade Optimization Concluded.")
-    if seatrades.status and seatrades.status > 0:
-        st.session_state["optimization_success"] = True
-        st.toast("Optimization Problem Solved!", icon="🎉")
-        handler.clear_logs()  # Clear logs after conversion
-    else:
-        st.session_state["optimization_success"] = False
-        st.toast("Failed to solve optimization problem.", icon="🚨")
-        handler.log_error("Failed to solve!")  # Log error after conversion
+        st.toast("Seatrade Optimization Concluded.")
+        if seatrades.status and seatrades.status > 0:
+            st.session_state["optimization_success"] = True
+            st.toast("Optimization Problem Solved!", icon="🎉")
+            status.update(state="complete", label="Seatrades assigned successfully.")
+            handler.clear_logs()  # Clear logs after conversion
+        else:
+            st.session_state["optimization_success"] = False
+            st.toast("Failed to solve optimization problem.", icon="🚨")
+            handler.log_error("Failed to solve!")  # Log error after conversion
+            status.update(state="error", label="Seatrades failed to be assigned.")
     st.session_state["assigned_seatrades"] = deepcopy(seatrades)
     return seatrades
 
