@@ -5,6 +5,7 @@ from random import sample
 import numpy as np
 import pandas as pd
 import streamlit as st
+from faker import Faker
 
 from seatrades import preferences
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
@@ -127,15 +128,22 @@ def _simulate_cabin_camper_preferences(
     # Mock Campers and Preferences
     camper_prefs = {}
     num_campers = 0
+    name_faker = Faker(locale="en_US")
     for cabin in cabins:
         cabin_info = {}
+        cabin_gender = ALL_CABIN_DICT[cabin]
         for camper in range(
             np.random.randint(
                 camper_simulation_config.camper_per_cabin_min,
                 camper_simulation_config.camper_per_cabin_max,
             )
         ):
-            camper_name = f"Camper{num_campers:0>3}"
+            # camper_name = f"Camper{num_campers:0>3}"
+            camper_name = (
+                name_faker.name_male()
+                if cabin_gender == "male"
+                else name_faker.name_female()
+            )
             seatrade_prefs = sample(
                 all_seatrades,
                 camper_simulation_config.num_preferences,
