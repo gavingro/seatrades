@@ -18,6 +18,34 @@ class CamperSimulationConfig:
     camper_per_cabin_max: int = 12
 
 
+GIRL_CABIN_EXAMPLES = [
+    "Puffin",
+    "Pelican",
+    "Merganser",
+    "Kingfisher",
+    "Cormorant",
+    "Britannia",
+    "Acadia",
+    "Sovereign",
+    "Bounty",
+    "Santa Maria",
+]
+BOY_CABIN_EXAMPLES = [
+    "Tillikum",
+    "Caledonia",
+    "Girona",
+    "Grafton",
+    "Spindrift",
+    "Amherst",
+    "Buonaventure",
+    "Columbia",
+    "Terra Nova",
+]
+ALL_CABIN_DICT = {cabin: "female" for cabin in GIRL_CABIN_EXAMPLES} | {
+    cabin: "male" for cabin in BOY_CABIN_EXAMPLES
+}
+
+
 def _update_camper_simulation_config(camper_simulation_config: CamperSimulationConfig):
     """Update config for the mock data parameters."""
     if (
@@ -92,8 +120,9 @@ def _simulate_cabin_camper_preferences(
     """Get our cabin-camper preferences for our optimization problem."""
     all_seatrades = seatrade_preferences["seatrade"].tolist()
 
-    # Mock Cabins
-    cabins = [f"Cabin{i:0>2}" for i in range(camper_simulation_config.num_cabins)]
+    # Mock Cabins -- Assume bigender for now.
+    cabins = sample(ALL_CABIN_DICT.keys(), k=camper_simulation_config.num_cabins)
+    # cabins = [f"Cabin{i:0>2}" for i in range(camper_simulation_config.num_cabins)]
 
     # Mock Campers and Preferences
     camper_prefs = {}
@@ -122,11 +151,9 @@ def _simulate_cabin_camper_preferences(
         .dropna(subset="seatrade")
         .reset_index(drop=True)
     )
-    # Add Gender based on Cabin
-    for cabin in cabin_camper_prefs["cabin"].unique():
-        cabin_camper_prefs.loc[cabin_camper_prefs["cabin"] == cabin, "gender"] = (
-            np.random.choice(["male", "female"])
-        )
+    cabin_camper_prefs.loc[:, "gender"] = cabin_camper_prefs["cabin"].map(
+        ALL_CABIN_DICT
+    )
 
     # This is inefficient from a wrangling point of view but it's okay it's just to start.
     cabin_camper_prefs = cabin_camper_prefs.drop(columns="seatrade").join(
