@@ -3,3 +3,4 @@ pandas
 pandera
 altair
 streamlit
+faker
