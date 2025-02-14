@@ -79,7 +79,7 @@ class CamperSimulationConfigTab:
                 num_cabins = st.slider(
                     "num_cabins",
                     min_value=1,
-                    max_value=30,
+                    max_value=len(ALL_CABIN_DICT),
                     value=CamperSimulationConfig().num_cabins,
                 )
                 camper_per_cabin_min = st.slider(

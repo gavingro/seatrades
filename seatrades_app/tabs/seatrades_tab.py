@@ -34,8 +34,8 @@ SEATRADE_EXAMPLES = [
 @dataclass
 class SeatradeSimulationConfig:
     num_seatrades: int = 16
-    camper_per_seatrade_min: int = 8
-    camper_per_seatrade_max: int = 15
+    camper_capacity_min: int = 8
+    camper_capacity_max: int = 15
 
 
 class SeatradeSimulationConfigTab:
@@ -50,26 +50,26 @@ class SeatradeSimulationConfigTab:
                 num_seatrades = st.slider(
                     "num_seatrades",
                     min_value=1,
-                    max_value=17,
+                    max_value=len(SEATRADE_EXAMPLES),
                     value=SeatradeSimulationConfig().num_seatrades,
                 )
                 camper_per_seatrade_min = st.slider(
                     "camper_capacity_per_seatrade_min",
                     min_value=1,
                     max_value=30,
-                    value=SeatradeSimulationConfig().camper_per_seatrade_min,
+                    value=SeatradeSimulationConfig().camper_capacity_min,
                 )
                 camper_per_seatrade_max = st.slider(
                     "camper_capacity_per_seatrade_max",
                     min_value=1,
                     max_value=30,
-                    value=SeatradeSimulationConfig().camper_per_seatrade_max,
+                    value=SeatradeSimulationConfig().camper_capacity_max,
                 )
 
                 seatrade_simulation_config = SeatradeSimulationConfig(
                     num_seatrades=num_seatrades,
-                    camper_per_seatrade_min=camper_per_seatrade_min,
-                    camper_per_seatrade_max=camper_per_seatrade_max,
+                    camper_capacity_min=camper_per_seatrade_min,
+                    camper_capacity_max=camper_per_seatrade_max,
                 )
                 st.form_submit_button(
                     "Update Seatrade Simulation Settings",
@@ -89,12 +89,12 @@ def _simulate_seatrade_preferences(
 
     seatrades_prefs_dict = {
         f"{seatrade}": {
-            "campers_min": (temp := np.random.randint(0, 1)),
+            "campers_min": (temp := np.random.randint(0, 2)),
             "campers_max": temp
             + (
                 np.random.randint(
-                    seatrade_simulation_config.camper_per_seatrade_min,
-                    seatrade_simulation_config.camper_per_seatrade_max,
+                    seatrade_simulation_config.camper_capacity_min,
+                    seatrade_simulation_config.camper_capacity_max,
                 )
             ),
         }
@@ -109,12 +109,12 @@ def _update_seatrade_simulation_config(
 ):
     """Update config for the mock data parameters."""
     if (
-        seatrade_simulation_config.camper_per_seatrade_min
-        >= seatrade_simulation_config.camper_per_seatrade_max
+        seatrade_simulation_config.camper_capacity_min
+        >= seatrade_simulation_config.camper_capacity_max
     ):
         st.toast(
             "Error updating simulation configuration.\n Camper per Seatrade min must be strictly less than camper per Seatrade max.\n"
-            f"Instead found {seatrade_simulation_config.camper_per_seatrade_min} >= {seatrade_simulation_config.camper_per_seatrade_max}.",
+            f"Instead found {seatrade_simulation_config.camper_capacity_min} >= {seatrade_simulation_config.camper_capacity_max}.",
             icon="🚨",
         )
         return
