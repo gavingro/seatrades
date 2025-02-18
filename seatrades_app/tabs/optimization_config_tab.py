@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 from typing import Optional
+from pathlib import Path
 
 import streamlit as st
 import pulp
+
+SEATRADES_LOG_PATH = Path("seatrades_assignment.log")
 
 
 @dataclass
@@ -11,7 +14,9 @@ class OptimizationConfig:
     cabins_weight: int = 2
     sparsity_weight: int = 1
     max_seatrades_per_fleet: Optional[int] = None
-    solver: pulp.apis.LpSolver = pulp.apis.PULP_CBC_CMD(timeLimit=60, gapRel=0.10)
+    solver: pulp.apis.LpSolver = pulp.apis.PULP_CBC_CMD(
+        timeLimit=60, gapRel=0.10, logPath=SEATRADES_LOG_PATH
+    )
 
 
 class OptimizationConfigForm:

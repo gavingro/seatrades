@@ -130,7 +130,7 @@ def _simulate_cabin_camper_preferences(
     # Mock Campers and Preferences
     camper_prefs = {}
     num_campers = 0
-    name_faker = Faker(locale="en_US")
+    name_faker = Faker(locale=["en", "es", "it_IT", "id_ID"])
     for cabin in cabins:
         cabin_info = {}
         cabin_gender = ALL_CABIN_DICT[cabin]
