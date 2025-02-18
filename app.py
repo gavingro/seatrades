@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from seatrades_app.tabs.assignments_tab import AssignmentsTab
 from seatrades_app.tabs.assignments_tab import _create_seatrades
@@ -51,11 +52,11 @@ def main():
         AssignmentsTab().generate()
     with seatrades_tab:
         st.subheader("Seatrade Preferences")
-        st.dataframe(st.session_state["seatrade_preferences"])
+        st.data_editor(st.session_state["seatrade_preferences"])
         SeatradeSimulationConfigTab().generate()
     with camper_pref_tab:
         st.subheader("Camper Preferences")
-        st.dataframe(st.session_state["cabin_camper_prefs"])
+        st.data_editor(st.session_state["cabin_camper_prefs"])
         CamperSimulationConfigTab().generate()
     with optimization_config_tab:
         OptimizationConfigForm().generate()
@@ -73,25 +74,27 @@ def main():
 def _initial_page_setup():
     """Setup initial config and simulation preferences before user imput."""
     # Setup Base Config and Data before Preferences
-    if st.session_state.get("optimization_config") == None:
+    if "optimization_config" not in st.session_state:
         _update_optimization_config(optimization_config=OptimizationConfig())
-    if st.session_state.get("seatrade_simulation_config") == None:
+    if "seatrade_simulation_config" not in st.session_state:
         _update_seatrade_simulation_config(
             seatrade_simulation_config=SeatradeSimulationConfig()
         )
-    if st.session_state.get("camper_simulation_config") == None:
+    if "camper_simulation_config" not in st.session_state:
         _update_camper_simulation_config(
             camper_simulation_config=CamperSimulationConfig()
         )
 
     # Initialize Mock Data
-    st.session_state["seatrade_preferences"] = _simulate_seatrade_preferences(
-        st.session_state["seatrade_simulation_config"]
-    )
-    st.session_state["cabin_camper_prefs"] = _simulate_cabin_camper_preferences(
-        camper_simulation_config=st.session_state["camper_simulation_config"],
-        seatrade_preferences=st.session_state["seatrade_preferences"],
-    )
+    if "seatrade_preferences" not in st.session_state:
+        st.session_state["seatrade_preferences"] = _simulate_seatrade_preferences(
+            st.session_state["seatrade_simulation_config"]
+        )
+    if "cabin_camper_prefs" not in st.session_state:
+        st.session_state["cabin_camper_prefs"] = _simulate_cabin_camper_preferences(
+            camper_simulation_config=st.session_state["camper_simulation_config"],
+            seatrade_preferences=st.session_state["seatrade_preferences"],
+        )
     # Initialize Seatrades model
     st.session_state["seatrades_model"] = _create_seatrades(
         cabin_camper_preferences=st.session_state["cabin_camper_prefs"],

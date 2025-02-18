@@ -124,3 +124,5 @@ def _update_seatrade_simulation_config(
         )
     st.session_state["seatrade_simulation_config"] = seatrade_simulation_config
     _clear_optimization_results()
+    if "seatrade_preferences" in st.session_state:
+        del st.session_state["seatrade_preferences"]

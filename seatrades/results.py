@@ -16,7 +16,7 @@ def display_assignments(seatrades: Seatrades) -> alt.Chart:
     """
     Displays the assignments of the seatrades visually for inference.
     """
-    if not seatrades.status:
+    if seatrades.status == 0:
         raise ValueError(
             "Seatrades.assignments (and status code) not found."
             "Did you remember to run Seatrades.assign() first?"

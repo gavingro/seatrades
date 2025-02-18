@@ -53,6 +53,7 @@ class Seatrades:
         )
         self.fleets = ["1a", "1b", "2a", "2b"]
         self.assignments: pd.DataFrame
+        self.status = 0
 
     # Helper Function
     def _flatten(self, outer_list: List[list]):

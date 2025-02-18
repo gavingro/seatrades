@@ -65,6 +65,8 @@ def _update_camper_simulation_config(camper_simulation_config: CamperSimulationC
         )
     st.session_state["camper_simulation_config"] = camper_simulation_config
     _clear_optimization_results()
+    if "cabin_camper_prefs" in st.session_state:
+        del st.session_state["cabin_camper_prefs"]
 
 
 class CamperSimulationConfigTab:
