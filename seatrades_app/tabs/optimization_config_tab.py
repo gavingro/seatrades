@@ -76,7 +76,9 @@ class OptimizationConfigForm:
                 sparsity_weight=sparsity_weight,
                 max_seatrades_per_fleet=max_seatrades_per_fleet,
                 solver=pulp.apis.PULP_CBC_CMD(
-                    timeLimit=timeout_limit_minutes * 60, gapRel=optimality_gap / 100
+                    timeLimit=timeout_limit_minutes * 60,
+                    gapRel=optimality_gap / 100,
+                    logPath=SEATRADES_LOG_PATH,
                 ),
             )
 

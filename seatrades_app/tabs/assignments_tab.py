@@ -3,6 +3,7 @@ import logging
 import threading
 import queue
 import time
+import re
 
 import streamlit as st
 
@@ -95,15 +96,25 @@ def _assign_seatrades(
         log_text = ""
         if SEATRADES_LOG_PATH.exists():
             SEATRADES_LOG_PATH.unlink(missing_ok=True)
-
+        started = time.time()
+        timeout = False
         solver_thread = threading.Thread(
             target=_run_assignment_and_capture_logs,
             daemon=True,
             args=(seatrades, optimization_config),
         )
-        started = None
         solver_thread.start()
         while solver_thread.is_alive():
+            elapsed_seconds = int(time.time() - started)
+            elapsed_pct_of_time_limit = (
+                elapsed_seconds / optimization_config.solver.timeLimit
+            )
+            if elapsed_pct_of_time_limit > 1.0:
+                timeout = True
+            progress_bar.progress(
+                min(elapsed_pct_of_time_limit, 1.0),
+                ("Optimization Progress" if not timeout else "Stopping Optimization."),
+            )
             old_log_text = ""
             try:
                 if SEATRADES_LOG_PATH.exists():
@@ -111,31 +122,22 @@ def _assign_seatrades(
                         log_text = log_file.read()
                     if log_text != old_log_text:
                         log_container.text_area(
-                            "Solver Logs to convince you something is happening.",
+                            "Solver Logs.",
                             value=log_text,
                             height=300,
                             key=str(log_counter) + log_text,
                         )
                         old_log_text = log_text
-                        if not started:
-                            started = time.time()
-                        elapsed_seconds = int(time.time() - started)
-                        elapsed_pct_of_time_limit = (
-                            elapsed_seconds / optimization_config.solver.timeLimit
-                        )
-                        progress_bar.progress(
-                            min(elapsed_pct_of_time_limit, 1.0),
-                            (
-                                "Optimization Problem Progress"
-                                if elapsed_pct_of_time_limit < 1.0
-                                else "Stopping Optimization."
-                            ),
-                        )
-                        if elapsed_pct_of_time_limit <= 1.0:
+                        if re.compile("Result - Stopped on time limit").search(
+                            old_log_text
+                        ):
+                            timeout = True
+
+                        if not timeout:
                             status.update(
                                 label="Step 2/3: Optimizing Seatrade Assignments."
                             )
-                        elif elapsed_pct_of_time_limit > 1.0:
+                        elif timeout:
                             status.update(
                                 label="Step 3/3: Stopping Optimization based on timeout duration."
                             )
@@ -159,14 +161,25 @@ def _assign_seatrades(
                 key="logs",
             )
             old_log_text = log_text
-        progress_bar.progress(1.0, "Optimization Concluded.")
+        progress_bar.progress(
+            1.0,
+            (
+                "Optimization Concluded."
+                if not timeout
+                else "Optimization Concluded - Timeout reached."
+            ),
+        )
         st.toast("Seatrade Optimization Concluded.")
         if not status_queue.empty() and status_queue.get() > 0:
             st.session_state["optimization_success"] = True
             st.toast("Optimization Problem Solved!", icon="🎉")
             status.update(
                 state="complete",
-                label="Seatrades assigned successfully.",
+                label=(
+                    "Seatrades assigned successfully."
+                    if not timeout
+                    else "Seatrades assigned successfully - Timeout Reached."
+                ),
                 expanded=False,
             )
             seatrades.status = 1
