@@ -86,7 +86,8 @@ def _assign_seatrades(
     seatrades: seatrades.Seatrades, optimization_config: OptimizationConfig
 ) -> seatrades.Seatrades:
     st.toast("Beginning Seatrade Optimization.")
-    with st.status("Assigning Seatrades...") as status:
+    with st.status("Step 1/3: Setting Up Optimization Problem") as status:
+        progress_bar = st.progress(0, "Setting up Optimization Problem.")
 
         # Start the solver in a background thread, read logs in real time.
         global log_counter
@@ -100,6 +101,7 @@ def _assign_seatrades(
             daemon=True,
             args=(seatrades, optimization_config),
         )
+        started = None
         solver_thread.start()
         while solver_thread.is_alive():
             old_log_text = ""
@@ -109,17 +111,42 @@ def _assign_seatrades(
                         log_text = log_file.read()
                     if log_text != old_log_text:
                         log_container.text_area(
-                            "Solver Logs",
+                            "Solver Logs to convince you something is happening.",
                             value=log_text,
                             height=300,
                             key=str(log_counter) + log_text,
                         )
                         old_log_text = log_text
+                        if not started:
+                            started = time.time()
+                        elapsed_seconds = int(time.time() - started)
+                        elapsed_pct_of_time_limit = (
+                            elapsed_seconds / optimization_config.solver.timeLimit
+                        )
+                        progress_bar.progress(
+                            min(elapsed_pct_of_time_limit, 1.0),
+                            (
+                                "Optimization Problem Progress"
+                                if elapsed_pct_of_time_limit < 1.0
+                                else "Stopping Optimization."
+                            ),
+                        )
+                        if elapsed_pct_of_time_limit <= 1.0:
+                            status.update(
+                                label="Step 2/3: Optimizing Seatrade Assignments."
+                            )
+                        elif elapsed_pct_of_time_limit > 1.0:
+                            status.update(
+                                label="Step 3/3: Stopping Optimization based on timeout duration."
+                            )
+
             except Exception as e:
                 log_container.text_area(
-                    "Solver Logs", f"Error reading logs: {e}", height=300
+                    "Solver Logs.",
+                    f"Error reading logs: {e}",
+                    height=300,
                 )
-            time.sleep(1)  # Adjust polling frequency
+            time.sleep(2)  # Adjust polling frequency
             log_counter += 1
         if SEATRADES_LOG_PATH.exists():
             with open(SEATRADES_LOG_PATH, "r") as log_file:
@@ -132,7 +159,7 @@ def _assign_seatrades(
                 key="logs",
             )
             old_log_text = log_text
-
+        progress_bar.progress(1.0, "Optimization Concluded.")
         st.toast("Seatrade Optimization Concluded.")
         if not status_queue.empty() and status_queue.get() > 0:
             st.session_state["optimization_success"] = True
