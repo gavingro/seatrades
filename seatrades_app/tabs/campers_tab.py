@@ -73,6 +73,9 @@ class CamperSimulationConfigTab:
     """Component: Simulation Config Form"""
 
     def generate(self):
+        st.subheader("Camper Preferences")
+        st.data_editor(st.session_state["cabin_camper_prefs"])
+
         with st.expander("No Camper Data? Simulate Cabins Here."):
             with st.form(
                 "Camper Simulation Config", border=False
@@ -130,7 +133,7 @@ def _simulate_cabin_camper_preferences(
     # Mock Campers and Preferences
     camper_prefs = {}
     num_campers = 0
-    name_faker = Faker(locale=["en", "es", "it_IT", "id_ID"])
+    name_faker = Faker(locale=["en", "es", "it_IT", "fr_FR", "fr_QC"])
     for cabin in cabins:
         cabin_info = {}
         cabin_gender = ALL_CABIN_DICT[cabin]

@@ -20,6 +20,8 @@ class AssignmentsTab:
     """Tab Content for Assigning Seatrades"""
 
     def generate(self):
+        if "introduced" not in st.session_state or not st.session_state["introduced"]:
+            _generate_intro_dialogue()
         st.button(
             "Assign Seatrades.",
             on_click=_assign_seatrades,
@@ -38,6 +40,46 @@ class AssignmentsTab:
                 st.session_state["assigned_seatrades"]
             )
             st.altair_chart(results_chart)
+
+
+@st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
+def _generate_intro_dialogue():
+    """
+    Generate intro dialog if not seen already.
+    """
+    st.markdown(
+        """
+    This web application is designed to help the **Scheduling Captain** to optimally assign campers to seatrades, balancing cabin cohesion, camper preferences, and activity availability.
+
+    Each week, Keats Camps hosts ~250 campers across ~22 cabins, and on the first day of camp, each camper submits their top Seatrade preferences. 
+    Your daunting task as the Scheduling Captain is to assign cabins to two fleets, assign seatrades to each fleet, and assign each camper to the seatrades.
+    
+    This app streamlines the process, optimizing assignments to create the best experience for campers while saving you time and effort.
+    
+    Some example mock data has already been preloaded for example, so you can see what it looks like to assign seatrades.
+    There are 3 steps to repeat this process with your own data for a week at camp:
+    """
+    )
+    cols = st.columns(3)
+    with cols[0]:
+        st.info(
+            "Upload your own **Seatrade preferences** for the week at camp in the **Seatrade Setup** tab.",
+            icon=":material/camping:",
+        )
+    with cols[1]:
+        st.success(
+            "Upload your own **Preferences per Camper** for the week in the **Camper Setup** tab.",
+            icon=":material/child_care:",
+        )
+    with cols[2]:
+        st.warning(
+            "Adjust your **constraints and preferences** as needed in the **Optimization Config** tab.",
+            icon=":material/tune:",
+        )
+    st.markdown("Happy scheduling!")
+    if st.button("Don't show this again.", use_container_width=True):
+        st.session_state["introduced"] = True
+        st.rerun()
 
 
 def _assign_seatrades(
@@ -87,7 +129,7 @@ def _assign_seatrades(
                 "Solver Logs",
                 value=log_text,
                 height=300,
-                key=str(log_counter) + log_text,
+                key="logs",
             )
             old_log_text = log_text
 
@@ -95,7 +137,11 @@ def _assign_seatrades(
         if not status_queue.empty() and status_queue.get() > 0:
             st.session_state["optimization_success"] = True
             st.toast("Optimization Problem Solved!", icon="🎉")
-            status.update(state="complete", label="Seatrades assigned successfully.")
+            status.update(
+                state="complete",
+                label="Seatrades assigned successfully.",
+                expanded=False,
+            )
             seatrades.status = 1
         else:
             st.session_state["optimization_success"] = False

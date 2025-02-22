@@ -42,6 +42,9 @@ class SeatradeSimulationConfigTab:
     """Component: Simulation Config Form"""
 
     def generate(self):
+        st.subheader("Seatrade Preferences")
+        st.data_editor(st.session_state["seatrade_preferences"])
+
         with st.expander("No Seatrades Data? Simulate Seatrades Here."):
             with st.form(
                 "Simulation Config", border=False

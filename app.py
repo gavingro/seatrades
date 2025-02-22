@@ -31,8 +31,8 @@ def main():
     # Page Content
     st.title("Keats Seatrade Scheduler")
 
-    with st.sidebar as sidebar:
-        st.text("Sidebar Placeholder.")
+    # with st.sidebar as sidebar:
+    #     st.text("Sidebar Placeholder.")
 
     # Setup Tabs
     (
@@ -42,33 +42,30 @@ def main():
         optimization_config_tab,
     ) = st.tabs(
         [
-            "Assignments",
-            "Seatrade Setup",
-            "Camper Setup",
-            "Optimization Setup",
+            ":material/date_range: Assignments",
+            ":material/camping: Seatrade Setup",
+            ":material/child_care: Camper Setup",
+            ":material/tune: Optimization Setup",
         ]
     )
     with assignments_tab:
         AssignmentsTab().generate()
     with seatrades_tab:
-        st.subheader("Seatrade Preferences")
-        st.data_editor(st.session_state["seatrade_preferences"])
         SeatradeSimulationConfigTab().generate()
     with camper_pref_tab:
-        st.subheader("Camper Preferences")
-        st.data_editor(st.session_state["cabin_camper_prefs"])
         CamperSimulationConfigTab().generate()
     with optimization_config_tab:
+        st.subheader("Optimization Setup")
         OptimizationConfigForm().generate()
     # Temp for Debugging
-    st.write("---")
-    st.caption("Camper Simulation Config")
-    st.dataframe(st.session_state["camper_simulation_config"])
-    st.caption("Seatrade Simulation Config")
-    st.dataframe(st.session_state["seatrade_simulation_config"])
-    st.caption("Optimization Config")
-    st.dataframe(st.session_state["optimization_config"])
-    st.write("")
+    # st.write("---")
+    # st.caption("Camper Simulation Config")
+    # st.dataframe(st.session_state["camper_simulation_config"])
+    # st.caption("Seatrade Simulation Config")
+    # st.dataframe(st.session_state["seatrade_simulation_config"])
+    # st.caption("Optimization Config")
+    # st.dataframe(st.session_state["optimization_config"])
+    # st.write("")
 
 
 def _initial_page_setup():
