@@ -26,3 +26,11 @@ class CamperSeatradePreferences(DataFrameModel):
     seatrade_2: str
     seatrade_3: str
     seatrade_4: str
+
+
+def add_index_to_campername(
+    camper_prefs: CamperSeatradePreferences,
+) -> CamperSeatradePreferences:
+    """Add index to Camper Names within the prefrence object to avoid name collisions."""
+    camper_prefs.loc[:, "camper"] += "." + camper_prefs.index.astype(str)
+    return camper_prefs

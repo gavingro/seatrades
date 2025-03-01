@@ -8,7 +8,11 @@ import logging
 import pulp
 import pandas as pd
 
-from seatrades.preferences import SeatradesConfig, CamperSeatradePreferences
+from seatrades.preferences import (
+    SeatradesConfig,
+    CamperSeatradePreferences,
+    add_index_to_campername,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +37,7 @@ class Seatrades:
             A dataframe containing the seatrade-minsize-maxsize
             information.
         """
-
+        cabin_camper_prefs = add_index_to_campername(cabin_camper_prefs)
         self.cabin_camper_prefs = cabin_camper_prefs.set_index("camper")
         self.cabins = cabin_camper_prefs["cabin"].unique().tolist()
         self.camper_prefs = cabin_camper_prefs.set_index("camper")[
