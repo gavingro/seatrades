@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 
 from seatrades_app.tabs.assignments_tab import AssignmentsTab
-from seatrades_app.tabs.assignments_tab import _create_seatrades
 from seatrades_app.tabs.optimization_config_tab import OptimizationConfig
 from seatrades_app.tabs.optimization_config_tab import OptimizationConfigForm
 from seatrades_app.tabs.optimization_config_tab import _update_optimization_config
@@ -92,11 +91,6 @@ def _initial_page_setup():
             camper_simulation_config=st.session_state["camper_simulation_config"],
             seatrade_preferences=st.session_state["seatrade_preferences"],
         )
-    # Initialize Seatrades model
-    st.session_state["seatrades_model"] = _create_seatrades(
-        cabin_camper_preferences=st.session_state["cabin_camper_prefs"],
-        seatrade_preferences=st.session_state["seatrade_preferences"],
-    )
 
 
 if __name__ == "__main__":

@@ -11,7 +11,8 @@ from seatrades_app.tabs.optimization_config_tab import (
     OptimizationConfig,
     SEATRADES_LOG_PATH,
 )
-from seatrades import preferences, seatrades, results
+from seatrades import preferences, results
+from seatrades.seatrades import Seatrades
 
 status_queue = queue.Queue()
 log_counter = 1
@@ -27,7 +28,8 @@ class AssignmentsTab:
             "Assign Seatrades.",
             on_click=_assign_seatrades,
             kwargs={
-                "seatrades": st.session_state["seatrades_model"],
+                "cabin_camper_preferences": st.session_state["cabin_camper_prefs"],
+                "seatrade_preferences": st.session_state["seatrade_preferences"],
                 "optimization_config": st.session_state["optimization_config"],
             },
         )
@@ -84,9 +86,12 @@ def _generate_intro_dialogue():
 
 
 def _assign_seatrades(
-    seatrades: seatrades.Seatrades, optimization_config: OptimizationConfig
-) -> seatrades.Seatrades:
+    seatrade_preferences: preferences.SeatradesConfig,
+    cabin_camper_preferences: preferences.CamperSeatradePreferences,
+    optimization_config: OptimizationConfig,
+) -> Seatrades:
     st.toast("Beginning Seatrade Optimization.")
+    seatrades = Seatrades(cabin_camper_preferences, seatrade_preferences)
     with st.status("Step 1/3: Setting Up Optimization Problem") as status:
         progress_bar = st.progress(0, "Setting up Optimization Problem.")
 
@@ -193,12 +198,10 @@ def _assign_seatrades(
 
 
 def _run_assignment_and_capture_logs(
-    seatrades: seatrades.Seatrades, optimization_config: OptimizationConfig
+    seatrades: Seatrades, optimization_config: OptimizationConfig
 ):
     """Run seatrades assignment and capture status to status_queue, intended to be run in a separate thread."""
     try:
-        print("Test Print.")
-        logging.info("Logging Info Print.")
         solved_problem = seatrades.assign(
             preference_weight=optimization_config.preference_weight,
             cabins_weight=optimization_config.cabins_weight,
@@ -214,10 +217,3 @@ def _run_assignment_and_capture_logs(
     except Exception as e:
         print(f"Error: {e}")
         status_queue.put(-1)
-
-
-def _create_seatrades(
-    cabin_camper_preferences: preferences.CamperSeatradePreferences,
-    seatrade_preferences: preferences.SeatradesConfig,
-) -> seatrades.Seatrades:
-    return seatrades.Seatrades(cabin_camper_preferences, seatrade_preferences)
