@@ -4,6 +4,8 @@
 
 A tool to help assign seatrades at Keats Camps using math.
 
+#### [DEMO APPLICATION HOSTED ON STREAMLIT](https://keats-seatrades.streamlit.app/)
+
 ## Objective
 
 > *Every week at Keats camp begins with hundreds of campers arriving to the island, learning about the seatrade activities they can pursue during the week, and selecting which seatrades they prefer. A scheduling captain then takes all of these preferences, parses through them, and assigns which camper gets to participate in which seatrade.*
@@ -16,15 +18,12 @@ A tool to help assign seatrades at Keats Camps using math.
 
 ### Currently Implementing
 
+- [ ] Introduce .csv import/export to web app.
+
 ### To Implement
 
-- [ ] Mock cabin/camper/seatrade preferences using actual keats cabins/ages/genders and actual seatrades/sizes/popularity for better tooling.
 - [ ] Introduce constraint such that only one girl cannot be assigned to a seatrade of all boys (is this actually a problem? Currently our strategy of keeping cabins together would prioritize assigning cabins together, which would include friends).
 - [ ] Introduce camper/cabin age to optimizer to ensure each seatrade is approximately the same ages.
-- [ ] Create demo web app.
-- [ ] Introduce .csv import/export to web app.
-- [ ] Allow for "temperature" knobs on optimizer cost function areas (preferences vs cabin vs age, etc).
-- [ ] Implement basic visualization for seatrade preferences to allow for better seatrade config.
 - [ ] Infer popularity of seatrade from preferences, and balance popuparity between protected categories (genders? Ages?). Eg) Tubing shouldn't be JUST senior boys in all 4 blocks or something.
 
 ### Implemented
@@ -39,9 +38,14 @@ camper preferences with ideal seatrade assignments.
 - [x] Introduce Genders to the cabins, and ensure each fleet is has roughly the same amount of girls and boys.
 - [x] Use indicator function to count number of seatrades with non-zero member counts, and penalize for amount of total seatrades (encourage sparsity).
 - [x] Add constraints on max-seatrades-per-block.
+- [x] Create demo web app.
+- [x] Mock cabin/camper/seatrade preferences using actual keats cabins/ages/genders and actual seatrades/sizes/popularity for better tooling.
+- [x] Implement basic visualization for seatrade preferences to allow for better seatrade config.
+- [x] Allow for "temperature" knobs on optimizer cost function areas (preferences vs cabin vs age, etc).
+- [x] Increase log visibility and progress bar to expose optimization progress.
 
 ---
 
 ## Math
 
-*TBC*
+*To Come*
