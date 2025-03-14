@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "seatrades"
 version = "2024.0.0"
+license = {text = "MIT"}
 dependencies = [
   "pandera",
   "pandas",
@@ -25,7 +26,7 @@ license = {file = "LICENSE.txt"}
 [project.urls]
 Repository = "https://github.com/gavingro/seatrades"
 
-[tools.setuptools]
+[tool.setuptools]
 packages = ["seatrades"]
 
 [tool.pytest.ini_options]
