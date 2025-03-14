@@ -93,6 +93,10 @@ def _assign_seatrades(
     st.toast("Beginning Seatrade Optimization.")
     seatrades = Seatrades(cabin_camper_preferences, seatrade_preferences)
     with st.status("Step 1/3: Setting Up Optimization Problem") as status:
+        # CAUTION: Does not actually stop the solver subthread which will keep running.
+        # This will be a problem later if a user starts a ton of solver threads behind the scenes.
+        stop_button = st.button("Stop Optimizing", on_click=lambda: KeyboardInterrupt())
+
         progress_bar = st.progress(0, "Setting up Optimization Problem.")
 
         # Start the solver in a background thread, read logs in real time.
