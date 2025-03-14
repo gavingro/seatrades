@@ -25,7 +25,7 @@ license = {file = "LICENSE.txt"}
 [project.urls]
 Repository = "https://github.com/gavingro/seatrades"
 
-[tools.setuptools]
+[tool.setuptools]
 packages = ["seatrades"]
 
 [tool.pytest.ini_options]
