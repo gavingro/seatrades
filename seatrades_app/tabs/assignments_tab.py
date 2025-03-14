@@ -128,7 +128,9 @@ def _assign_seatrades(
             try:
                 if SEATRADES_LOG_PATH.exists():
                     with open(SEATRADES_LOG_PATH, "r") as log_file:
-                        log_text = log_file.read()
+                        log_text = "".join(
+                            [line for line in log_file.readlines()][::-1]
+                        )
                     if log_text != old_log_text:
                         log_container.text_area(
                             "Solver Logs.",
