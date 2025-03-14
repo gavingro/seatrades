@@ -93,6 +93,11 @@ def _assign_seatrades(
     st.toast("Beginning Seatrade Optimization.")
     seatrades = Seatrades(cabin_camper_preferences, seatrade_preferences)
     with st.status("Step 1/3: Setting Up Optimization Problem") as status:
+        # CAUTION: Does not actually stop the solver subthread which will keep running.
+        # This will be a problem later if a user starts a ton of solver threads behind the scenes.
+        stop_button = st.empty()
+        stop_button.button("Stop Optimizing", on_click=lambda: KeyboardInterrupt())
+
         progress_bar = st.progress(0, "Setting up Optimization Problem.")
 
         # Start the solver in a background thread, read logs in real time.
@@ -124,7 +129,9 @@ def _assign_seatrades(
             try:
                 if SEATRADES_LOG_PATH.exists():
                     with open(SEATRADES_LOG_PATH, "r") as log_file:
-                        log_text = log_file.read()
+                        log_text = "".join(
+                            [line for line in log_file.readlines()][::-1]
+                        )
                     if log_text != old_log_text:
                         log_container.text_area(
                             "Solver Logs.",
@@ -158,21 +165,27 @@ def _assign_seatrades(
         if SEATRADES_LOG_PATH.exists():
             with open(SEATRADES_LOG_PATH, "r") as log_file:
                 log_text = log_file.read()
-        if log_text != old_log_text:
-            log_container.text_area(
-                "Solver Logs",
-                value=log_text,
-                height=300,
-                key="logs",
-            )
-            old_log_text = log_text
+        log_container.text_area(
+            "Solver Logs",
+            value=log_text,
+            height=300,
+            key="logs",
+        )
+        timeout_kwd_match = re.search(
+            re.compile("(Result - Stopped on time limit)"), string=log_text
+        )
+        timeout = timeout or timeout_kwd_match
+        timeout_status = " - Timeout Reached" if timeout else ""
+        actual_gap_kwd = re.search(
+            re.compile("(?<=Gap:                            )(\d+\.?\d*)"),
+            string=log_text,
+        )
+        actual_gap = float(actual_gap_kwd.group()) if actual_gap_kwd else 1.0
+        actual_optimality = 1.0 - actual_gap
+        optimality_status = f" - {actual_optimality:.0%} Optimal Solution found"
         progress_bar.progress(
             1.0,
-            (
-                "Optimization Concluded."
-                if not timeout
-                else "Optimization Concluded - Timeout reached."
-            ),
+            ("Optimization Concluded."),
         )
         st.toast("Seatrade Optimization Concluded.")
         if not status_queue.empty() and status_queue.get() > 0:
@@ -181,9 +194,10 @@ def _assign_seatrades(
             status.update(
                 state="complete",
                 label=(
-                    "Seatrades assigned successfully."
-                    if not timeout
-                    else "Seatrades assigned successfully - Timeout Reached."
+                    "Seatrades assigned successfully"
+                    + timeout_status
+                    + optimality_status
+                    + "."
                 ),
                 expanded=False,
             )
@@ -194,6 +208,7 @@ def _assign_seatrades(
             status.update(state="error", label="Seatrades failed to be assigned.")
             seatrades.status = -1
     st.session_state["assigned_seatrades"] = deepcopy(seatrades)
+    stop_button.empty()
     return seatrades
 
 
