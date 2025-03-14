@@ -127,7 +127,7 @@ def _simulate_cabin_camper_preferences(
     all_seatrades = seatrade_preferences["seatrade"].tolist()
 
     # Mock Cabins -- Assume bigender for now.
-    cabins = sample(ALL_CABIN_DICT.keys(), k=camper_simulation_config.num_cabins)
+    cabins = sample(list(ALL_CABIN_DICT.keys()), k=camper_simulation_config.num_cabins)
     # cabins = [f"Cabin{i:0>2}" for i in range(camper_simulation_config.num_cabins)]
 
     # Mock Campers and Preferences
