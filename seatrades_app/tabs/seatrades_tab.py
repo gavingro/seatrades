@@ -43,7 +43,7 @@ class SeatradeSimulationConfigTab:
 
     def generate(self):
         st.subheader("Seatrade Preferences")
-        uploaded_file = st.file_uploader(
+        uploaded_seatrade_prefs = st.file_uploader(
             label="Upload your preferences for this weeks seatrades.",
             type="csv",
             help="""Upload preferences as a .csv file. 
@@ -52,8 +52,9 @@ class SeatradeSimulationConfigTab:
             Setting a minimum above 0 for a seatrade will ensure that seatrade is always selected.
             """,
         )
-        if uploaded_file:
-            _validate_and_update_uploaded_prefs(uploaded_file)
+        if uploaded_seatrade_prefs:
+            seatrade_prefs_data = pd.read_csv(uploaded_seatrade_prefs, index_col=None)
+            _validate_and_update_seatrade_preferences(seatrade_prefs_data)
         st.data_editor(st.session_state["seatrade_preferences"], disabled=True)
 
         with st.expander("No Seatrades Data? Simulate Seatrades Here."):
@@ -116,11 +117,6 @@ def _simulate_seatrade_preferences(
     }
     seatrades_prefs = pd.DataFrame(seatrades_prefs_dict).T.reset_index(names="seatrade")
     return preferences.SeatradesConfig.validate(seatrades_prefs)
-
-
-def _validate_and_update_uploaded_prefs(uploaded_seatrade_preferences):
-    seatrade_prefs = pd.read_csv(uploaded_seatrade_preferences, index_col=None)
-    _validate_and_update_seatrade_preferences(seatrade_prefs)
 
 
 def _validate_and_update_seatrade_preferences(seatrades_preferences: pd.DataFrame):

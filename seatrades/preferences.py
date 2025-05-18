@@ -12,8 +12,8 @@ class SeatradesConfig(DataFrameModel):
     the week."""
 
     seatrade: str
-    campers_min: int = Field(ge=0, coerce=True)
-    campers_max: int = Field(ge=0, coerce=True)
+    campers_min: int = Field(ge=0, coerce=True, ignore_na=False)
+    campers_max: int = Field(ge=0, coerce=True, ignore_na=False)
 
     @dataframe_check
     def min_campers_less_than_max_campers(cls, df: pd.DataFrame):
