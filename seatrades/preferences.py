@@ -3,7 +3,8 @@ This file contains logic and data objects capturing the preferences of campers
 and camp staff towards seatrades.
 """
 
-from pandera import DataFrameModel
+from pandera import DataFrameModel, Field, dataframe_check
+import pandas as pd
 
 
 class SeatradesConfig(DataFrameModel):
@@ -11,8 +12,13 @@ class SeatradesConfig(DataFrameModel):
     the week."""
 
     seatrade: str
-    campers_min: int
-    campers_max: int
+    campers_min: int = Field(ge=0, coerce=True)
+    campers_max: int = Field(ge=0, coerce=True)
+
+    @dataframe_check
+    def min_campers_less_than_max_campers(cls, df: pd.DataFrame):
+        """The minimum campers should be less than or equal to the the maximum campers for a seatrade."""
+        return df["campers_min"] <= df["campers_max"]
 
 
 class CamperSeatradePreferences(DataFrameModel):
