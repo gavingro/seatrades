@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from faker import Faker
+from pandera import Field
 
 from seatrades import preferences
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
@@ -74,6 +75,19 @@ class CamperSimulationConfigTab:
 
     def generate(self):
         st.subheader("Camper Preferences")
+        uploaded_camper_prefs = st.file_uploader(
+            label="Upload your seatrade preferences for each camper.",
+            type="csv",
+            help="""Upload preferences as a .csv file. 
+            Uploaded data **must** have the same columns as seen below, and an example form can be downloaded by interacting with the displayed data below.
+            Current camper preferences include their name, cabin, gender, as well as the top 4 seatrades each camper wants to attend, in order.
+            Seatrades must match the seatrades listed in the Seatrade Preferences tab, which are assumed to contain all seatrades for the week.
+            """,
+        )
+        if uploaded_camper_prefs:
+            camper_prefs_data = pd.read_csv(uploaded_camper_prefs, index_col=None)
+            _validate_and_update_camper_preferences(camper_prefs_data)
+
         st.data_editor(st.session_state["cabin_camper_prefs"])
 
         with st.expander("No Camper Data? Simulate Cabins Here."):
@@ -117,6 +131,36 @@ class CamperSimulationConfigTab:
                     on_click=_update_camper_simulation_config,
                     kwargs={"camper_simulation_config": camper_simulation_config},
                 )
+
+
+def _validate_and_update_camper_preferences(camper_preferences: pd.DataFrame):
+    try:
+        available_seatrades = st.session_state["seatrade_preferences"][
+            "seatrade"
+        ].tolist()
+
+        class UpdatedCamperPrefs(preferences.CamperSeatradePreferences):
+            seatrade_1: str = Field(ignore_na=False, isin=available_seatrades)
+            seatrade_2: str = Field(ignore_na=False, isin=available_seatrades)
+            seatrade_3: str = Field(ignore_na=False, isin=available_seatrades)
+            seatrade_4: str = Field(ignore_na=False, isin=available_seatrades)
+
+        UpdatedCamperPrefs.validate(camper_preferences)
+        st.session_state["cabin_camper_prefs"] = camper_preferences
+        st.toast(f"Updating Camper Preferences.")
+    except Exception as e:
+        with st.popover(
+            "Continuing without updating Camper Config. Click to see Error.",
+            icon="🚨",
+        ):
+            st.write(
+                "Uploaded file does not meet expected schema. Error is as follows:"
+            )
+            st.write(e)
+            st.toast(
+                "Continuing without updating Camper Config.",
+                icon="🚨",
+            )
 
 
 def _simulate_cabin_camper_preferences(
