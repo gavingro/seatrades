@@ -57,6 +57,8 @@ class SeatradeSimulationConfigTab:
             _validate_and_update_seatrade_preferences(seatrade_prefs_data)
         st.data_editor(st.session_state["seatrade_preferences"], disabled=True)
 
+        st.write("")
+        st.write("---")
         with st.expander("No Seatrades Data? Simulate Seatrades Here."):
             with st.form(
                 "Simulation Config", border=False

@@ -88,8 +88,10 @@ class CamperSimulationConfigTab:
             camper_prefs_data = pd.read_csv(uploaded_camper_prefs, index_col=None)
             _validate_and_update_camper_preferences(camper_prefs_data)
 
-        st.data_editor(st.session_state["cabin_camper_prefs"])
+        st.data_editor(st.session_state["cabin_camper_prefs"], disabled=True)
 
+        st.write("")
+        st.write("---")
         with st.expander("No Camper Data? Simulate Cabins Here."):
             with st.form(
                 "Camper Simulation Config", border=False
