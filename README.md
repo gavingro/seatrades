@@ -18,13 +18,14 @@ A tool to help assign seatrades at Keats Camps using math.
 
 ### Currently Implementing
 
-- [ ] Introduce .csv import/export to web app.
+- [ ] Improve organization, display, and export of solution outputs.
 
 ### To Implement
 
 - [ ] Introduce constraint such that only one girl cannot be assigned to a seatrade of all boys (is this actually a problem? Currently our strategy of keeping cabins together would prioritize assigning cabins together, which would include friends).
 - [ ] Introduce camper/cabin age to optimizer to ensure each seatrade is approximately the same ages.
-- [ ] Infer popularity of seatrade from preferences, and balance popuparity between protected categories (genders? Ages?). Eg) Tubing shouldn't be JUST senior boys in all 4 blocks or something.
+- [ ] Infer popularity of seatrade from preferences, and balance popuparity between protected categories (genders? Ages?). Tubing shouldn't be JUST senior boys in all 4 blocks or something.
+- [ ] Save optimization scenario outputs to allow users to compare/jump between multiple solutions.
 
 ### Implemented
 
@@ -43,6 +44,7 @@ camper preferences with ideal seatrade assignments.
 - [x] Implement basic visualization for seatrade preferences to allow for better seatrade config.
 - [x] Allow for "temperature" knobs on optimizer cost function areas (preferences vs cabin vs age, etc).
 - [x] Increase log visibility and progress bar to expose optimization progress.
+- [x] Introduce .csv import/export to web app.
 
 ---
 

@@ -66,17 +66,17 @@ def _generate_intro_dialogue():
     cols = st.columns(3)
     with cols[0]:
         st.info(
-            "Upload your own **Seatrade preferences** for the week at camp in the **Seatrade Setup** tab.",
+            "Upload your own **Seatrade preferences** you might have to describe your week at camp in the **Seatrade Setup** tab.",
             icon=":material/camping:",
         )
     with cols[1]:
         st.success(
-            "Upload your own **Preferences per Camper** for the week in the **Camper Setup** tab.",
+            "Upload your own **Preferences per Camper** for this week's campers in the **Camper Setup** tab.",
             icon=":material/child_care:",
         )
     with cols[2]:
         st.warning(
-            "Adjust your **constraints and preferences** as needed in the **Optimization Config** tab.",
+            "Adjust your **constraints and preferences** to describe this week's goals in the **Optimization Config** tab.",
             icon=":material/tune:",
         )
     st.markdown("Happy scheduling!")

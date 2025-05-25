@@ -3,7 +3,8 @@ This file contains logic and data objects capturing the preferences of campers
 and camp staff towards seatrades.
 """
 
-from pandera import DataFrameModel
+from pandera import DataFrameModel, Field, dataframe_check
+import pandas as pd
 
 
 class SeatradesConfig(DataFrameModel):
@@ -11,21 +12,39 @@ class SeatradesConfig(DataFrameModel):
     the week."""
 
     seatrade: str
-    campers_min: int
-    campers_max: int
+    campers_min: int = Field(ge=0, coerce=True, ignore_na=False)
+    campers_max: int = Field(ge=0, coerce=True, ignore_na=False)
+
+    @dataframe_check
+    def min_campers_less_than_max_campers(cls, df: pd.DataFrame):
+        """The minimum campers should be less than or equal to the the maximum campers for a seatrade."""
+        return df["campers_min"] <= df["campers_max"]
 
 
 class CamperSeatradePreferences(DataFrameModel):
     """Objects to collect the camper preferences for which seatrade they want
     to be assigned."""
 
-    cabin: str
-    camper: str
-    gender: str
-    seatrade_1: str
-    seatrade_2: str
-    seatrade_3: str
-    seatrade_4: str
+    cabin: str = Field(ignore_na=False)
+    camper: str = Field(ignore_na=False)
+    gender: str = Field(ignore_na=False)
+    seatrade_1: str = Field(ignore_na=False)
+    seatrade_2: str = Field(ignore_na=False)
+    seatrade_3: str = Field(ignore_na=False)
+    seatrade_4: str = Field(ignore_na=False)
+
+    @dataframe_check
+    def campers_must_choose_4_unique_seatrades(cls, df: pd.DataFrame):
+        """The minimum campers should be less than or equal to the the maximum campers for a seatrade."""
+        return (
+            (df["seatrade_1"] != df["seatrade_2"])
+            & (df["seatrade_1"] != df["seatrade_2"])
+            & (df["seatrade_1"] != df["seatrade_3"])
+            & (df["seatrade_1"] != df["seatrade_4"])
+            & (df["seatrade_2"] != df["seatrade_3"])
+            & (df["seatrade_2"] != df["seatrade_4"])
+            & (df["seatrade_3"] != df["seatrade_4"])
+        )
 
 
 def add_index_to_campername(
