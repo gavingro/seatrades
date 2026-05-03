@@ -4,6 +4,7 @@ import threading
 import queue
 import time
 import re
+from typing import Literal
 
 import streamlit as st
 import pandas as pd
@@ -19,46 +20,6 @@ status_queue = queue.Queue()
 log_counter = 1
 
 
-def prepare_assignment_view(
-    df: pd.DataFrame, view: str
-) -> pd.DataFrame:
-    """
-    Prepare an assignment dataframe view with specified sorting and column order.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Longform assignments dataframe from wrangle_assignments_to_longform().
-    view : str
-        One of: "captains_book", "cabin_leaders", "seatrade_leaders".
-
-    Returns
-    -------
-    pd.DataFrame
-        Sorted and re-ordered dataframe for display.
-    """
-    column_order = [
-        "camper",
-        "cabin",
-        "block",
-        "seatrade",
-        "assignment",
-        "preference",
-    ]
-
-    if view == "captains_book":
-        # Sort by camper (upload order)
-        result = df.sort_values(by="camper", kind="stable")
-    elif view == "cabin_leaders":
-        # Sort by cabin → block → camper
-        result = df.sort_values(by=["cabin", "block", "camper"], kind="stable")
-    elif view == "seatrade_leaders":
-        # Sort by block → seatrade → cabin → camper
-        result = df.sort_values(by=["block", "seatrade", "cabin", "camper"], kind="stable")
-    else:
-        raise ValueError(f"Unknown view: {view}")
-
-    return result[column_order]
 
 
 class AssignmentsTab:
@@ -96,19 +57,16 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Assignment Data")
 
-                # View A: Captain's Book
-                st.markdown("### Captain's Book")
-                captains_book = prepare_assignment_view(df, view="captains_book")
+                st.markdown("### By Camper")
+                captains_book = prepare_assignment_view(df, view="camper")
                 st.dataframe(captains_book)
 
-                # View B: Cabin Leaders
-                st.markdown("### Cabin Leaders")
-                cabin_leaders = prepare_assignment_view(df, view="cabin_leaders")
+                st.markdown("### By Cabin")
+                cabin_leaders = prepare_assignment_view(df, view="cabin")
                 st.dataframe(cabin_leaders)
 
-                # View C: Seatrade Leaders
-                st.markdown("### Seatrade Leaders")
-                seatrade_leaders = prepare_assignment_view(df, view="seatrade_leaders")
+                st.markdown("### By Seatrade")
+                seatrade_leaders = prepare_assignment_view(df, view="seatrade")
                 st.dataframe(seatrade_leaders)
 
 
@@ -299,3 +257,44 @@ def _run_assignment_and_capture_logs(
     except Exception as e:
         print(f"Error: {e}")
         status_queue.put(-1)
+
+def prepare_assignment_view(
+    df: pd.DataFrame, view: Literal["camper", "cabin", "seatrade"]
+) -> pd.DataFrame:
+    """
+    Prepare an assignment dataframe view with specified sorting and column order.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Longform assignments dataframe from wrangle_assignments_to_longform().
+    view : str
+        One of: "camper", "cabin", "seatrade".
+
+    Returns
+    -------
+    pd.DataFrame
+        Sorted and re-ordered dataframe for display.
+    """
+    column_order = [
+        "camper",
+        "cabin",
+        "block",
+        "seatrade",
+        "assignment",
+        "preference",
+    ]
+
+    if view == "camper":
+        # Sort by camper (upload order)
+        result = df.sort_values(by="camper", kind="stable")
+    elif view == "cabin":
+        # Sort by cabin → block → camper
+        result = df.sort_values(by=["cabin", "block", "camper"], kind="stable")
+    elif view == "seatrade":
+        # Sort by block → seatrade → cabin → camper
+        result = df.sort_values(by=["block", "seatrade", "cabin", "camper"], kind="stable")
+    else:
+        raise ValueError(f"Unknown view: {view}")
+
+    return result[column_order]
