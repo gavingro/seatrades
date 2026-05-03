@@ -1,17 +1,23 @@
 # SeaTrades
 
-A Streamlit app for analyzing trading data.
+A Streamlit app for Keats Camp seatrade scheduling.
+
+## Quick Reference
+
+- **Issue tracker:** GitHub Issues
+- **Domain docs:** `CONTEXT.md` + `docs/adr/` at repo root.
+- **Contributing:** See `docs/CONTRIBUTING.md`
+
+## Setup
+
+This project uses a `.venv` virtual environment. Activate it before running Python or pytest:
+
+```bash
+source .venv/bin/activate
+```
 
 ## Agent skills
 
-### Issue tracker
-
-GitHub Issues. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context — one `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.
+- Issue tracker: `docs/agents/issue-tracker.md`
+- Triage labels: `docs/agents/triage-labels.md`
+- Domain docs: `docs/agents/domain.md`
