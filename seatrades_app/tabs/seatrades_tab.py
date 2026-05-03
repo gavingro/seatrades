@@ -43,8 +43,22 @@ class SeatradeSimulationConfigTab:
 
     def generate(self):
         st.subheader("Seatrade Preferences")
-        st.data_editor(st.session_state["seatrade_preferences"])
+        uploaded_seatrade_prefs = st.file_uploader(
+            label="Upload your preferences for this weeks seatrades.",
+            type="csv",
+            help="""Upload preferences as a .csv file. 
+            Uploaded data **must** have the same columns as seen below, and an example form can be downloaded by interacting with the displayed data below.
+            Seatrades preferences are the list of available seatrades, as well as the minimum and maximum campers that seatrade needs to run. 
+            Setting a minimum above 0 for a seatrade will ensure that seatrade is always selected.
+            """,
+        )
+        if uploaded_seatrade_prefs:
+            seatrade_prefs_data = pd.read_csv(uploaded_seatrade_prefs, index_col=None)
+            _validate_and_update_seatrade_preferences(seatrade_prefs_data)
+        st.data_editor(st.session_state["seatrade_preferences"], disabled=True)
 
+        st.write("")
+        st.write("---")
         with st.expander("No Seatrades Data? Simulate Seatrades Here."):
             with st.form(
                 "Simulation Config", border=False
@@ -105,6 +119,26 @@ def _simulate_seatrade_preferences(
     }
     seatrades_prefs = pd.DataFrame(seatrades_prefs_dict).T.reset_index(names="seatrade")
     return preferences.SeatradesConfig.validate(seatrades_prefs)
+
+
+def _validate_and_update_seatrade_preferences(seatrades_preferences: pd.DataFrame):
+    try:
+        preferences.SeatradesConfig.validate(seatrades_preferences)
+        st.session_state["seatrade_preferences"] = seatrades_preferences
+        st.toast(f"Updating Seatrade Preferences.")
+    except Exception as e:
+        with st.popover(
+            "Continuing without updating Seatrades Config. Click to see Error.",
+            icon="🚨",
+        ):
+            st.write(
+                "Uploaded file does not meet expected schema. Error is as follows:"
+            )
+            st.write(e)
+            st.toast(
+                "Continuing without updating Seatrades Config.",
+                icon="🚨",
+            )
 
 
 def _update_seatrade_simulation_config(
