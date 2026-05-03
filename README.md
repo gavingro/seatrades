@@ -58,12 +58,14 @@ Core optimization is working with CSV import. Roadmap items and bugs are tracked
 
 ### Next
 
-- Export assignments to CSV
-- Add age constraint to ensure seatrades have similar age ranges
-- Add constraint: single girl can't be alone in a seatrade of all boys (and vice versa)
+- Add 3 assignment views (by camper, by cabin, by seatrade) with CSV download
+- Diagnose why optimization fails to converge (show helpful error messages)
+- Make CSV upload templates more discoverable (explicit download buttons)
 
 ### Later
 
+- Add age constraint to ensure seatrades have similar age ranges
+- Add constraint: single girl can't be alone in a seatrade of all boys (and vice versa)
 - Save multiple optimization scenarios for comparison
 - Google Forms integration for preference collection
 - Infer seatrade popularity from preferences and balance across protected categories
@@ -73,6 +75,15 @@ Core optimization is working with CSV import. Roadmap items and bugs are tracked
 - **Frontend:** Streamlit (Python)
 - **Optimizer:** Mixed-integer linear programming (PuLP)
 - **Deployment:** Streamlit Cloud (free, public)
+
+## Deployment
+
+For MVP user testing: deploy from `main` branch, not from feature branches. This ensures:
+- Stable, tested code reaches users
+- CI/CD runs on merge to main before deployment
+- Clear release points for feedback
+
+Streamlit Cloud is configured to auto-deploy on push to `main`.
 
 ## License
 

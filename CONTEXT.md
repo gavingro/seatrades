@@ -52,6 +52,18 @@ Each cabin is assigned to one fleet for the week.
 
 A mapping of a camper to a seatrade in a specific block. Each camper gets exactly 2 assignments per week (one per block).
 
+### Assignment Export
+
+The app exports assignments in 3 formats for different audiences:
+
+| Format | Sort Order | Use Case |
+|--------|------------|----------|
+| Captain's Book | Camper (upload order) | Internal logistics and bookkeeping |
+| Cabin Leaders | Cabin → Block → Camper | Distribute to cabin leaders for their campers |
+| Seatrade Leaders | Block → Seatrade → Cabin → Camper | Day-of attendance at each seatrade session |
+
+Each export includes columns: camper, seatrade, assignment (0/1), preference (1-4), cabin, block.
+
 ## Data Flow
 
 ```mermaid
