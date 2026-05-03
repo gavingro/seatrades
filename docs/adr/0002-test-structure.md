@@ -16,11 +16,14 @@ Tests mirror code directory structure — one test file per Python module, with 
 - `seatrades/seatrades.py` → `tests/test_seatrades/test_seatrades.py`
 - `seatrades/results.py` → `tests/test_seatrades/test_results.py`
 - `seatrades_app/tabs/campers_tab.py` → `tests/test_seatrades_app/test_campers_tab.py`
+- Use Classes for stict unit tests within a function. my_function() is unit tested in a TestMyFuncion class.
 
-### Fixtures
+### Fixtures and conftest.py
 
+- Wherever possible, identify where data can be reused between unit tests, and extract to a module level fixtures.
+- Fixtures start in the same test file as they are used in (eg, test_module.py), until we identify that they can be reused in a different file as well. If there are 3 files that could use the same file-level fixtures, we extract to a conftext.py at the module level.
 - One `conftest.py` per test package, created when fixture groups diverge (3+ distinct groups)
-- Fixtures start as raw data (dict/DataFrame) inline in `conftest.py`, refactored to factories if they grow unwieldy
+- Fixtures start as raw data (dict/DataFrame) inline, refactored to factories if they grow unwieldy
 
 ### Split Trigger
 
