@@ -281,7 +281,6 @@ def prepare_assignment_view(
         "cabin",
         "block",
         "seatrade",
-        "assignment",
         "preference",
     ]
 
@@ -297,4 +296,5 @@ def prepare_assignment_view(
     else:
         raise ValueError(f"Unknown view: {view}")
 
-    return result[column_order]
+    # Filter to only assigned rows and select columns
+    return result.loc[result["assignment"] == 1.0, column_order]
