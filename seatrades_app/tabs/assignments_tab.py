@@ -4,8 +4,10 @@ import threading
 import queue
 import time
 import re
+from typing import Literal
 
 import streamlit as st
+import pandas as pd
 
 from seatrades_app.tabs.optimization_config_tab import (
     OptimizationConfig,
@@ -16,6 +18,8 @@ from seatrades.seatrades import Seatrades
 
 status_queue = queue.Queue()
 log_counter = 1
+
+
 
 
 class AssignmentsTab:
@@ -39,10 +43,31 @@ class AssignmentsTab:
                 st.write("Optimization not successful.")
             else:
                 st.write("Optimization Success. Seatrades assigned for each camper.")
-            results_chart = results.display_assignments(
-                st.session_state["assigned_seatrades"]
-            )
-            st.altair_chart(results_chart)
+                results_chart = results.display_assignments(
+                    st.session_state["assigned_seatrades"]
+                )
+                st.altair_chart(results_chart)
+
+                # Display 3 dataframe views
+                seatrades_obj = st.session_state["assigned_seatrades"]
+                df = seatrades_obj.wrangle_assignments_to_longform(
+                    seatrades_obj.assignments
+                )
+
+                st.divider()
+                st.subheader("Assignment Data")
+
+                st.markdown("### By Camper")
+                captains_book = prepare_assignment_view(df, view="camper")
+                st.dataframe(captains_book)
+
+                st.markdown("### By Cabin")
+                cabin_leaders = prepare_assignment_view(df, view="cabin")
+                st.dataframe(cabin_leaders)
+
+                st.markdown("### By Seatrade")
+                seatrade_leaders = prepare_assignment_view(df, view="seatrade")
+                st.dataframe(seatrade_leaders)
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -172,12 +197,12 @@ def _assign_seatrades(
             key="logs",
         )
         timeout_kwd_match = re.search(
-            re.compile("(Result - Stopped on time limit)"), string=log_text
+            r"(Result - Stopped on time limit)", string=log_text
         )
         timeout = timeout or timeout_kwd_match
         timeout_status = " - Timeout Reached" if timeout else ""
         actual_gap_kwd = re.search(
-            re.compile("(?<=Gap:                            )(\d+\.?\d*)"),
+            r"(?<=Gap:                            )(\d+\.?\d*)",
             string=log_text,
         )
         actual_gap = float(actual_gap_kwd.group()) if actual_gap_kwd else 1.0
@@ -232,3 +257,44 @@ def _run_assignment_and_capture_logs(
     except Exception as e:
         print(f"Error: {e}")
         status_queue.put(-1)
+
+def prepare_assignment_view(
+    df: pd.DataFrame, view: Literal["camper", "cabin", "seatrade"]
+) -> pd.DataFrame:
+    """
+    Prepare an assignment dataframe view with specified sorting and column order.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Longform assignments dataframe from wrangle_assignments_to_longform().
+    view : str
+        One of: "camper", "cabin", "seatrade".
+
+    Returns
+    -------
+    pd.DataFrame
+        Sorted and re-ordered dataframe for display.
+    """
+    column_order = [
+        "camper",
+        "cabin",
+        "block",
+        "seatrade",
+        "preference",
+    ]
+
+    if view == "camper":
+        # Sort by camper (upload order)
+        result = df.sort_values(by="camper", kind="stable")
+    elif view == "cabin":
+        # Sort by cabin → block → camper
+        result = df.sort_values(by=["cabin", "block", "camper"], kind="stable")
+    elif view == "seatrade":
+        # Sort by block → seatrade → cabin → camper
+        result = df.sort_values(by=["block", "seatrade", "cabin", "camper"], kind="stable")
+    else:
+        raise ValueError(f"Unknown view: {view}")
+
+    # Filter to only assigned rows and select columns
+    return result.loc[result["assignment"] == 1.0, column_order]
