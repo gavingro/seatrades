@@ -1,53 +1,90 @@
-# seatrades
+# Seatrades
 
 ![Github Actions Workflow Status](https://github.com/gavingro/seatrades/actions/workflows/ci.yaml/badge.svg)
 
-A tool to help assign seatrades at Keats Camps using math.
+A scheduling tool that assigns campers to seatrade activities at Keats Camps using mathematical optimization.
 
-#### [DEMO APPLICATION HOSTED ON STREAMLIT](https://keats-seatrades.streamlit.app/)
+## Demo
 
-## Objective
+Try it live: [https://keats-seatrades.streamlit.app/](https://keats-seatrades.streamlit.app/)
 
-> *Every week at Keats camp begins with hundreds of campers arriving to the island, learning about the seatrade activities they can pursue during the week, and selecting which seatrades they prefer. A scheduling captain then takes all of these preferences, parses through them, and assigns which camper gets to participate in which seatrade.*
->
-> *This process takes the Scheduling captain dozens of hours.*
->
-> *Our work here in this repository aims to provide the captain a tool to obtain optimal camper-seatrade assignments in a reasonable amount of time.*
+## What it does
 
-## Roadmap
+The scheduling captain spends dozens of hours manually assigning hundreds of campers to their preferred seatrade activities each week. Seatrades automates this by:
 
-### Currently Implementing
+1. **Configuring** seatrades (capacity, blocks, preferences)
+2. **Configuring** campers (cabin assignments, demographics, preferences)
+3. **Optimizing** assignments to maximize camper preferences while balancing cabin groupings, fleet gender balance, and age diversity
+4. **Viewing** assignment results
 
-- [ ] Improve organization, display, and export of solution outputs.
+## How to Use
 
-### To Implement
+The app has four tabs:
 
-- [ ] Introduce constraint such that only one girl cannot be assigned to a seatrade of all boys (is this actually a problem? Currently our strategy of keeping cabins together would prioritize assigning cabins together, which would include friends).
-- [ ] Introduce camper/cabin age to optimizer to ensure each seatrade is approximately the same ages.
-- [ ] Infer popularity of seatrade from preferences, and balance popuparity between protected categories (genders? Ages?). Tubing shouldn't be JUST senior boys in all 4 blocks or something.
-- [ ] Save optimization scenario outputs to allow users to compare/jump between multiple solutions.
+### 1. Assignments
+View the optimized results. The app comes pre-loaded with demo data so you can immediately see the optimizer in action. Results update automatically when configuration changes:
+- Assignments by camper
+- Assignments by cabin
+- Assignments by seatrade
 
-### Implemented
+### 2. Seatrade Setup
+Configure the available seatrade activities. Upload a CSV or use the built-in simulator. For each seatrade, set:
+- Name
+- Minimum campers (0 = optional)
+- Maximum campers per session
 
-- [x] Implement early stopping with timeouts and "good enough" solutions.
-- [x] Basic Data structures to hold Cabin preferences and Seatrades configurations.
-- [x] Basic Linear Programming Optimizer to maximize
-camper preferences with ideal seatrade assignments.
-- [x] Penalize assigning campers from the same cabin to different seatrades (eg reward friends being placed together).
-- [x] Max cabin limits on a per-seatrade basis. Penalize OR constrain having too many campers of the same cabin assigned to the same seatrade.
-- [x] Assign each camper to a block-1 or block-2 fleet time. This should be done in an optimal manner, perhaps as a first pass with a separate optimizer.
-- [x] Introduce Genders to the cabins, and ensure each fleet is has roughly the same amount of girls and boys.
-- [x] Use indicator function to count number of seatrades with non-zero member counts, and penalize for amount of total seatrades (encourage sparsity).
-- [x] Add constraints on max-seatrades-per-block.
-- [x] Create demo web app.
-- [x] Mock cabin/camper/seatrade preferences using actual keats cabins/ages/genders and actual seatrades/sizes/popularity for better tooling.
-- [x] Implement basic visualization for seatrade preferences to allow for better seatrade config.
-- [x] Allow for "temperature" knobs on optimizer cost function areas (preferences vs cabin vs age, etc).
-- [x] Increase log visibility and progress bar to expose optimization progress.
-- [x] Introduce .csv import/export to web app.
+### 3. Camper Setup
+Configure the campers and their preferences. Upload a CSV or use the built-in simulator. For each camper, set:
+- Name
+- Cabin assignment
+- Gender
+- Four seatrade preferences (required)
 
----
+### 4. Optimization Setup
+Adjust how the optimizer balances competing priorities:
+- Preference weight (how much to prioritize camper choices)
+- Cabin weight (how much to keep cabin groups together)
+- Sparsity weight (reward for fewer seatrades per fleet)
+- Timeout settings
 
-## Math
+## Current Limitations
 
-*To Come*
+- All 4 seatrade choices are required; campers cannot be assigned to an unselected seatrade
+- No age constraint implemented yet — each seatrade may have age diversity
+
+## Development Status
+
+Core optimization is working with CSV import. Roadmap items and bugs are tracked in GitHub Issues.
+
+### Next
+
+- Add 3 assignment views (by camper, by cabin, by seatrade) with CSV download
+- Diagnose why optimization fails to converge (show helpful error messages)
+- Make CSV upload templates more discoverable (explicit download buttons)
+
+### Later
+
+- Add age constraint to ensure seatrades have similar age ranges
+- Add constraint: single girl can't be alone in a seatrade of all boys (and vice versa)
+- Save multiple optimization scenarios for comparison
+- Google Forms integration for preference collection
+- Infer seatrade popularity from preferences and balance across protected categories
+
+## Tech Stack
+
+- **Frontend:** Streamlit (Python)
+- **Optimizer:** Mixed-integer linear programming (PuLP)
+- **Deployment:** Streamlit Cloud (free, public)
+
+## Deployment
+
+For MVP user testing: deploy from `main` branch, not from feature branches. This ensures:
+- Stable, tested code reaches users
+- CI/CD runs on merge to main before deployment
+- Clear release points for feedback
+
+Streamlit Cloud is configured to auto-deploy on push to `main`.
+
+## License
+
+MIT

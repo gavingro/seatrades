@@ -10,6 +10,8 @@ dependencies = [
   "pandas",
   "pulp",
   "altair",
+  "streamlit",
+  "faker"
 ]
 requires-python = ">=3.8"
 authors = [
