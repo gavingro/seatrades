@@ -6,6 +6,7 @@ import time
 import re
 
 import streamlit as st
+import pandas as pd
 
 from seatrades_app.tabs.optimization_config_tab import (
     OptimizationConfig,
@@ -16,6 +17,48 @@ from seatrades.seatrades import Seatrades
 
 status_queue = queue.Queue()
 log_counter = 1
+
+
+def prepare_assignment_view(
+    df: pd.DataFrame, view: str
+) -> pd.DataFrame:
+    """
+    Prepare an assignment dataframe view with specified sorting and column order.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Longform assignments dataframe from wrangle_assignments_to_longform().
+    view : str
+        One of: "captains_book", "cabin_leaders", "seatrade_leaders".
+
+    Returns
+    -------
+    pd.DataFrame
+        Sorted and re-ordered dataframe for display.
+    """
+    column_order = [
+        "camper",
+        "cabin",
+        "block",
+        "seatrade",
+        "assignment",
+        "preference",
+    ]
+
+    if view == "captains_book":
+        # Sort by camper (upload order)
+        result = df.sort_values(by="camper", kind="stable")
+    elif view == "cabin_leaders":
+        # Sort by cabin → block → camper
+        result = df.sort_values(by=["cabin", "block", "camper"], kind="stable")
+    elif view == "seatrade_leaders":
+        # Sort by block → seatrade → cabin → camper
+        result = df.sort_values(by=["block", "seatrade", "cabin", "camper"], kind="stable")
+    else:
+        raise ValueError(f"Unknown view: {view}")
+
+    return result[column_order]
 
 
 class AssignmentsTab:
@@ -39,10 +82,34 @@ class AssignmentsTab:
                 st.write("Optimization not successful.")
             else:
                 st.write("Optimization Success. Seatrades assigned for each camper.")
-            results_chart = results.display_assignments(
-                st.session_state["assigned_seatrades"]
-            )
-            st.altair_chart(results_chart)
+                results_chart = results.display_assignments(
+                    st.session_state["assigned_seatrades"]
+                )
+                st.altair_chart(results_chart)
+
+                # Display 3 dataframe views
+                seatrades_obj = st.session_state["assigned_seatrades"]
+                df = seatrades_obj.wrangle_assignments_to_longform(
+                    seatrades_obj.assignments
+                )
+
+                st.divider()
+                st.subheader("Assignment Data")
+
+                # View A: Captain's Book
+                st.markdown("### Captain's Book")
+                captains_book = prepare_assignment_view(df, view="captains_book")
+                st.dataframe(captains_book)
+
+                # View B: Cabin Leaders
+                st.markdown("### Cabin Leaders")
+                cabin_leaders = prepare_assignment_view(df, view="cabin_leaders")
+                st.dataframe(cabin_leaders)
+
+                # View C: Seatrade Leaders
+                st.markdown("### Seatrade Leaders")
+                seatrade_leaders = prepare_assignment_view(df, view="seatrade_leaders")
+                st.dataframe(seatrade_leaders)
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -172,12 +239,12 @@ def _assign_seatrades(
             key="logs",
         )
         timeout_kwd_match = re.search(
-            re.compile("(Result - Stopped on time limit)"), string=log_text
+            r"(Result - Stopped on time limit)", string=log_text
         )
         timeout = timeout or timeout_kwd_match
         timeout_status = " - Timeout Reached" if timeout else ""
         actual_gap_kwd = re.search(
-            re.compile("(?<=Gap:                            )(\d+\.?\d*)"),
+            r"(?<=Gap:                            )(\d+\.?\d*)",
             string=log_text,
         )
         actual_gap = float(actual_gap_kwd.group()) if actual_gap_kwd else 1.0
