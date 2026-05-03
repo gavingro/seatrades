@@ -424,19 +424,3 @@ class Seatrades:
 
         return df
 
-    def export_assignments_to_csv(self, filepath: str):
-        """
-        Exports the seatrade assignments to a CSV file at the
-        given path.
-
-        Parameters
-        ----------
-        filepath : str
-           The str to the filepath to export the assignments to.
-        """
-        if not self.assigments:
-            raise ValueError(
-                "Seatrades.assignments not found."
-                "Did you remember to run Seatrades.assign() first?"
-            )
-        raise NotImplementedError
