@@ -186,4 +186,4 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 
 ## Git Workflow
 
-Three branch prefixes: `feature/` (PRD or standalone feature), `dev/` (issue within a PRD), `fix/` (bug fix off main). All merges are squash-merge via PR. PRD branches are long-lived staging areas for QA. See [ADR 0005](docs/adr/0005-git-branching-strategy.md).
+Three branch prefixes: `feature/` (PRD-level work), `dev/` (small-scope work — sources from parent `feature/` when supporting a PRD, or `main` when standalone), `fix/` (bug fix off main). All merges are squash-merge via PR. `feature/` branches are created when the PRD issue opens, as landing zones. Any merge targeting `main` requires approval. See [ADR 0005](docs/adr/0005-git-branching-strategy.md).
