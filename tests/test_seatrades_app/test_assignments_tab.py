@@ -64,6 +64,38 @@ class TestAssignmentView:
         # Assert
         assert view == "camper"
 
+    def test_render_view_captains_book(self, sample_assigned_df):
+        """render_view with Captain's Book should return camper-sorted dataframe."""
+        from seatrades_app.tabs.assignments_tab import render_view
+
+        # Act
+        result = render_view(sample_assigned_df, "Captain's Book")
+
+        # Assert
+        assert result["camper"].tolist() == ["Alice", "Bob", "Carol", "Dave", "Zed"]
+        assert result.columns.tolist() == ["camper", "cabin", "block", "seatrade", "preference"]
+
+    def test_render_view_cabin_leaders(self, sample_assigned_df):
+        """render_view with Cabin Leaders should return cabin-sorted dataframe."""
+        from seatrades_app.tabs.assignments_tab import render_view
+
+        # Act
+        result = render_view(sample_assigned_df, "Cabin Leaders")
+
+        # Assert
+        assert result["cabin"].tolist() == ["Cabin1", "Cabin1", "Cabin2", "Cabin2", "Cabin2"]
+        assert result["camper"].tolist() == ["Bob", "Alice", "Carol", "Dave", "Zed"]
+
+    def test_render_view_seatrade_leaders(self, sample_assigned_df):
+        """render_view with Seatrade Leaders should return seatrade-sorted dataframe."""
+        from seatrades_app.tabs.assignments_tab import render_view
+
+        # Act
+        result = render_view(sample_assigned_df, "Seatrade Leaders")
+
+        # Assert
+        assert result["block"].tolist() == ["1a", "1a", "1a", "1a", "2a"]
+        assert result["seatrade"].tolist() == ["Archery", "Archery", "Climbing", "Sailing", "Kayaking"]
 
     def test_captains_book_view_sorts_by_camper(self, sample_assigned_df):
         """Captain's Book view should sort by camper with correct column order."""

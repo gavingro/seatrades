@@ -57,16 +57,16 @@ class AssignmentsTab:
                 st.subheader("Assignment Data")
 
                 # Selectbox to switch between views
-                view_options = ["camper", "cabin", "seatrade"]
+                view_options = ["Captain's Book", "Cabin Leaders", "Seatrade Leaders"]
                 selected_view = st.selectbox(
                     "View",
                     options=view_options,
-                    index=0,  # Default: Captain's Book
+                    index=0,
                     key="assignment_view_selector",
                 )
 
                 # Render selected view
-                assignment_df = prepare_assignment_view(df, selected_view)
+                assignment_df = render_view(df, selected_view)
                 st.dataframe(assignment_df)
 
 
@@ -281,8 +281,28 @@ def get_view_selection(selection: str = "Captain's Book") -> Literal["camper", "
     return mapping.get(selection, "camper")
 
 
+def render_view(df: pd.DataFrame, selection: str) -> pd.DataFrame:
+    """
+    Render a view of the assignment dataframe.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Longform assignments dataframe.
+    selection : str
+        Selectbox label: "Captain's Book", "Cabin Leaders", or "Seatrade Leaders".
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered, sorted, and re-ordered dataframe for display.
+    """
+    view = get_view_selection(selection)
+    return prepare_assignment_view(df, view)
+
+
 def prepare_assignment_view(
-    df: pd.DataFrame, view: str
+    df: pd.DataFrame, view: Literal["camper", "cabin", "seatrade"]
 ) -> pd.DataFrame:
     """
     Prepare an assignment dataframe view with specified sorting and column order.
