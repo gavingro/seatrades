@@ -6,34 +6,42 @@ The scheduling captain needs to export the seatrade assignments to share with ca
 
 ## Solution
 
-Keep the existing Altair visualization as the primary view. Add three table views using Streamlit's built-in `st.dataframe` component, each with a different sort order and column arrangement. Each dataframe includes a built-in CSV download button. Use a selectbox to switch between the three views.
+Keep the existing Altair visualization as the primary view. Add two table views using Streamlit's built-in `st.dataframe` component. Each dataframe includes a built-in CSV download button. Display both views simultaneously after the chart.
+
+### Why two views instead of three
+
+The original design had three views (Captain's Book, Cabin Leaders, Seatrade Leaders). After QA review, the Cabin Leaders view was removed because it was identical to the Captain's Book in columns — only the sort order differed, and the Captain's Book already sorts by cabin → camper, which satisfies the cabin distribution use case.
+
+### Why wide form for the Captain's Book
+
+The original long-form layout displayed one row per camper-seatrade assignment, meaning each camper appeared on multiple rows. The wide-form layout puts each camper on one row with sub-block columns (1a, 1b, 2a, 2b), making it immediately clear which fleet and seatrade each camper is assigned to. This matches how the scheduling captain actually reads and distributes the data.
+
+The sub-block notation encodes fleet assignment: "a" means the cabin does their seatrade first (then fleet time), "b" means fleet time first (then seatrade). Each camper fills exactly 2 of the 4 columns; the other 2 are blank.
 
 ## User Stories
 
 1. As a scheduling captain, I want to download assignments as a CSV file, so that I can share them with camp staff and keep records
-2. As a scheduling captain, I want to see assignments sorted by camper (in upload order), so that I can do my own logistics and bookkeeping
-3. As a scheduling captain, I want to see assignments sorted by cabin → block → camper, so that I can distribute to cabin leaders for their campers
-4. As a scheduling captain, I want to see assignments sorted by block → seatrade → cabin → camper, so that cabin leaders running the seatrade can take attendance
-5. As a scheduling captain, I want to see a clear message when optimization fails, so that I understand the result isn't usable and can investigate the configuration
-6. As a scheduling captain, I want to switch between views easily, so that I can find the right format for the right audience
+2. As a scheduling captain, I want to see each camper on one row with their seatrade assignments across sub-blocks, so that I can do my own logistics and bookkeeping
+3. As a scheduling captain, I want to see assignments sorted by block → seatrade → cabin → camper, so that cabin leaders running the seatrade can take attendance
+4. As a scheduling captain, I want to see a clear message when optimization fails, so that I understand the result isn't usable and can investigate the configuration
 
 ## Implementation Decisions
 
 - **Module modified**: `seatrades_app/tabs/assignments_tab.py`
 - **Keep existing**: Altair chart visualization (first in the tab)
-- **Add new**: Three `st.dataframe` views after the chart
-- **Navigation**: Use Streamlit `selectbox` to switch between the three dataframe views
-- **Data source**: Use existing `wrangle_assignments_to_longform()` method which produces columns: camper, seatrade, assignment, preference, cabin, block
+- **Add new**: Two `st.dataframe` views after the chart (displayed simultaneously, no selectbox)
+- **Data source**: New wide-form wrangling method for Captain's Book; existing long-form method for Seatrade Leaders
 - **CSV download**: Streamlit's `st.dataframe` automatically includes a download button; no additional code needed
-- **Dead code removal**: Removed unused `export_assignments_to_csv()` stub from `seatrades/seatrades.py`
+- **Dead code removal**: Remove `get_view_selection()`, `render_view()`, and the Cabin Leaders view path
 
 ### View Specifications
 
-| View | Sort Order | Column Order |
-|------|------------|--------------|
-| A: Captain's Book | camper (upload order) | camper, cabin, block, seatrade, assignment, preference |
-| B: Cabin Leaders | cabin → block → camper | cabin, block, camper, seatrade, assignment, preference |
-| C: Seatrade Leaders | block → seatrade → cabin → camper | block, seatrade, cabin, camper, assignment, preference |
+| View | Shape | Sort Order | Columns |
+|------|-------|------------|---------|
+| Captain's Book | Wide (1 row/camper) | cabin → camper | cabin, camper, Seatrade 1a, Seatrade 1b, Seatrade 2a, Seatrade 2b |
+| Seatrade Leaders | Long (1 row/assignment) | block → seatrade → cabin → camper | block, seatrade, camper, cabin |
+
+Sub-block columns (1a, 1b, 2a, 2b) encode fleet assignment. Each camper fills exactly 2 of 4 seatrade columns; the rest are blank. Preference ranks are omitted from both views.
 
 ### Failure Handling
 
@@ -43,12 +51,13 @@ Keep the existing Altair visualization as the primary view. Add three table view
 
 ## Testing Decisions
 
-- Test that View A preserves camper upload order
-- Test that View B groups correctly by cabin, then block
-- Test that View C groups correctly by block, then seatrade, then cabin
+- Test that Captain's Book produces wide-form with correct columns (cabin, camper, Seatrade 1a, Seatrade 1b, Seatrade 2a, Seatrade 2b)
+- Test that each camper row has exactly 2 of 4 seatrade columns filled
+- Test that Captain's Book sorts by cabin → camper
+- Test that Seatrade Leaders sorts by block → seatrade → cabin → camper
+- Test that Seatrade Leaders has no preference or assignment columns
 - Test that CSV download produces valid CSV with correct column order
 - Test that failure state shows appropriate message and no data
-- Prior art: The existing Altair chart display can serve as a reference for data correctness
 
 ## Out of Scope
 
@@ -57,9 +66,10 @@ Keep the existing Altair visualization as the primary view. Add three table view
 - Adding age constraint or gender safety constraint
 - Multiple scenario comparison
 - Help diagnosing why optimization failed (added to backlog)
+- Preference rank display in exports (available in the Altair chart)
 
 ## Further Notes
 
 - This is the minimum viable feature to make the app useful for a real scheduling captain
-- The three-view approach covers all the distribution use cases: internal bookkeeping (A), cabin distribution (B), and seatrade day-of attendance (C)
-- Column reordering ensures the sort keys are visible first when viewing the CSV in Excel
+- The two-view approach covers the two distinct distribution use cases: internal bookkeeping (Captain's Book, wide form) and day-of attendance (Seatrade Leaders, long form)
+- Wide form was chosen for the Captain's Book because it eliminates duplicate rows per camper and shows fleet assignment at a glance
