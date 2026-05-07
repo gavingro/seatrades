@@ -48,7 +48,6 @@ class AssignmentsTab:
                 )
                 st.altair_chart(results_chart)
 
-                # Display 3 dataframe views
                 seatrades_obj = st.session_state["assigned_seatrades"]
                 df = seatrades_obj.wrangle_assignments_to_longform(
                     seatrades_obj.assignments
@@ -58,7 +57,7 @@ class AssignmentsTab:
                 st.subheader("Assignment Data")
 
                 # Selectbox to switch between views
-                view_options = ["Captain's Book", "Cabin Leaders", "Seatrade Leaders"]
+                view_options = ["camper", "cabin", "seatrade"]
                 selected_view = st.selectbox(
                     "View",
                     options=view_options,
@@ -67,7 +66,7 @@ class AssignmentsTab:
                 )
 
                 # Render selected view
-                assignment_df = render_view(df, selected_view)
+                assignment_df = prepare_assignment_view(df, selected_view)
                 st.dataframe(assignment_df)
 
 
@@ -282,28 +281,8 @@ def get_view_selection(selection: str = "Captain's Book") -> Literal["camper", "
     return mapping.get(selection, "camper")
 
 
-def render_view(df: pd.DataFrame, selection: str) -> pd.DataFrame:
-    """
-    Render assignment dataframe view based on selectbox selection.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Longform assignments dataframe.
-    selection : str
-        One of: "Captain's Book", "Cabin Leaders", "Seatrade Leaders".
-
-    Returns
-    -------
-    pd.DataFrame
-        Filtered, sorted, and re-ordered dataframe for display.
-    """
-    view = get_view_selection(selection)
-    return prepare_assignment_view(df, view)
-
-
 def prepare_assignment_view(
-    df: pd.DataFrame, view: Literal["camper", "cabin", "seatrade"]
+    df: pd.DataFrame, view: str
 ) -> pd.DataFrame:
     """
     Prepare an assignment dataframe view with specified sorting and column order.
