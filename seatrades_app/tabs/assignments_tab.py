@@ -4,7 +4,7 @@ import queue
 import re
 import threading
 import time
-from typing import Literal
+from typing import List, Literal, Optional
 
 import streamlit as st
 import pandas as pd
@@ -66,7 +66,9 @@ class AssignmentsTab:
                     key="assignment_view_selector",
                 )
 
-                st.dataframe(render_view(longform_df, selected_view))
+                st.dataframe(
+                    render_view(longform_df, selected_view, camper_order=seatrades_obj.campers)
+                )
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -258,7 +260,11 @@ def _run_assignment_and_capture_logs(
         status_queue.put(-1)
 
 
-def render_view(df: pd.DataFrame, selection: Literal["Captain's Book", "Seatrade Leaders"]) -> pd.DataFrame:
+def render_view(
+    df: pd.DataFrame,
+    selection: Literal["Captain's Book", "Seatrade Leaders"],
+    camper_order: Optional[List[str]] = None,
+) -> pd.DataFrame:
     """Render the selected assignment view.
 
     Parameters
@@ -267,6 +273,9 @@ def render_view(df: pd.DataFrame, selection: Literal["Captain's Book", "Seatrade
         Longform assignments dataframe.
     selection : str
         Selectbox label: "Captain's Book" or "Seatrade Leaders".
+    camper_order : Optional[List[str]]
+        Ordered camper names for Captain's Book sort. Passed through to
+        wrangle_assignments_to_wideform. Ignored for Seatrade Leaders.
 
     Returns
     -------
@@ -274,5 +283,5 @@ def render_view(df: pd.DataFrame, selection: Literal["Captain's Book", "Seatrade
         Filtered, sorted, and re-ordered dataframe for display.
     """
     if selection == "Captain's Book":
-        return wrangle_assignments_to_wideform(df)
+        return wrangle_assignments_to_wideform(df, camper_order=camper_order)
     return prepare_seatrade_leaders(df)
