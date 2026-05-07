@@ -266,7 +266,6 @@ def get_view_selection(selection: str = "Captain's Book") -> Literal["camper", "
     ----------
     selection : str
         One of: "Captain's Book", "Cabin Leaders", "Seatrade Leaders".
-        Default: "Captain's Book".
 
     Returns
     -------
