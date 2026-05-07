@@ -57,17 +57,18 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Assignment Data")
 
-                st.markdown("### By Camper")
-                captains_book = prepare_assignment_view(df, view="camper")
-                st.dataframe(captains_book)
+                # Selectbox to switch between views
+                view_options = ["Captain's Book", "Cabin Leaders", "Seatrade Leaders"]
+                selected_view = st.selectbox(
+                    "View",
+                    options=view_options,
+                    index=0,  # Default: Captain's Book
+                    key="assignment_view_selector",
+                )
 
-                st.markdown("### By Cabin")
-                cabin_leaders = prepare_assignment_view(df, view="cabin")
-                st.dataframe(cabin_leaders)
-
-                st.markdown("### By Seatrade")
-                seatrade_leaders = prepare_assignment_view(df, view="seatrade")
-                st.dataframe(seatrade_leaders)
+                # Render selected view
+                assignment_df = render_view(df, selected_view)
+                st.dataframe(assignment_df)
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -257,6 +258,49 @@ def _run_assignment_and_capture_logs(
     except Exception as e:
         print(f"Error: {e}")
         status_queue.put(-1)
+
+def get_view_selection(selection: str = "Captain's Book") -> Literal["camper", "cabin", "seatrade"]:
+    """
+    Convert selectbox label to view name.
+
+    Parameters
+    ----------
+    selection : str
+        One of: "Captain's Book", "Cabin Leaders", "Seatrade Leaders".
+        Default: "Captain's Book".
+
+    Returns
+    -------
+    Literal["camper", "cabin", "seatrade"]
+        View name for prepare_assignment_view().
+    """
+    mapping = {
+        "Captain's Book": "camper",
+        "Cabin Leaders": "cabin",
+        "Seatrade Leaders": "seatrade",
+    }
+    return mapping.get(selection, "camper")
+
+
+def render_view(df: pd.DataFrame, selection: str) -> pd.DataFrame:
+    """
+    Render assignment dataframe view based on selectbox selection.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Longform assignments dataframe.
+    selection : str
+        One of: "Captain's Book", "Cabin Leaders", "Seatrade Leaders".
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered, sorted, and re-ordered dataframe for display.
+    """
+    view = get_view_selection(selection)
+    return prepare_assignment_view(df, view)
+
 
 def prepare_assignment_view(
     df: pd.DataFrame, view: Literal["camper", "cabin", "seatrade"]

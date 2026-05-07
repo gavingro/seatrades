@@ -14,6 +14,89 @@ class TestAssignmentView:
         assert result["camper"].tolist() == ["Alice", "Carol"]
         assert "assignment" not in result.columns
 
+    def test_get_view_name_default(self):
+        """Default view selection should be Captain's Book."""
+        from seatrades_app.tabs.assignments_tab import get_view_selection
+
+        # Act
+        view = get_view_selection()
+
+        # Assert
+        assert view == "camper"
+
+    def test_get_view_name_captains_book(self):
+        """Captain's Book selection should return camper view."""
+        from seatrades_app.tabs.assignments_tab import get_view_selection
+
+        # Act
+        view = get_view_selection("Captain's Book")
+
+        # Assert
+        assert view == "camper"
+
+    def test_get_view_name_cabin_leaders(self):
+        """Cabin Leaders selection should return cabin view."""
+        from seatrades_app.tabs.assignments_tab import get_view_selection
+
+        # Act
+        view = get_view_selection("Cabin Leaders")
+
+        # Assert
+        assert view == "cabin"
+
+    def test_get_view_name_seatrade_leaders(self):
+        """Seatrade Leaders selection should return seatrade view."""
+        from seatrades_app.tabs.assignments_tab import get_view_selection
+
+        # Act
+        view = get_view_selection("Seatrade Leaders")
+
+        # Assert
+        assert view == "seatrade"
+
+    def test_get_view_name_invalid_falls_back_to_camper(self):
+        """Invalid selection should fall back to camper view."""
+        from seatrades_app.tabs.assignments_tab import get_view_selection
+
+        # Act
+        view = get_view_selection("Invalid Option")
+
+        # Assert
+        assert view == "camper"
+
+    def test_render_view_captains_book(self, sample_assigned_df):
+        """Should render Captain's Book view with correct columns."""
+        from seatrades_app.tabs.assignments_tab import render_view
+
+        # Act
+        result = render_view(sample_assigned_df, "Captain's Book")
+
+        # Assert
+        assert result.columns.tolist() == ["camper", "cabin", "block", "seatrade", "preference"]
+        assert result["camper"].tolist() == ["Alice", "Bob", "Carol", "Dave", "Zed"]
+
+    def test_render_view_cabin_leaders(self, sample_assigned_df):
+        """Should render Cabin Leaders view with correct columns."""
+        from seatrades_app.tabs.assignments_tab import render_view
+
+        # Act
+        result = render_view(sample_assigned_df, "Cabin Leaders")
+
+        # Assert
+        assert result.columns.tolist() == ["camper", "cabin", "block", "seatrade", "preference"]
+        assert result["cabin"].tolist() == ["Cabin1", "Cabin1", "Cabin2", "Cabin2", "Cabin2"]
+
+    def test_render_view_seatrade_leaders(self, seatrade_sort_df):
+        """Should render Seatrade Leaders view with correct columns."""
+        from seatrades_app.tabs.assignments_tab import render_view
+
+        # Act
+        result = render_view(seatrade_sort_df, "Seatrade Leaders")
+
+        # Assert
+        assert result.columns.tolist() == ["camper", "cabin", "block", "seatrade", "preference"]
+        assert result["block"].tolist() == ["1a", "1a", "1a", "2a"]
+
     def test_captains_book_view_sorts_by_camper(self, sample_assigned_df):
         """Captain's Book view should sort by camper with correct column order."""
         # Act
