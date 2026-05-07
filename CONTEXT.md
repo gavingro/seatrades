@@ -52,6 +52,14 @@ Each cabin is assigned to one fleet for the week.
 
 A mapping of a camper to a seatrade in a specific block. Each camper gets exactly 2 assignments per week (one per block).
 
+### AssignmentSolution
+
+The resolved output of solving a seatrade scheduling problem. Produced by wrangling the solver's raw binary decision variables into a long-form DataFrame with columns: camper, seatrade, block, preference, cabin, assignment. Owned by the core package, not the problem builder or the UI.
+
+### SolverStatus
+
+Tracks the state of an in-progress or completed solve. Fields: percent, message, state (running/complete/error). Owned by the service layer, read by the UI via `@st.fragment` polling. Currently reports infeasibility as a message only; future work to add structured constraint-conflict diagnostics.
+
 ### Assignment Export
 
 The app exports assignments in 3 formats for different audiences:
@@ -68,44 +76,39 @@ Each export includes columns: camper, seatrade, assignment (0/1), preference (1-
 
 ```mermaid
 flowchart LR
-    subgraph User_Input [User Input Layer]
-        UI[Streamlit UI]
+    subgraph UI [app/ — Presentation Layer]
+        Upload[File Upload / Simulation Forms]
+        Fragment["@st.fragment polling SolverStatus"]
+        Display[Render AssignmentSolution + Charts]
     end
-    
-    subgraph State_Layer [Session State]
-        direction TB
-        S1[seatrade_simulation_config]
-        S2[camper_simulation_config]
-        S3[optimization_config]
+
+    subgraph Service [seatrades/ — Service Layer]
+        Sim[simulation.py: Generate Mock Data]
+        Val[preferences.py: Validate Inputs]
+        Prob[SchedulingProblem: Build MILP]
+        Solve[solver.py: Solve + SolverStatus]
+        Result[results.py: AssignmentSolution]
     end
-    
-    subgraph Solver_Layer [Optimization Engine]
-        SA[Seatrades.assign]
-        PULP[PuLP Solver]
-    end
-    
-    subgraph Output_Layer [Output]
-        DF[(Assignments DataFrame)]
-        Display[Assignments Tab Display]
-    end
-    
-    UI --> State_Layer
-    State_Layer -->|preferences| SA
-    SA -->|MILP Problem| PULP
-    PULP -->|solution| DF
-    DF --> Display
-    
-    classDef userInput fill:#e1f5fe,stroke:#0277bd,stroke-width:2px,shape:sloped-rectangle;
-    classDef state fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,shape:cylinder;
-    classDef process fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
-    classDef solver fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,shape:subprocess;
-    classDef output fill:#fce4ec,stroke:#c2185b,stroke-width:2px,shape:display;
-    
-    class UI userInput;
-    class S1,S2,S3 state;
-    class SA process;
-    class PULP solver;
-    class DF,Display output;
+
+    Upload --> Sim
+    Sim --> Val
+    Val --> Prob
+    Prob -->|pulp.LpProblem| Solve
+    Solve -->|AssignmentSolution| Result
+    Solve -->|SolverStatus| Fragment
+    Result --> Display
+```
+
+### Pipeline (happy path)
+
+```
+1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation
+2. Input DataFrames validated → seatrades.preferences (Pandera + cross-ref)
+3. SchedulingProblem(prefs, config) → holds parsed state
+4. problem.build() → pulp.LpProblem
+5. solver.run(problem, config) → AssignmentSolution + SolverStatus
+6. UI reads SolverStatus via @st.fragment, displays AssignmentSolution
+7. AssignmentSolution.export(view="camper"|"cabin"|"seatrade") → formatted DataFrame
 ```
 
 ## Optimization Problem
@@ -121,9 +124,66 @@ The scheduler solves a mixed-integer linear programming problem with these const
 7. **Fleet balance** - Cabins split evenly between fleets
 8. **Gender balance** - Boys/girls cabins split evenly between fleets
 
+## Module Boundaries
+
+| Package | Responsibility |
+|---------|---------------|
+| `seatrades/` | Service layer — domain logic, optimization, simulation, results |
+| `app/` | Presentation layer — Streamlit UI only, no business logic (rename from `seatrades_app/`) |
+
+### app/ modules
+
+| Module | Owns |
+|--------|------|
+| `app.py` | Entry point, tab layout |
+| `state.py` | Constants for all session state keys (low priority, replace scattered strings) |
+| `tabs/` | Thin Streamlit presentation — widgets, forms, file uploads. Call service functions, display results. |
+
+### seatrades/ modules
+
+| Module | Owns |
+|--------|------|
+| `scheduling_problem.py` | `SchedulingProblem` — holds parsed domain state, builds MILP (variables, constraints, objective). Does NOT solve. |
+| `solver.py` | Orchestrate solve, track progress (`SolverStatus`), background thread |
+| `results.py` | `AssignmentSolution` — wrangle + export views |
+| `visualization.py` | Build `alt.Chart` specs from `AssignmentSolution`. No Streamlit dependency — renders in any Altair-capable frontend. |
+| `preferences.py` | Pandera schemas + cross-reference validation (e.g., camper prefs must name seatrades that exist) |
+| `simulation.py` | Generate mock camper + seatrade data |
+| `config.py` | `OptimizationConfig`, `CamperSimulationConfig`, `SeatradeSimulationConfig` |
+
+## Architecture Grilling — Decisions Log
+
+Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
+
+1. **`Seatrades` class → split into SchedulingProblem + solver + results.** Problem builder owns variables/constraints/objective. Solving is separate. Wrangling is separate. `SchedulingProblem` is stateful (holds parsed domain state) because the wrangler needs the same state — avoids re-parsing or building a second context object.
+
+2. **Solver produces `AssignmentSolution`, not raw pulp object.** Clean boundary: problem goes in, solution comes out. No leaking PuLP internals.
+
+3. **Service function `solver.run(problem, config) -> AssignmentSolution + SolverStatus`.** UI calls one function. No solver orchestration in the presentation layer.
+
+4. **Solver monitoring splits: service layer runs solver + reads CBC log, UI polls `SolverStatus` via `@st.fragment`.** PuLP/CBC doesn't support mid-solve callbacks — log file is the only progress signal. `@st.fragment(run_every=...)` replaces manual `while`+`sleep` polling.
+
+5. **Simulation data generation moves to service layer** (`seatrades/simulation.py`). It's domain logic, not UI.
+
+6. **Cross-reference validation moves to service layer** (`seatrades/preferences.py`). Dynamic Pandera subclass generation for checking camper prefs against available seatrades becomes a function that takes `available_seatrades` as a parameter.
+
+7. **Config dataclasses move to service layer** (`seatrades/config.py`). `OptimizationConfig`, `CamperSimulationConfig`, `SeatradeSimulationConfig` don't belong in UI files.
+
+8. **Infeasibility: report only for now (A), diagnose later (B).** `SolverStatus` reports error state + message. Structured constraint-conflict diagnostics are future work.
+
+9. **Session state keys: centralize in `app/state.py`** (low priority). Replaces scattered string literals for IDE support and typo protection.
+
+10. **Rename `seatrades_app/` → `app/`**. Follows Streamlit convention, avoids naming confusion with `seatrades/` service package.
+
+11. **Altair chart → separate `seatrades/visualization.py` module.** Chart is neither presentation layer nor data model — it's a visualization spec that consumes `AssignmentSolution`. Stays in service layer (no Streamlit dep) so it's reusable outside the app (API, notebooks, other frontends). `results.py` stays clean: data model + export only. `app/` renders via `st.altair_chart()`.
+
 ## Tech Stack
 
 - **UI:** Streamlit
 - **Optimizer:** PuLP (mixed-integer linear programming)
 - **Validation:** Pandera (DataFrame schemas)
 - **Deployment:** Streamlit Cloud
+
+## Git Workflow
+
+Three branch prefixes: `feature/` (PRD or standalone feature), `dev/` (issue within a PRD), `fix/` (bug fix off main). All merges are squash-merge via PR. PRD branches are long-lived staging areas for QA. See [ADR 0005](docs/adr/0005-git-branching-strategy.md).
