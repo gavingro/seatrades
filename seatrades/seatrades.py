@@ -474,9 +474,6 @@ def wrangle_assignments_to_wideform(
             raise ValueError(
                 f"camper_order is missing campers present in wideform: {sorted(missing)}"
             )
-        pivot = pivot.reindex(camper_order, level="camper")
-    else:
-        pivot = pivot.sort_values(by=["cabin", "camper"], kind="stable")
 
     pivot = pivot.reset_index()
 
@@ -484,6 +481,8 @@ def wrangle_assignments_to_wideform(
         camper_sort_key = {name: i for i, name in enumerate(camper_order)}
         pivot["_sort"] = pivot["camper"].map(camper_sort_key)
         pivot = pivot.sort_values(by="_sort", kind="stable").drop(columns="_sort")
+    else:
+        pivot = pivot.sort_values(by=["cabin", "camper"], kind="stable")
 
     # Reorder final columns
     pivot = pivot[["cabin", "camper"] + col_order]
