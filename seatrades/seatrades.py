@@ -424,3 +424,39 @@ class Seatrades:
 
         return df
 
+
+def wrangle_assignments_to_wideform(longform_df: pd.DataFrame) -> pd.DataFrame:
+    """Pivot long-form assignments to wide-form Captain's Book.
+
+    1 row per camper. Columns: cabin, camper, Seatrade 1a, Seatrade 1b,
+    Seatrade 2a, Seatrade 2b. Each camper fills exactly 2 of the 4 seatrade
+    columns (one per block); the rest are blank.
+    """
+    assigned = longform_df[longform_df["assignment"] == 1.0].copy()
+    assigned["col"] = "Seatrade " + assigned["block"]
+    assigned["val"] = assigned["seatrade"]
+
+    pivot = assigned.pivot_table(
+        index=["cabin", "camper"],
+        columns="col",
+        values="val",
+        aggfunc="first",
+        fill_value="",
+    )
+
+    # Enforce column order
+    col_order = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
+    for col in col_order:
+        if col not in pivot.columns:
+            pivot[col] = ""
+    pivot = pivot[col_order]
+
+    # Sort by cabin → camper, flatten multi-index
+    pivot = pivot.sort_values(by=["cabin", "camper"], kind="stable")
+    pivot = pivot.reset_index()
+
+    # Reorder final columns
+    pivot = pivot[["cabin", "camper"] + col_order]
+
+    return pivot
+

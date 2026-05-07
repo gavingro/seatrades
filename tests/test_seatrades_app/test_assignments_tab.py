@@ -1,103 +1,51 @@
 """Tests for the assignments_tab module."""
 import pytest
-from seatrades_app.tabs.assignments_tab import prepare_assignment_view
+from seatrades_app.tabs.assignments_tab import prepare_seatrade_leaders
 
 
-class TestAssignmentView:
-    def test_filters_unassigned_rows(self, sample_mixed_assignment_df):
-        result = prepare_assignment_view(sample_mixed_assignment_df, view="camper")
+class TestRemovedViews:
+    def test_prepare_assignment_view_removed(self):
+        """prepare_assignment_view should no longer be importable."""
+        with pytest.raises(ImportError):
+            from seatrades_app.tabs.assignments_tab import prepare_assignment_view  # noqa: F401
 
-        assert len(result) == 2
-        assert result["camper"].tolist() == ["Alice", "Carol"]
+    def test_get_view_selection_removed(self):
+        """get_view_selection should no longer be importable."""
+        with pytest.raises(ImportError):
+            from seatrades_app.tabs.assignments_tab import get_view_selection  # noqa: F401
+
+    def test_render_view_removed(self):
+        """render_view should no longer be importable."""
+        with pytest.raises(ImportError):
+            from seatrades_app.tabs.assignments_tab import render_view  # noqa: F401
+
+
+class TestSeatradeLeaders:
+    def test_columns_are_block_seatrade_camper_cabin(self, seatrade_sort_df):
+        """Seatrade Leaders should have columns: block, seatrade, camper, cabin."""
+        result = prepare_seatrade_leaders(seatrade_sort_df)
+        assert result.columns.tolist() == ["block", "seatrade", "camper", "cabin"]
+
+    def test_no_preference_or_assignment_columns(self, seatrade_sort_df):
+        """Seatrade Leaders should not include preference or assignment columns."""
+        result = prepare_seatrade_leaders(seatrade_sort_df)
+        assert "preference" not in result.columns
         assert "assignment" not in result.columns
 
-    def test_get_view_name_default(self):
-        """Default view selection should be Captain's Book."""
-        from seatrades_app.tabs.assignments_tab import get_view_selection
+    def test_filters_unassigned_rows(self, sample_mixed_assignment_df):
+        """Should filter out rows where assignment == 0."""
+        result = prepare_seatrade_leaders(sample_mixed_assignment_df)
+        # Only Alice and Carol (assigned campers)
+        assert result["camper"].tolist() == ["Alice", "Carol"]
 
-        view = get_view_selection()
-
-        assert view == "camper"
-
-    def test_get_view_name_captains_book(self):
-        from seatrades_app.tabs.assignments_tab import get_view_selection
-
-        view = get_view_selection("Captain's Book")
-
-        assert view == "camper"
-
-    def test_get_view_name_cabin_leaders(self):
-        from seatrades_app.tabs.assignments_tab import get_view_selection
-
-        view = get_view_selection("Cabin Leaders")
-
-        assert view == "cabin"
-
-    def test_get_view_name_seatrade_leaders(self):
-        from seatrades_app.tabs.assignments_tab import get_view_selection
-
-        view = get_view_selection("Seatrade Leaders")
-
-        assert view == "seatrade"
-
-    def test_get_view_name_invalid_falls_back_to_camper(self):
-        from seatrades_app.tabs.assignments_tab import get_view_selection
-
-        view = get_view_selection("Invalid Option")
-
-        assert view == "camper"
-
-    def test_render_view_captains_book(self, sample_assigned_df):
-        from seatrades_app.tabs.assignments_tab import render_view
-
-        result = render_view(sample_assigned_df, "Captain's Book")
-
-        assert result["camper"].tolist() == ["Alice", "Bob", "Carol", "Dave", "Zed"]
-        assert result.columns.tolist() == ["camper", "cabin", "block", "seatrade", "preference"]
-
-    def test_render_view_cabin_leaders(self, sample_assigned_df):
-        from seatrades_app.tabs.assignments_tab import render_view
-
-        result = render_view(sample_assigned_df, "Cabin Leaders")
-
-        assert result["cabin"].tolist() == ["Cabin1", "Cabin1", "Cabin2", "Cabin2", "Cabin2"]
-        assert result["camper"].tolist() == ["Bob", "Alice", "Carol", "Dave", "Zed"]
-
-    def test_render_view_seatrade_leaders(self, sample_assigned_df):
-        from seatrades_app.tabs.assignments_tab import render_view
-
-        result = render_view(sample_assigned_df, "Seatrade Leaders")
-
-        assert result["block"].tolist() == ["1a", "1a", "1a", "1a", "2a"]
-        assert result["seatrade"].tolist() == ["Archery", "Archery", "Climbing", "Sailing", "Kayaking"]
-
-    def test_captains_book_view_sorts_by_camper(self, sample_assigned_df):
-        """Captain's Book view should sort by camper with correct column order."""
-        result = prepare_assignment_view(sample_assigned_df, view="camper")
-
-        assert result.columns.tolist() == [
-            "camper",
-            "cabin",
-            "block",
-            "seatrade",
-            "preference",
-        ]
-        assert result["camper"].tolist() == ["Alice", "Bob", "Carol", "Dave", "Zed"]
-
-    def test_sort_by_cabin(self, sample_assigned_df):
-        """Cabin Leaders view should sort by cabin → block → camper."""
-        result = prepare_assignment_view(sample_assigned_df, view="cabin")
-
-        assert result["cabin"].tolist() == ["Cabin1", "Cabin1", "Cabin2", "Cabin2", "Cabin2"]
-        assert result["block"].tolist() == ["1a", "2a", "1a", "1a", "1a"]
-        assert result["camper"].tolist() == ["Bob", "Alice", "Carol", "Dave", "Zed"]
-
-    def test_seatrade_leaders_view_sorts_by_block_seatrade_cabin_camper(
-        self, seatrade_sort_df
-    ):
-        result = prepare_assignment_view(seatrade_sort_df, view="seatrade")
-
+    def test_sorts_by_block_seatrade_cabin_camper(self, seatrade_sort_df):
+        """Seatrade Leaders sorted by block → seatrade → cabin → camper."""
+        result = prepare_seatrade_leaders(seatrade_sort_df)
+        # Block 1a before 2a
         assert result["block"].tolist() == ["1a", "1a", "1a", "2a"]
+        # Within 1a: Archery before Climbing (alphabetically)
         assert result["seatrade"].tolist() == ["Archery", "Archery", "Climbing", "Archery"]
+        # Within 1a+Archery: Cabin1 before Cabin2
         assert result["cabin"].tolist() == ["Cabin1", "Cabin2", "Cabin1", "Cabin2"]
+        # Within each group, campers sorted alphabetically
         assert result["camper"].tolist() == ["Alice", "Carol", "Bob", "Zed"]
