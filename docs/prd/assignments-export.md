@@ -6,7 +6,7 @@ The scheduling captain needs to export the seatrade assignments to share with ca
 
 ## Solution
 
-Keep the existing Altair visualization as the primary view. Add two table views using Streamlit's built-in `st.dataframe` component. Each dataframe includes a built-in CSV download button. Display both views simultaneously after the chart.
+Keep the existing Altair visualization as the primary view. Add two table views using Streamlit's built-in `st.dataframe` component. Each dataframe includes a built-in CSV download button. Use a selectbox to switch between the two views after the chart.
 
 ### Why two views instead of three
 
@@ -29,10 +29,10 @@ The sub-block notation encodes fleet assignment: "a" means the cabin does their 
 
 - **Module modified**: `seatrades_app/tabs/assignments_tab.py`
 - **Keep existing**: Altair chart visualization (first in the tab)
-- **Add new**: Two `st.dataframe` views after the chart (displayed simultaneously, no selectbox)
+- **Add new**: Two `st.dataframe` views after the chart (selectbox to switch between them)
 - **Data source**: New wide-form wrangling method for Captain's Book; existing long-form method for Seatrade Leaders
 - **CSV download**: Streamlit's `st.dataframe` automatically includes a download button; no additional code needed
-- **Dead code removal**: Remove `get_view_selection()`, `render_view()`, and the Cabin Leaders view path
+- **Dead code removal**: Remove `get_view_selection()` and the Cabin Leaders view path
 
 ### View Specifications
 

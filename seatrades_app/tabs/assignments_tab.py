@@ -4,6 +4,7 @@ import queue
 import re
 import threading
 import time
+from typing import Literal
 
 import streamlit as st
 import pandas as pd
@@ -57,11 +58,15 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Assignment Data")
 
-                st.markdown("### Captain's Book")
-                st.dataframe(wrangle_assignments_to_wideform(longform_df))
+                view_options = ["Captain's Book", "Seatrade Leaders"]
+                selected_view = st.selectbox(
+                    "View",
+                    options=view_options,
+                    index=0,
+                    key="assignment_view_selector",
+                )
 
-                st.markdown("### Seatrade Leaders")
-                st.dataframe(prepare_seatrade_leaders(longform_df))
+                st.dataframe(render_view(longform_df, selected_view))
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -251,3 +256,23 @@ def _run_assignment_and_capture_logs(
     except Exception as e:
         print(f"Error: {e}")
         status_queue.put(-1)
+
+
+def render_view(df: pd.DataFrame, selection: Literal["Captain's Book", "Seatrade Leaders"]) -> pd.DataFrame:
+    """Render the selected assignment view.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Longform assignments dataframe.
+    selection : str
+        Selectbox label: "Captain's Book" or "Seatrade Leaders".
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered, sorted, and re-ordered dataframe for display.
+    """
+    if selection == "Captain's Book":
+        return wrangle_assignments_to_wideform(df)
+    return prepare_seatrade_leaders(df)
