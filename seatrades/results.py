@@ -2,13 +2,10 @@
 This file contains tools to display the results of seatrades assignment.
 """
 
-import logging
-
 import altair as alt
 
 from seatrades.seatrades import Seatrades
 
-logger = logging.getLogger(__name__)
 alt.data_transformers.disable_max_rows()
 
 
@@ -22,9 +19,9 @@ def display_assignments(seatrades: Seatrades) -> alt.Chart:
             "Did you remember to run Seatrades.assign() first?"
         )
     elif seatrades.status < 1:
-        logging.warning(
+        raise ValueError(
             f"Seatrades status code ({seatrades.status}) indicates that "
-            "problem was not sucessfully solved. Use caution in interpretation of results."
+            "problem was not successfully solved. Refusing to render untrustworthy results."
         )
 
     df = seatrades.wrangle_assignments_to_longform(seatrades.assignments)
