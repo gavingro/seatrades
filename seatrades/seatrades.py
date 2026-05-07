@@ -1,9 +1,18 @@
 """
 This file contains tools to assign seatrades to campers based on their preferences.
+
+TODO: Extract FLEETS constant — "1a","1b","2a","2b" is duplicated between
+Seatrades.__init__ (self.fleets) and wrangle_assignments_to_wideform (col_order).
+Derive CAPTAINS_BOOK_COLUMNS from a single source of truth.
+
+TODO: Resolve wideform/longform placement inconsistency — wrangle_assignments_to_wideform
+is a module-level function while wrangle_assignments_to_longform is a method on Seatrades.
+Both are "wrangle assignments to X form" — pick one pattern (either both methods or both
+standalone functions) and apply consistently.
 """
 
-from typing import Dict, Literal, List, Optional
 import logging
+from typing import Dict, Literal, List, Optional
 
 import pulp
 import pandas as pd
@@ -423,4 +432,53 @@ class Seatrades:
         df[["block", "seatrade"]] = df["seatrade"].str.split("_", expand=True)
 
         return df
+
+
+def wrangle_assignments_to_wideform(longform_df: pd.DataFrame) -> pd.DataFrame:
+    """Pivot long-form assignments to wide-form Captain's Book.
+
+    1 row per camper. Columns: cabin, camper, Seatrade 1a, Seatrade 1b,
+    Seatrade 2a, Seatrade 2b. Each camper fills exactly 2 of the 4 seatrade
+    columns (one per block); the rest are blank.
+    """
+    assigned = longform_df[longform_df["assignment"] == 1.0].copy()
+    assigned["block_label"] = "Seatrade " + assigned["block"]
+    assigned["seatrade_name"] = assigned["seatrade"]
+
+    pivot = assigned.pivot_table(
+        index=["cabin", "camper"],
+        columns="block_label",
+        values="seatrade_name",
+        aggfunc="first",
+        fill_value="",
+    )
+
+    # Enforce column order
+    col_order = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
+    for col in col_order:
+        if col not in pivot.columns:
+            pivot[col] = ""
+    pivot = pivot[col_order]
+
+    # Sort by cabin → camper, flatten multi-index
+    pivot = pivot.sort_values(by=["cabin", "camper"], kind="stable")
+    pivot = pivot.reset_index()
+
+    # Reorder final columns
+    pivot = pivot[["cabin", "camper"] + col_order]
+
+    return pivot
+
+
+def prepare_seatrade_leaders(longform_df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare Seatrade Leaders view: block, seatrade, camper, cabin.
+
+    Filters to assigned rows only, drops preference/assignment columns.
+    Sorted by block → seatrade → cabin → camper.
+    """
+    assigned = longform_df[longform_df["assignment"] == 1.0]
+    sorted_assigned = assigned.sort_values(
+        by=["block", "seatrade", "cabin", "camper"], kind="stable"
+    )
+    return sorted_assigned[["block", "seatrade", "camper", "cabin"]].reset_index(drop=True)
 
