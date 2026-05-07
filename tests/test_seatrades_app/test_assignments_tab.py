@@ -1,4 +1,8 @@
-"""Tests for the assignments_tab module."""
+"""Tests for the assignments_tab module.
+
+TODO: Remove TestRemovedViews after next release — these ImportError guards are
+transitional and will become dead weight once the old function names are fully gone.
+"""
 import pytest
 
 

@@ -1,5 +1,14 @@
 """
 This file contains tools to assign seatrades to campers based on their preferences.
+
+TODO: Extract FLEETS constant — "1a","1b","2a","2b" is duplicated between
+Seatrades.__init__ (self.fleets) and wrangle_assignments_to_wideform (col_order).
+Derive CAPTAINS_BOOK_COLUMNS from a single source of truth.
+
+TODO: Resolve wideform/longform placement inconsistency — wrangle_assignments_to_wideform
+is a module-level function while wrangle_assignments_to_longform is a method on Seatrades.
+Both are "wrangle assignments to X form" — pick one pattern (either both methods or both
+standalone functions) and apply consistently.
 """
 
 import logging

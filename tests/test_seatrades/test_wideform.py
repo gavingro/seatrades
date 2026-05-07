@@ -1,4 +1,9 @@
-"""Tests for Seatrades.wrangle_assignments_to_wideform."""
+"""Tests for Seatrades.wrangle_assignments_to_wideform.
+
+TODO: Add a test fixture with mixed assigned/unassigned rows (assignment == 0.0) to
+verify wrangle_assignments_to_wideform correctly filters them out. Currently only
+prepare_seatrade_leaders has this test coverage via sample_mixed_assignment_df.
+"""
 import pandas as pd
 import pytest
 
