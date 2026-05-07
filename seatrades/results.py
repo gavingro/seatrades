@@ -15,7 +15,7 @@ def display_assignments(seatrades: Seatrades) -> alt.Chart:
     """
     if seatrades.status == 0:
         raise ValueError(
-            "Seatrades.assignments (and status code) not found."
+            "Seatrades.assignments (and status code) not found. "
             "Did you remember to run Seatrades.assign() first?"
         )
     elif seatrades.status < 1:
