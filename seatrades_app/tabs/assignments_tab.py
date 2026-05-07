@@ -55,13 +55,16 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Assignment Data")
 
-                st.markdown("### Captain's Book")
-                captains_book = wrangle_assignments_to_wideform(df)
-                st.dataframe(captains_book)
+                view_options = ["Captain's Book", "Seatrade Leaders"]
+                selected_view = st.selectbox(
+                    "View",
+                    options=view_options,
+                    index=0,
+                    key="assignment_view_selector",
+                )
 
-                st.markdown("### Seatrade Leaders")
-                seatrade_leaders = prepare_seatrade_leaders(df)
-                st.dataframe(seatrade_leaders)
+                assignment_df = render_view(df, selected_view)
+                st.dataframe(assignment_df)
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -251,6 +254,26 @@ def _run_assignment_and_capture_logs(
     except Exception as e:
         print(f"Error: {e}")
         status_queue.put(-1)
+
+def render_view(df: pd.DataFrame, selection: str) -> pd.DataFrame:
+    """Render the selected assignment view.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Longform assignments dataframe.
+    selection : str
+        Selectbox label: "Captain's Book" or "Seatrade Leaders".
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered, sorted, and re-ordered dataframe for display.
+    """
+    if selection == "Captain's Book":
+        return wrangle_assignments_to_wideform(df)
+    return prepare_seatrade_leaders(df)
+
 
 def prepare_seatrade_leaders(df: pd.DataFrame) -> pd.DataFrame:
     """Prepare Seatrade Leaders view: block, seatrade, camper, cabin.
