@@ -1,6 +1,7 @@
 """Tests for seatrades/results.py."""
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from seatrades.results import display_assignments
 

@@ -18,10 +18,10 @@ def display_assignments(seatrades: Seatrades) -> alt.Chart:
             "Seatrades.assignments (and status code) not found. "
             "Did you remember to run Seatrades.assign() first?"
         )
-    elif seatrades.status < 1:
+    elif seatrades.status < 0:
         raise ValueError(
             f"Seatrades status code ({seatrades.status}) indicates that "
-            "problem was not successfully solved. Refusing to render untrustworthy results."
+            "the problem was not successfully solved. Refusing to render untrustworthy results."
         )
 
     df = seatrades.wrangle_assignments_to_longform(seatrades.assignments)
