@@ -460,3 +460,16 @@ def wrangle_assignments_to_wideform(longform_df: pd.DataFrame) -> pd.DataFrame:
 
     return pivot
 
+
+def prepare_seatrade_leaders(longform_df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare Seatrade Leaders view: block, seatrade, camper, cabin.
+
+    Filters to assigned rows only, drops preference/assignment columns.
+    Sorted by block → seatrade → cabin → camper.
+    """
+    assigned = longform_df[longform_df["assignment"] == 1.0]
+    result = assigned.sort_values(
+        by=["block", "seatrade", "cabin", "camper"], kind="stable"
+    )
+    return result[["block", "seatrade", "camper", "cabin"]].reset_index(drop=True)
+

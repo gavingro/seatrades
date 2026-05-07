@@ -83,4 +83,30 @@ class TestWideformSort:
         assert result["cabin"].tolist() == ["Cabin1", "Cabin1", "Cabin2", "Cabin2"]
 
 
-from seatrades.seatrades import wrangle_assignments_to_wideform
+from seatrades.seatrades import wrangle_assignments_to_wideform, prepare_seatrade_leaders
+
+
+class TestSeatradeLeaders:
+    def test_columns_are_block_seatrade_camper_cabin(self, seatrade_sort_df):
+        """Seatrade Leaders should have columns: block, seatrade, camper, cabin."""
+        result = prepare_seatrade_leaders(seatrade_sort_df)
+        assert result.columns.tolist() == ["block", "seatrade", "camper", "cabin"]
+
+    def test_no_preference_or_assignment_columns(self, seatrade_sort_df):
+        """Seatrade Leaders should not include preference or assignment columns."""
+        result = prepare_seatrade_leaders(seatrade_sort_df)
+        assert "preference" not in result.columns
+        assert "assignment" not in result.columns
+
+    def test_filters_unassigned_rows(self, sample_mixed_assignment_df):
+        """Should filter out rows where assignment == 0."""
+        result = prepare_seatrade_leaders(sample_mixed_assignment_df)
+        assert result["camper"].tolist() == ["Alice", "Carol"]
+
+    def test_sorts_by_block_seatrade_cabin_camper(self, seatrade_sort_df):
+        """Seatrade Leaders sorted by block → seatrade → cabin → camper."""
+        result = prepare_seatrade_leaders(seatrade_sort_df)
+        assert result["block"].tolist() == ["1a", "1a", "1a", "2a"]
+        assert result["seatrade"].tolist() == ["Archery", "Archery", "Climbing", "Archery"]
+        assert result["cabin"].tolist() == ["Cabin1", "Cabin2", "Cabin1", "Cabin2"]
+        assert result["camper"].tolist() == ["Alice", "Carol", "Bob", "Zed"]

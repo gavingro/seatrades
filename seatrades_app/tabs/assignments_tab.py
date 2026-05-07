@@ -13,7 +13,11 @@ from seatrades_app.tabs.optimization_config_tab import (
     SEATRADES_LOG_PATH,
 )
 from seatrades import preferences, results
-from seatrades.seatrades import Seatrades, wrangle_assignments_to_wideform
+from seatrades.seatrades import (
+    Seatrades,
+    wrangle_assignments_to_wideform,
+    prepare_seatrade_leaders,
+)
 
 status_queue = queue.Queue()
 log_counter = 1
@@ -55,16 +59,11 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Assignment Data")
 
-                view_options = ["Captain's Book", "Seatrade Leaders"]
-                selected_view = st.selectbox(
-                    "View",
-                    options=view_options,
-                    index=0,
-                    key="assignment_view_selector",
-                )
+                st.markdown("### Captain's Book")
+                st.dataframe(wrangle_assignments_to_wideform(df))
 
-                assignment_df = render_view(df, selected_view)
-                st.dataframe(assignment_df)
+                st.markdown("### Seatrade Leaders")
+                st.dataframe(prepare_seatrade_leaders(df))
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -254,35 +253,3 @@ def _run_assignment_and_capture_logs(
     except Exception as e:
         print(f"Error: {e}")
         status_queue.put(-1)
-
-def render_view(df: pd.DataFrame, selection: str) -> pd.DataFrame:
-    """Render the selected assignment view.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Longform assignments dataframe.
-    selection : str
-        Selectbox label: "Captain's Book" or "Seatrade Leaders".
-
-    Returns
-    -------
-    pd.DataFrame
-        Filtered, sorted, and re-ordered dataframe for display.
-    """
-    if selection == "Captain's Book":
-        return wrangle_assignments_to_wideform(df)
-    return prepare_seatrade_leaders(df)
-
-
-def prepare_seatrade_leaders(df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare Seatrade Leaders view: block, seatrade, camper, cabin.
-
-    Filters to assigned rows only, drops preference/assignment columns.
-    Sorted by block → seatrade → cabin → camper.
-    """
-    assigned = df.loc[df["assignment"] == 1.0]
-    result = assigned.sort_values(
-        by=["block", "seatrade", "cabin", "camper"], kind="stable"
-    )
-    return result[["block", "seatrade", "camper", "cabin"]].reset_index(drop=True)
