@@ -1,9 +1,9 @@
 from copy import deepcopy
 import logging
-import threading
 import queue
-import time
 import re
+import threading
+import time
 
 import streamlit as st
 import pandas as pd
@@ -21,8 +21,6 @@ from seatrades.seatrades import (
 
 status_queue = queue.Queue()
 log_counter = 1
-
-
 
 
 class AssignmentsTab:
@@ -52,7 +50,7 @@ class AssignmentsTab:
                 st.altair_chart(results_chart)
 
                 seatrades_obj = st.session_state["assigned_seatrades"]
-                df = seatrades_obj.wrangle_assignments_to_longform(
+                longform_df = seatrades_obj.wrangle_assignments_to_longform(
                     seatrades_obj.assignments
                 )
 
@@ -60,10 +58,10 @@ class AssignmentsTab:
                 st.subheader("Assignment Data")
 
                 st.markdown("### Captain's Book")
-                st.dataframe(wrangle_assignments_to_wideform(df))
+                st.dataframe(wrangle_assignments_to_wideform(longform_df))
 
                 st.markdown("### Seatrade Leaders")
-                st.dataframe(prepare_seatrade_leaders(df))
+                st.dataframe(prepare_seatrade_leaders(longform_df))
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -75,11 +73,11 @@ def _generate_intro_dialogue():
         """
     This web application is designed to help the **Scheduling Captain** to optimally assign campers to seatrades, balancing cabin cohesion, camper preferences, and activity availability.
 
-    Each week, Keats Camps hosts ~250 campers across ~22 cabins, and on the first day of camp, each camper submits their top Seatrade preferences. 
+    Each week, Keats Camps hosts ~250 campers across ~22 cabins, and on the first day of camp, each camper submits their top Seatrade preferences.
     Your daunting task as the Scheduling Captain is to assign cabins to two fleets, assign seatrades to each fleet, and assign each camper to the seatrades.
-    
+
     This app streamlines the process, optimizing assignments to create the best experience for campers while saving you time and effort.
-    
+
     Some example mock data has already been preloaded for example, so you can see what it looks like to assign seatrades.
     There are 3 steps to repeat this process with your own data for a week at camp:
     """

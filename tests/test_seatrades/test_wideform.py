@@ -2,6 +2,8 @@
 import pandas as pd
 import pytest
 
+from seatrades.seatrades import wrangle_assignments_to_wideform, prepare_seatrade_leaders
+
 
 @pytest.fixture
 def longform_assigned():
@@ -81,9 +83,6 @@ class TestWideformSort:
         result = wrangle_assignments_to_wideform(longform_assigned)
         assert result["camper"].tolist() == ["Alice", "Bob", "Carol", "Dave"]
         assert result["cabin"].tolist() == ["Cabin1", "Cabin1", "Cabin2", "Cabin2"]
-
-
-from seatrades.seatrades import wrangle_assignments_to_wideform, prepare_seatrade_leaders
 
 
 class TestSeatradeLeaders:

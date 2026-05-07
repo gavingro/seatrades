@@ -2,8 +2,8 @@
 This file contains tools to assign seatrades to campers based on their preferences.
 """
 
-from typing import Dict, Literal, List, Optional
 import logging
+from typing import Dict, Literal, List, Optional
 
 import pulp
 import pandas as pd
@@ -433,13 +433,13 @@ def wrangle_assignments_to_wideform(longform_df: pd.DataFrame) -> pd.DataFrame:
     columns (one per block); the rest are blank.
     """
     assigned = longform_df[longform_df["assignment"] == 1.0].copy()
-    assigned["col"] = "Seatrade " + assigned["block"]
-    assigned["val"] = assigned["seatrade"]
+    assigned["block_label"] = "Seatrade " + assigned["block"]
+    assigned["seatrade_name"] = assigned["seatrade"]
 
     pivot = assigned.pivot_table(
         index=["cabin", "camper"],
-        columns="col",
-        values="val",
+        columns="block_label",
+        values="seatrade_name",
         aggfunc="first",
         fill_value="",
     )
@@ -468,8 +468,8 @@ def prepare_seatrade_leaders(longform_df: pd.DataFrame) -> pd.DataFrame:
     Sorted by block → seatrade → cabin → camper.
     """
     assigned = longform_df[longform_df["assignment"] == 1.0]
-    result = assigned.sort_values(
+    sorted_assigned = assigned.sort_values(
         by=["block", "seatrade", "cabin", "camper"], kind="stable"
     )
-    return result[["block", "seatrade", "camper", "cabin"]].reset_index(drop=True)
+    return sorted_assigned[["block", "seatrade", "camper", "cabin"]].reset_index(drop=True)
 
