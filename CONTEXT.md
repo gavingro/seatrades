@@ -54,11 +54,11 @@ A mapping of a camper to a seatrade in a specific block. Each camper gets exactl
 
 ### AssignmentSolution
 
-The resolved output of solving a seatrade scheduling problem. Produced by wrangling the solver's raw binary decision variables into a long-form DataFrame with columns: camper, seatrade, block, preference, cabin, assignment. Owned by the core package, not the problem builder or the UI.
+Self-contained and portable — no reference to the MILP model. Fields: assignments DataFrame, SolverStatus, plus domain data (campers, seatrades, preferences) needed by wrangling and visualization. Wrangling functions operate on this, not on the SchedulingProblem.
 
 ### SolverStatus
 
-Tracks the state of an in-progress or completed solve. Fields: percent, message, state (running/complete/error). Owned by the service layer, read by the UI via `@st.fragment` polling. Currently reports infeasibility as a message only; future work to add structured constraint-conflict diagnostics.
+A field inside `AssignmentSolution` (not a separate return). Tracks the outcome of a solve. Fields: state (SolverState enum: optimal/infeasible/error), gap (optimality gap as a float), message (human-readable, e.g. infeasibility detail). Progress monitoring (percent-complete during a running solve) stays in the UI layer via `@st.fragment` log polling — not in SolverStatus.
 
 ### Assignment Export
 
@@ -95,7 +95,7 @@ flowchart LR
     Val --> Prob
     Prob -->|pulp.LpProblem| Solve
     Solve -->|AssignmentSolution| Result
-    Solve -->|SolverStatus| Fragment
+    Solve -->|AssignmentSolution| Fragment
     Result --> Display
 ```
 
@@ -104,11 +104,10 @@ flowchart LR
 ```
 1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation
 2. Input DataFrames validated → seatrades.preferences (Pandera + cross-ref)
-3. SchedulingProblem(prefs, config) → holds parsed state
-4. problem.build() → pulp.LpProblem
-5. solver.run(problem, config) → AssignmentSolution + SolverStatus
-6. UI reads SolverStatus via @st.fragment, displays AssignmentSolution
-7. AssignmentSolution.export(view="camper"|"cabin"|"seatrade") → formatted DataFrame
+3. SchedulingProblem(campers, cabins, seatrades, blocks, fleets, preferences) → holds parsed domain state
+4. solver.run(problem, config) → calls problem.build(config) internally, returns AssignmentSolution (with SolverStatus inside)
+5. UI reads AssignmentSolution.status via @st.fragment, displays assignments
+6. AssignmentSolution.export(view="camper"|"cabin"|"seatrade") → formatted DataFrame
 ```
 
 ## Optimization Problem
@@ -143,9 +142,9 @@ The scheduler solves a mixed-integer linear programming problem with these const
 
 | Module | Owns |
 |--------|------|
-| `scheduling_problem.py` | `SchedulingProblem` — holds parsed domain state, builds MILP (variables, constraints, objective). Does NOT solve. |
-| `solver.py` | Orchestrate solve, track progress (`SolverStatus`), background thread |
-| `results.py` | `AssignmentSolution` — wrangle + export views |
+| `problem.py` | `SchedulingProblem` — holds parsed domain state, builds MILP (variables, constraints, objective) when `.build(config)` is called. Does NOT solve. Config (weights, limits, solver settings) is passed at build time, not init — allows rebuilding with different configs against the same domain data. |
+| `solver.py` | `solver.run(problem, config) -> AssignmentSolution` — orchestrates build + solve + wrangle. Calls `problem.build(config)` internally. Manages solver thread and CBC log reading. |
+| `results.py` | `AssignmentSolution` dataclass + free functions for wrangling (`wrangle_assignments_to_longform`, `wrangle_assignments_to_wideform`, `prepare_seatrade_leaders`) and export views. Functions take `AssignmentSolution`, not the problem. |
 | `visualization.py` | Build `alt.Chart` specs from `AssignmentSolution`. No Streamlit dependency — renders in any Altair-capable frontend. |
 | `preferences.py` | Pandera schemas + cross-reference validation (e.g., camper prefs must name seatrades that exist) |
 | `simulation.py` | Generate mock camper + seatrade data |
@@ -155,13 +154,13 @@ The scheduler solves a mixed-integer linear programming problem with these const
 
 Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 
-1. **`Seatrades` class → split into SchedulingProblem + solver + results.** Problem builder owns variables/constraints/objective. Solving is separate. Wrangling is separate. `SchedulingProblem` is stateful (holds parsed domain state) because the wrangler needs the same state — avoids re-parsing or building a second context object.
+1. **`Seatrades` class → split into SchedulingProblem + solver + results.** Problem builder owns variables/constraints/objective. Solving is separate. Wrangling is separate. `SchedulingProblem` is stateful (holds parsed domain state) because the wrangler needs the same state — avoids re-parsing or building a second context object. Module is `problem.py` (not `scheduling_problem.py`). Config passed at `.build(config)` time, not init — allows rebuilding with different configs against same domain data.
 
-2. **Solver produces `AssignmentSolution`, not raw pulp object.** Clean boundary: problem goes in, solution comes out. No leaking PuLP internals.
+2. **Solver produces `AssignmentSolution`, not raw pulp object.** Clean boundary: problem goes in, solution comes out. No leaking PuLP internals. `AssignmentSolution` is self-contained and portable — holds assignments DataFrame, SolverStatus, and domain data needed by wrangling/visualization. `SolverStatus` is a field inside `AssignmentSolution` (not a separate return): state is a `SolverState` enum (optimal/infeasible/error), `gap` is the optimality gap, `message` for human-readable detail. Progress monitoring stays in UI layer only.
 
-3. **Service function `solver.run(problem, config) -> AssignmentSolution + SolverStatus`.** UI calls one function. No solver orchestration in the presentation layer.
+3. **Service function `solver.run(problem, config) -> AssignmentSolution`.** UI calls one function. `solver.run` calls `problem.build(config)` internally. No solver orchestration in the presentation layer.
 
-4. **Solver monitoring splits: service layer runs solver + reads CBC log, UI polls `SolverStatus` via `@st.fragment`.** PuLP/CBC doesn't support mid-solve callbacks — log file is the only progress signal. `@st.fragment(run_every=...)` replaces manual `while`+`sleep` polling.
+4. **Solver monitoring splits: service layer runs solver + reads CBC log, UI polls `AssignmentSolution.status` via `@st.fragment`.** PuLP/CBC doesn't support mid-solve callbacks — log file is the only progress signal. `@st.fragment(run_every=...)` replaces manual `while`+`sleep` polling. Progress percent stays in UI polling layer, not in SolverStatus.
 
 5. **Simulation data generation moves to service layer** (`seatrades/simulation.py`). It's domain logic, not UI.
 
