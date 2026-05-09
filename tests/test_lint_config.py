@@ -98,6 +98,20 @@ class TestMypyConfig:
         assert pyproject_config["tool"]["mypy"]["warn_return_any"] is False
 
 
+class TestMypyClean:
+    """Mypy type-checks the entire codebase with zero errors."""
+
+    def test_mypy_check_no_errors(self):
+        """mypy . exits 0 (no type errors in the codebase)."""
+        result = subprocess.run(
+            ["mypy", "."],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+        )
+        assert result.returncode == 0, f"Mypy errors found:\n{result.stdout}"
+
+
 class TestFormattingBaseline:
     """Codebase is formatted and lint-clean after initial ruff pass."""
 
@@ -144,6 +158,7 @@ class TestPreCommitConfig:
     EXPECTED_HOOK_IDS = {
         "ruff-format",
         "ruff-check",
+        "mypy",
         "trailing-whitespace",
         "end-of-file-fixer",
         "no-commit-to-branch",
@@ -160,8 +175,8 @@ class TestPreCommitConfig:
         """.pre-commit-config.yaml exists and parses as valid YAML."""
         assert pre_commit_config is not None
 
-    def test_pre_commit_config_has_five_hooks(self, pre_commit_config):
-        """Config contains exactly the five expected hooks."""
+    def test_pre_commit_config_has_six_hooks(self, pre_commit_config):
+        """Config contains exactly the six expected hooks."""
         hook_ids = {hook["id"] for repo in pre_commit_config["repos"] for hook in repo["hooks"]}
         assert self.EXPECTED_HOOK_IDS == hook_ids
 

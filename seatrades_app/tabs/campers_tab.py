@@ -1,3 +1,15 @@
+"""Camper preferences tab — upload, validate, or simulate camper-seatrade preference data.
+
+Pandera mypy suppressions:
+- type: ignore[index] on SeatradesConfig bracket indexing (line ~164): pandera
+  DataFrameModel subclasses are indexable DataFrames at runtime but mypy can't verify this.
+- type: ignore[return-value] on CamperSeatradePreferences.validate (line ~209): pandera
+  validate() returns DataFrame[X] but the function signature declares X. The runtime
+  behavior is correct since validate() returns the validated DataFrame.
+
+Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
+"""
+
 from dataclasses import dataclass
 from random import sample
 
@@ -161,7 +173,7 @@ def _simulate_cabin_camper_preferences(
     seatrade_preferences: preferences.SeatradesConfig,
 ) -> preferences.CamperSeatradePreferences:
     """Get our cabin-camper preferences for our optimization problem."""
-    all_seatrades = seatrade_preferences["seatrade"].tolist()
+    all_seatrades = seatrade_preferences["seatrade"].tolist()  # type: ignore[index]
 
     # Mock Cabins -- Assume bigender for now.
     cabins = sample(list(ALL_CABIN_DICT.keys()), k=camper_simulation_config.num_cabins)
@@ -206,4 +218,4 @@ def _simulate_cabin_camper_preferences(
             columns=[f"seatrade_{i + 1}" for i in range(camper_simulation_config.num_preferences)],
         )
     )
-    return preferences.CamperSeatradePreferences.validate(cabin_camper_prefs)
+    return preferences.CamperSeatradePreferences.validate(cabin_camper_prefs)  # type: ignore[return-value]

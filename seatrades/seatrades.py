@@ -9,6 +9,15 @@ TODO: Resolve wideform/longform placement inconsistency — wrangle_assignments_
 is a module-level function while wrangle_assignments_to_longform is a method on Seatrades.
 Both are "wrangle assignments to X form" — pick one pattern (either both methods or both
 standalone functions) and apply consistently.
+
+Pandera mypy suppressions:
+- type: ignore[attr-defined] on .set_index() calls (lines ~50, ~52, ~58): pandera
+  DataFrameModel subclasses are DataFrames at runtime but mypy doesn't recognize
+  set_index as a valid method on them.
+- type: ignore[index] on bracket indexing (lines ~51, ~55, ~59): same root cause —
+  mypy can't verify DataFrameModel is indexable.
+
+Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
 """
 
 import logging
@@ -47,16 +56,16 @@ class Seatrades:
             information.
         """
         cabin_camper_prefs = add_index_to_campername(cabin_camper_prefs)
-        self.cabin_camper_prefs = cabin_camper_prefs.set_index("camper")
-        self.cabins = cabin_camper_prefs["cabin"].unique().tolist()
-        self.camper_prefs = cabin_camper_prefs.set_index("camper")[
+        self.cabin_camper_prefs = cabin_camper_prefs.set_index("camper")  # type: ignore[attr-defined]
+        self.cabins = cabin_camper_prefs["cabin"].unique().tolist()  # type: ignore[index]
+        self.camper_prefs = cabin_camper_prefs.set_index("camper")[  # type: ignore[attr-defined]
             ["seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]
         ].apply(list, axis="columns")
-        self.campers = cabin_camper_prefs["camper"].tolist()
+        self.campers = cabin_camper_prefs["camper"].tolist()  # type: ignore[index]
 
         # Seatrades for block 1 and block 2.
-        self.seatrades_prefs = seatrades_prefs.set_index("seatrade")
-        self.seatrades = seatrades_prefs["seatrade"]
+        self.seatrades_prefs = seatrades_prefs.set_index("seatrade")  # type: ignore[attr-defined]
+        self.seatrades = seatrades_prefs["seatrade"]  # type: ignore[index]
         self.seatrades1a = [f"1a_{seatrade}" for seatrade in self.seatrades]
         self.seatrades1b = [f"1b_{seatrade}" for seatrade in self.seatrades]
         self.seatrades2a = [f"2a_{seatrade}" for seatrade in self.seatrades]
@@ -67,9 +76,9 @@ class Seatrades:
         self.status = 0
 
     # Helper Function
-    def _flatten(self, outer_list: List[list]):
-        """Flattens the 2d input list into 1d."""
-        return {key: value for inner_dict in outer_list.values() for key, value in inner_dict.items()}
+    def _flatten(self, outer_dict: dict):
+        """Flattens the 2d input dict into 1d."""
+        return {key: value for inner_dict in outer_dict.values() for key, value in inner_dict.items()}
 
     def assign(
         self,
@@ -324,7 +333,7 @@ class Seatrades:
         else:
             status = problem.solve()
         self.status = status if status else -1
-        self.assignments = pd.DataFrame(camper_assignments).applymap(pulp.value).transpose()
+        self.assignments = pd.DataFrame(camper_assignments).map(pulp.value).transpose()
         return problem
 
     def get_assignments_by_cabin(self, assignments: pd.DataFrame) -> dict:
@@ -365,7 +374,7 @@ class Seatrades:
 
         df["preference"] = df.apply(lookup_preference, axis=1)
 
-        def lookup_cabin(row) -> str:
+        def lookup_cabin(row) -> Optional[str]:
             """
             Returns the cabin name that a camper is in.
             """

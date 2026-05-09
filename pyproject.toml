@@ -28,6 +28,9 @@ license = {file = "LICENSE.txt"}
 dev = [
   "ruff",
   "mypy",
+  "pandas-stubs",
+  "types-PyYAML",
+  "pandera[mypy]",
   "pre-commit",
   "pytest",
   "pytest-cov",
@@ -63,3 +66,8 @@ warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = false
 check_untyped_defs = true
+plugins = ["pandera.mypy"]
+
+[[tool.mypy.overrides]]
+module = "pulp.*"
+ignore_missing_imports = true

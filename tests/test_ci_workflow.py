@@ -45,11 +45,6 @@ class TestCIRuffStep:
         run = step.get("run", "")
         assert ".[dev]" in run or "[dev]" in run
 
-    def test_ruff_step_is_non_blocking(self):
-        """Lint violations are warnings — ruff step has continue-on-error."""
-        step = _find_step(_load_workflow(), "ruff")
-        assert step.get("continue-on-error") is True
-
 
 class TestCIMypyStep:
     """CI workflow includes a mypy step."""
@@ -63,11 +58,6 @@ class TestCIMypyStep:
         step = _find_step(_load_workflow(), "mypy")
         run = step.get("run", "")
         assert ".[dev]" in run or "[dev]" in run
-
-    def test_mypy_step_is_non_blocking(self):
-        """Type errors are warnings — mypy step has continue-on-error."""
-        step = _find_step(_load_workflow(), "mypy")
-        assert step.get("continue-on-error") is True
 
 
 class TestCIPytestPreserved:

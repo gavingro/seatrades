@@ -1,3 +1,13 @@
+"""Seatrade preferences tab — upload, validate, or simulate available seatrades.
+
+Pandera mypy suppressions:
+- type: ignore[return-value] on SeatradesConfig.validate (line ~119): pandera
+  validate() returns DataFrame[X] but the function signature declares X. The runtime
+  behavior is correct since validate() returns the validated DataFrame.
+
+Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
+"""
+
 import random
 from dataclasses import dataclass
 
@@ -116,7 +126,7 @@ def _simulate_seatrade_preferences(
         for seatrade in seatrade_name_sample
     }
     seatrades_prefs = pd.DataFrame(seatrades_prefs_dict).T.reset_index(names="seatrade")
-    return preferences.SeatradesConfig.validate(seatrades_prefs)
+    return preferences.SeatradesConfig.validate(seatrades_prefs)  # type: ignore[return-value]
 
 
 def _validate_and_update_seatrade_preferences(seatrades_preferences: pd.DataFrame):

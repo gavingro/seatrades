@@ -19,7 +19,7 @@ from seatrades_app.tabs.optimization_config_tab import (
     OptimizationConfig,
 )
 
-status_queue = queue.Queue()
+status_queue: queue.Queue[int] = queue.Queue()
 log_counter = 1
 
 
@@ -53,13 +53,14 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Assignment Data")
 
-                view_options = ["By Camper", "By Seatrade"]
+                view_options: list[Literal["By Camper", "By Seatrade"]] = ["By Camper", "By Seatrade"]
                 selected_view = st.selectbox(
                     "View",
                     options=view_options,
                     index=0,
                     key="assignment_view_selector",
                 )
+                assert selected_view in view_options
 
                 st.dataframe(render_view(longform_df, selected_view, camper_order=seatrades_obj.campers))
 
@@ -116,14 +117,18 @@ def _assign_seatrades(
     seatrade_preferences: preferences.SeatradesConfig,
     cabin_camper_preferences: preferences.CamperSeatradePreferences,
     optimization_config: OptimizationConfig,
-) -> Seatrades:
+) -> None:
     st.toast("Beginning Seatrade Optimization.")
     seatrades = Seatrades(cabin_camper_preferences, seatrade_preferences)
     with st.status("Step 1/3: Setting Up Optimization Problem") as status:
         # CAUTION: Does not actually stop the solver subthread which will keep running.
         # This will be a problem later if a user starts a ton of solver threads behind the scenes.
         stop_button = st.empty()
-        stop_button.button("Stop Optimizing", on_click=lambda: KeyboardInterrupt())
+
+        def _stop_optimizing() -> None:
+            raise KeyboardInterrupt
+
+        stop_button.button("Stop Optimizing", on_click=_stop_optimizing)
 
         progress_bar = st.progress(0, "Setting up Optimization Problem.")
 
@@ -189,7 +194,7 @@ def _assign_seatrades(
             key="logs",
         )
         timeout_kwd_match = re.search(r"(Result - Stopped on time limit)", string=log_text)
-        timeout = timeout or timeout_kwd_match
+        timeout = bool(timeout or timeout_kwd_match)
         timeout_status = " - Timeout Reached" if timeout else ""
         actual_gap_kwd = re.search(
             r"(?<=Gap:                            )(\d+\.?\d*)",
@@ -219,7 +224,6 @@ def _assign_seatrades(
             seatrades.status = -1
     st.session_state["assigned_seatrades"] = deepcopy(seatrades)
     stop_button.empty()
-    return seatrades
 
 
 def _run_assignment_and_capture_logs(seatrades: Seatrades, optimization_config: OptimizationConfig):
