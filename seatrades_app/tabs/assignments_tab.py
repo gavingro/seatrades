@@ -1,10 +1,10 @@
 from copy import deepcopy
 import logging
-import threading
 import queue
-import time
 import re
-from typing import Literal
+import threading
+import time
+from typing import List, Literal, Optional
 
 import streamlit as st
 import pandas as pd
@@ -14,12 +14,14 @@ from seatrades_app.tabs.optimization_config_tab import (
     SEATRADES_LOG_PATH,
 )
 from seatrades import preferences, results
-from seatrades.seatrades import Seatrades
+from seatrades.seatrades import (
+    Seatrades,
+    wrangle_assignments_to_wideform,
+    prepare_seatrade_leaders,
+)
 
 status_queue = queue.Queue()
 log_counter = 1
-
-
 
 
 class AssignmentsTab:
@@ -48,26 +50,25 @@ class AssignmentsTab:
                 )
                 st.altair_chart(results_chart)
 
-                # Display 3 dataframe views
                 seatrades_obj = st.session_state["assigned_seatrades"]
-                df = seatrades_obj.wrangle_assignments_to_longform(
+                longform_df = seatrades_obj.wrangle_assignments_to_longform(
                     seatrades_obj.assignments
                 )
 
                 st.divider()
                 st.subheader("Assignment Data")
 
-                st.markdown("### By Camper")
-                captains_book = prepare_assignment_view(df, view="camper")
-                st.dataframe(captains_book)
+                view_options = ["By Camper", "By Seatrade"]
+                selected_view = st.selectbox(
+                    "View",
+                    options=view_options,
+                    index=0,
+                    key="assignment_view_selector",
+                )
 
-                st.markdown("### By Cabin")
-                cabin_leaders = prepare_assignment_view(df, view="cabin")
-                st.dataframe(cabin_leaders)
-
-                st.markdown("### By Seatrade")
-                seatrade_leaders = prepare_assignment_view(df, view="seatrade")
-                st.dataframe(seatrade_leaders)
+                st.dataframe(
+                    render_view(longform_df, selected_view, camper_order=seatrades_obj.campers)
+                )
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -79,11 +80,11 @@ def _generate_intro_dialogue():
         """
     This web application is designed to help the **Scheduling Captain** to optimally assign campers to seatrades, balancing cabin cohesion, camper preferences, and activity availability.
 
-    Each week, Keats Camps hosts ~250 campers across ~22 cabins, and on the first day of camp, each camper submits their top Seatrade preferences. 
+    Each week, Keats Camps hosts ~250 campers across ~22 cabins, and on the first day of camp, each camper submits their top Seatrade preferences.
     Your daunting task as the Scheduling Captain is to assign cabins to two fleets, assign seatrades to each fleet, and assign each camper to the seatrades.
-    
+
     This app streamlines the process, optimizing assignments to create the best experience for campers while saving you time and effort.
-    
+
     Some example mock data has already been preloaded for example, so you can see what it looks like to assign seatrades.
     There are 3 steps to repeat this process with your own data for a week at camp:
     """
@@ -258,43 +259,29 @@ def _run_assignment_and_capture_logs(
         print(f"Error: {e}")
         status_queue.put(-1)
 
-def prepare_assignment_view(
-    df: pd.DataFrame, view: Literal["camper", "cabin", "seatrade"]
+
+def render_view(
+    longform_df: pd.DataFrame,
+    view_name: Literal["By Camper", "By Seatrade"],
+    camper_order: Optional[List[str]] = None,
 ) -> pd.DataFrame:
-    """
-    Prepare an assignment dataframe view with specified sorting and column order.
+    """Render the selected assignment view.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Longform assignments dataframe from wrangle_assignments_to_longform().
-    view : str
-        One of: "camper", "cabin", "seatrade".
+    longform_df : pd.DataFrame
+        Longform assignments dataframe.
+    view_name : Literal["Captain's Book", "Seatrade Leaders"]
+        Which assignment view to render.
+    camper_order : Optional[List[str]]
+        Ordered camper names for Captain's Book sort. Passed through to
+        wrangle_assignments_to_wideform. Ignored for Seatrade Leaders.
 
     Returns
     -------
     pd.DataFrame
-        Sorted and re-ordered dataframe for display.
+        Filtered, sorted, and re-ordered dataframe for display.
     """
-    column_order = [
-        "camper",
-        "cabin",
-        "block",
-        "seatrade",
-        "preference",
-    ]
-
-    if view == "camper":
-        # Sort by camper (upload order)
-        result = df.sort_values(by="camper", kind="stable")
-    elif view == "cabin":
-        # Sort by cabin → block → camper
-        result = df.sort_values(by=["cabin", "block", "camper"], kind="stable")
-    elif view == "seatrade":
-        # Sort by block → seatrade → cabin → camper
-        result = df.sort_values(by=["block", "seatrade", "cabin", "camper"], kind="stable")
-    else:
-        raise ValueError(f"Unknown view: {view}")
-
-    # Filter to only assigned rows and select columns
-    return result.loc[result["assignment"] == 1.0, column_order]
+    if view_name == "By Camper":
+        return wrangle_assignments_to_wideform(longform_df, camper_order=camper_order)
+    return prepare_seatrade_leaders(longform_df)

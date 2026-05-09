@@ -1,9 +1,18 @@
 """
 This file contains tools to assign seatrades to campers based on their preferences.
+
+TODO: Extract FLEETS constant — "1a","1b","2a","2b" is duplicated between
+Seatrades.__init__ (self.fleets) and wrangle_assignments_to_wideform (col_order).
+Derive CAPTAINS_BOOK_COLUMNS from a single source of truth.
+
+TODO: Resolve wideform/longform placement inconsistency — wrangle_assignments_to_wideform
+is a module-level function while wrangle_assignments_to_longform is a method on Seatrades.
+Both are "wrangle assignments to X form" — pick one pattern (either both methods or both
+standalone functions) and apply consistently.
 """
 
-from typing import Dict, Literal, List, Optional
 import logging
+from typing import Dict, Literal, List, Optional
 
 import pulp
 import pandas as pd
@@ -423,4 +432,78 @@ class Seatrades:
         df[["block", "seatrade"]] = df["seatrade"].str.split("_", expand=True)
 
         return df
+
+
+def wrangle_assignments_to_wideform(
+    longform_df: pd.DataFrame,
+    camper_order: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """Pivot long-form assignments to wide-form Captain's Book.
+
+    1 row per camper. Columns: cabin, camper, Seatrade 1a, Seatrade 1b,
+    Seatrade 2a, Seatrade 2b. Each camper fills exactly 2 of the 4 seatrade
+    columns (one per block); the rest are blank.
+
+    When camper_order is provided, rows are sorted to match that order.
+    When None, rows are sorted by cabin → camper.
+    Raises ValueError if a camper in the wideform is missing from camper_order.
+    """
+    assignments = longform_df[longform_df["assignment"] == 1.0].copy()
+    assignments["block_label"] = "Seatrade " + assignments["block"]
+    assignments["seatrade_name"] = assignments["seatrade"]
+
+    assigned_by_camper = assignments.pivot_table(
+        index=["cabin", "camper"],
+        columns="block_label",
+        values="seatrade_name",
+        aggfunc="first",
+        fill_value="",
+    )
+
+    # pivot_table may omit empty block columns; ensure fixed order
+    seatrade_block_columns = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
+    for column in seatrade_block_columns:
+        if column not in assigned_by_camper.columns:
+            assigned_by_camper[column] = "Fleet Time"
+    assigned_by_camper = assigned_by_camper[seatrade_block_columns]
+
+    if camper_order is not None:
+        wideform_campers = assigned_by_camper.index.get_level_values("camper").tolist()
+        missing = set(wideform_campers) - set(camper_order)
+        if missing:
+            raise ValueError(
+                f"camper_order is missing campers present in wideform: {sorted(missing)}"
+            )
+
+    assigned_by_camper = assigned_by_camper.reset_index()
+
+    if camper_order is not None:
+        camper_rank = {name: i for i, name in enumerate(camper_order)}
+        assigned_by_camper["_rank"] = assigned_by_camper["camper"].map(camper_rank)
+        assigned_by_camper = (
+            assigned_by_camper
+            .sort_values(by="_rank", kind="stable")
+            .drop(columns="_rank")
+            .reset_index(drop=True)
+        )
+    else:
+        assigned_by_camper = assigned_by_camper.sort_values(by=["cabin", "camper"], kind="stable")
+
+    assigned_by_camper = assigned_by_camper[["cabin", "camper"] + seatrade_block_columns]
+    assigned_by_camper.loc[:, seatrade_block_columns] = assigned_by_camper.loc[:, seatrade_block_columns].replace("", pd.NA).fillna("Fleet Time")
+
+    return assigned_by_camper
+
+
+def prepare_seatrade_leaders(longform_df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare Seatrade Leaders view: block, seatrade, camper, cabin.
+
+    Filters to assigned rows only, drops preference/assignment columns.
+    Sorted by block → seatrade → cabin → camper.
+    """
+    assigned = longform_df[longform_df["assignment"] == 1.0]
+    sorted_assigned = assigned.sort_values(
+        by=["block", "seatrade", "cabin", "camper"], kind="stable"
+    )
+    return sorted_assigned[["block", "seatrade", "camper", "cabin"]].reset_index(drop=True)
 

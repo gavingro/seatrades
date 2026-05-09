@@ -1,57 +1,56 @@
-"""Tests for the assignments_tab module."""
+"""Tests for the assignments_tab module.
+
+TODO: Remove TestRemovedViews after next release — these ImportError guards are
+transitional and will become dead weight once the old function names are fully gone.
+"""
 import pytest
-from seatrades_app.tabs.assignments_tab import prepare_assignment_view
+
+from seatrades_app.tabs.assignments_tab import render_view
+from seatrades.seatrades import wrangle_assignments_to_wideform
 
 
-class TestAssignmentView:
-    def test_filters_unassigned_rows(self, sample_mixed_assignment_df):
-        """Should filter out rows where assignment == 0."""
-        # Act
-        result = prepare_assignment_view(sample_mixed_assignment_df, view="camper")
+class TestRemovedViews:
+    def test_prepare_assignment_view_removed(self):
+        """prepare_assignment_view should no longer be importable."""
+        with pytest.raises(ImportError):
+            from seatrades_app.tabs.assignments_tab import prepare_assignment_view  # noqa: F401
 
-        # Assert: Only Alice and Carol (assigned campers)
-        assert len(result) == 2
-        assert result["camper"].tolist() == ["Alice", "Carol"]
-        assert "assignment" not in result.columns
+    def test_get_view_selection_removed(self):
+        """get_view_selection should no longer be importable."""
+        with pytest.raises(ImportError):
+            from seatrades_app.tabs.assignments_tab import get_view_selection  # noqa: F401
 
-    def test_captains_book_view_sorts_by_camper(self, sample_assigned_df):
-        """Captain's Book view should sort by camper with correct column order."""
-        # Act
-        result = prepare_assignment_view(sample_assigned_df, view="camper")
 
-        # Assert: Sorted by camper, correct columns (no 'assignment')
+class TestRenderView:
+    def test_captains_book_returns_wideform(self, seatrade_sort_df):
+        """Selecting By Camper should return wide-form dataframe."""
+        result = render_view(seatrade_sort_df, "By Camper")
         assert result.columns.tolist() == [
-            "camper",
-            "cabin",
-            "block",
-            "seatrade",
-            "preference",
+            "cabin", "camper",
+            "Seatrade 1a", "Seatrade 1b",
+            "Seatrade 2a", "Seatrade 2b",
         ]
-        assert result["camper"].tolist() == ["Alice", "Bob", "Carol", "Dave", "Zed"]
 
-    def test_sort_by_cabin(self, sample_assigned_df):
-        """Cabin Leaders view should sort by cabin → block → camper."""
-        # Act
-        result = prepare_assignment_view(sample_assigned_df, view="cabin")
+    def test_captains_book_sorts_by_camper_order(self, seatrade_sort_df):
+        """By Camper with camper_order should sort rows by that order."""
+        camper_order = ["Carol", "Zed", "Bob", "Alice"]
+        result = render_view(seatrade_sort_df, "By Camper", camper_order=camper_order)
+        assert result["camper"].tolist() == ["Carol", "Zed", "Bob", "Alice"]
 
-        # Assert: Sorted by cabin → block → camper
-        assert result["cabin"].tolist() == ["Cabin1", "Cabin1", "Cabin2", "Cabin2", "Cabin2"]
-        assert result["block"].tolist() == ["1a", "2a", "1a", "1a", "1a"]
-        assert result["camper"].tolist() == ["Bob", "Alice", "Carol", "Dave", "Zed"]
+    def test_captains_book_without_camper_order_uses_cabin_sort(self, seatrade_sort_df):
+        """By Camper without camper_order should sort by cabin → camper."""
+        result = render_view(seatrade_sort_df, "By Camper")
+        assert result["camper"].tolist() == ["Alice", "Bob", "Carol", "Zed"]
 
-    def test_seatrade_leaders_view_sorts_by_block_seatrade_cabin_camper(
-        self, seatrade_sort_df
-    ):
-        """Seatrade Leaders view should sort by block → seatrade → cabin → camper."""
-        # Act
-        result = prepare_assignment_view(seatrade_sort_df, view="seatrade")
+    def test_seatrade_leaders_returns_simplified_longform(self, seatrade_sort_df):
+        """Selecting By Seatrade should return block, seatrade, camper, cabin."""
+        result = render_view(seatrade_sort_df, "By Seatrade")
+        assert result.columns.tolist() == ["block", "seatrade", "camper", "cabin"]
 
-        # Assert: Sorted by block → seatrade → cabin → camper
-        # Block 1a before 2a
-        assert result["block"].tolist() == ["1a", "1a", "1a", "2a"]
-        # Within 1a: Archery before Climbing (alphabetically)
-        assert result["seatrade"].tolist() == ["Archery", "Archery", "Climbing", "Archery"]
-        # Within 1a+Archery: Cabin1 before Cabin2
-        assert result["cabin"].tolist() == ["Cabin1", "Cabin2", "Cabin1", "Cabin2"]
-        # Within each group, campers sorted alphabetically
-        assert result["camper"].tolist() == ["Alice", "Carol", "Bob", "Zed"]
+    def test_seatrade_leaders_ignores_camper_order(self, seatrade_sort_df):
+        """By Seatrade view should ignore camper_order."""
+        result_without = render_view(seatrade_sort_df, "By Seatrade")
+        result_with = render_view(
+            seatrade_sort_df, "By Seatrade", camper_order=["Zed", "Alice"]
+        )
+        assert result_without.equals(result_with)

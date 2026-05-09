@@ -10,10 +10,20 @@ A Streamlit app for Keats Camp seatrade scheduling.
 
 ## Setup
 
-This project uses a `.venv` virtual environment. Activate it before running Python or pytest:
+This project uses a `.venv` virtual environment. Activate it before running Python:
 
 ```bash
 source .venv/bin/activate
+```
+
+## Testing
+
+Run tests with `pytest` (not `python -m pytest`). The venv provides a `pytest` binary directly.
+
+```bash
+pytest                    # full suite
+pytest tests/test_foo.py  # single file
+pytest -k "test_bar"      # single test
 ```
 
 ## Agent skills
