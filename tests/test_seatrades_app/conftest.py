@@ -1,4 +1,5 @@
 """Fixtures for assignments_tab tests."""
+
 import pandas as pd
 import pytest
 

@@ -1,4 +1,5 @@
 """Fixtures for seatrades service-layer tests."""
+
 import pandas as pd
 import pytest
 

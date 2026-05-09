@@ -9,17 +9,28 @@ TODO: Resolve wideform/longform placement inconsistency — wrangle_assignments_
 is a module-level function while wrangle_assignments_to_longform is a method on Seatrades.
 Both are "wrangle assignments to X form" — pick one pattern (either both methods or both
 standalone functions) and apply consistently.
+
+Pandera mypy suppressions:
+- type: ignore[attr-defined] on .set_index() calls (lines ~50, ~52, ~58): pandera
+  DataFrameModel subclasses are DataFrames at runtime but mypy doesn't recognize
+  set_index as a valid method on them.
+- type: ignore[index] on bracket indexing (lines ~51, ~55, ~59): same root cause —
+  mypy can't verify DataFrameModel is indexable.
+- type: ignore[call-overload] on df.apply(lookup_cabin, axis=1) (line ~387): pandas-stubs
+  has no overload variant matching a callable returning Optional[str] with axis=1.
+
+Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
 """
 
 import logging
-from typing import Dict, Literal, List, Optional
+from typing import List, Optional
 
-import pulp
 import pandas as pd
+import pulp
 
 from seatrades.preferences import (
-    SeatradesConfig,
     CamperSeatradePreferences,
+    SeatradesConfig,
     add_index_to_campername,
 )
 
@@ -47,35 +58,29 @@ class Seatrades:
             information.
         """
         cabin_camper_prefs = add_index_to_campername(cabin_camper_prefs)
-        self.cabin_camper_prefs = cabin_camper_prefs.set_index("camper")
-        self.cabins = cabin_camper_prefs["cabin"].unique().tolist()
-        self.camper_prefs = cabin_camper_prefs.set_index("camper")[
+        self.cabin_camper_prefs = cabin_camper_prefs.set_index("camper")  # type: ignore[attr-defined]
+        self.cabins = cabin_camper_prefs["cabin"].unique().tolist()  # type: ignore[index]
+        self.camper_prefs = cabin_camper_prefs.set_index("camper")[  # type: ignore[attr-defined]
             ["seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]
         ].apply(list, axis="columns")
-        self.campers = cabin_camper_prefs["camper"].tolist()
+        self.campers = cabin_camper_prefs["camper"].tolist()  # type: ignore[index]
 
         # Seatrades for block 1 and block 2.
-        self.seatrades_prefs = seatrades_prefs.set_index("seatrade")
-        self.seatrades = seatrades_prefs["seatrade"]
+        self.seatrades_prefs = seatrades_prefs.set_index("seatrade")  # type: ignore[attr-defined]
+        self.seatrades = seatrades_prefs["seatrade"]  # type: ignore[index]
         self.seatrades1a = [f"1a_{seatrade}" for seatrade in self.seatrades]
         self.seatrades1b = [f"1b_{seatrade}" for seatrade in self.seatrades]
         self.seatrades2a = [f"2a_{seatrade}" for seatrade in self.seatrades]
         self.seatrades2b = [f"2b_{seatrade}" for seatrade in self.seatrades]
-        self.seatrades_full = (
-            self.seatrades1a + self.seatrades1b + self.seatrades2a + self.seatrades2b
-        )
+        self.seatrades_full = self.seatrades1a + self.seatrades1b + self.seatrades2a + self.seatrades2b
         self.fleets = ["1a", "1b", "2a", "2b"]
         self.assignments: pd.DataFrame
         self.status = 0
 
     # Helper Function
-    def _flatten(self, outer_list: List[list]):
-        """Flattens the 2d input list into 1d."""
-        return {
-            key: value
-            for inner_dict in outer_list.values()
-            for key, value in inner_dict.items()
-        }
+    def _flatten(self, outer_dict: dict):
+        """Flattens the 2d input dict into 1d."""
+        return {key: value for inner_dict in outer_dict.values() for key, value in inner_dict.items()}
 
     def assign(
         self,
@@ -136,9 +141,7 @@ class Seatrades:
         )
         for s in self.seatrades_full:
             for cabin in self.cabins:
-                cabin_campers = self.cabin_camper_prefs.loc[
-                    self.cabin_camper_prefs["cabin"] == cabin,
-                ].index.tolist()
+                cabin_campers = self.cabin_camper_prefs.loc[self.cabin_camper_prefs["cabin"] == cabin,].index.tolist()
                 for c in cabin_campers:
                     # Cabin assignment is ge than camper assignment.
                     # Ensures if any campers are assigned, cabin is assigned.
@@ -164,9 +167,7 @@ class Seatrades:
                     for c in cabin_campers:
                         # Fleet assignment is ge than camper assignment.
                         # Ensures if any campers are assigned, cabin is assigned to fleet.
-                        problem += (
-                            fleet_assignment[cabin][fleet] >= camper_assignments[c][s]
-                        )
+                        problem += fleet_assignment[cabin][fleet] >= camper_assignments[c][s]
         # Helper Param: Seatrade Assignment is 1 if any camper is
         # assigned to the seatrade, else 0.
         # Requires clever constraint by comparing camper assignment for each camper in seatrade.
@@ -183,9 +184,7 @@ class Seatrades:
                 for c in self.campers:
                     # Fleet assignment is ge than camper assignment.
                     # Ensures if any campers are assigned, cabin is assigned to fleet.
-                    problem += (
-                        seatrade_assignment[fleet][seatrade] >= camper_assignments[c][s]
-                    )
+                    problem += seatrade_assignment[fleet][seatrade] >= camper_assignments[c][s]
 
         # CONSTRAINTS:
         logger.info("Adding Variable Constraints")
@@ -219,27 +218,18 @@ class Seatrades:
             seatrade = s[3:]  # Remove block index for matching.
             seatrade_campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
             problem += (
-                pulp.lpSum([camper_assignments[c][s] for c in self.campers])
-                >= seatrade_campers_min,
+                pulp.lpSum([camper_assignments[c][s] for c in self.campers]) >= seatrade_campers_min,
                 f"More_than_{seatrade_campers_min}_in_{s}",
             )
             seatrade_campers_max = self.seatrades_prefs.loc[seatrade, "campers_max"]
             problem += (
-                pulp.lpSum([camper_assignments[c][s] for c in self.campers])
-                <= seatrade_campers_max,
+                pulp.lpSum([camper_assignments[c][s] for c in self.campers]) <= seatrade_campers_max,
                 f"Less_than_{seatrade_campers_max}_in_{s}",
             )
         # Constraint 4: Campers cannot be assigned un-requested seatrades.
         for c, seatrade_prefs in self.camper_prefs.items():
             problem += (
-                pulp.lpSum(
-                    [
-                        camper_assignments[c][s]
-                        for s in self.seatrades_full
-                        if s[3:] not in seatrade_prefs
-                    ]
-                )
-                == 0,
+                pulp.lpSum([camper_assignments[c][s] for s in self.seatrades_full if s[3:] not in seatrade_prefs]) == 0,
                 f"{c}_prefers_not_these_seatrades.",
             )
         # Constraint 5: Campers guaranteed one of their top 2 choices.
@@ -251,22 +241,10 @@ class Seatrades:
                     # Use indicator function from assignment
                     # multiplied by linear preference penalty
                     # from index.
-                    [
-                        camper_assignments[c][f"1a_{s}"] * (preferences.index(s))
-                        for s in preferences
-                    ]
-                    + [
-                        camper_assignments[c][f"1b_{s}"] * (preferences.index(s))
-                        for s in preferences
-                    ]
-                    + [
-                        camper_assignments[c][f"2a_{s}"] * (preferences.index(s))
-                        for s in preferences
-                    ]
-                    + [
-                        camper_assignments[c][f"2b_{s}"] * (preferences.index(s))
-                        for s in preferences
-                    ]
+                    [camper_assignments[c][f"1a_{s}"] * (preferences.index(s)) for s in preferences]
+                    + [camper_assignments[c][f"1b_{s}"] * (preferences.index(s)) for s in preferences]
+                    + [camper_assignments[c][f"2a_{s}"] * (preferences.index(s)) for s in preferences]
+                    + [camper_assignments[c][f"2b_{s}"] * (preferences.index(s)) for s in preferences]
                 )
                 <= 5 - 1,  # indexing of 0 means 3rd + 4th preference index is 2+3=5.
                 f"{c} guaranteed one of the first two seatrades.",
@@ -275,9 +253,7 @@ class Seatrades:
         # more than 4 campers.
         for s in self.seatrades_full:
             for cabin in self.cabins:
-                cabin_campers = self.cabin_camper_prefs.loc[
-                    self.cabin_camper_prefs["cabin"] == cabin
-                ].index.tolist()
+                cabin_campers = self.cabin_camper_prefs.loc[self.cabin_camper_prefs["cabin"] == cabin].index.tolist()
                 problem += (
                     pulp.lpSum([camper_assignments[c][s] for c in cabin_campers]) <= 4,
                     f"{cabin} must contribute <= 4 campers to {s}.",
@@ -297,23 +273,18 @@ class Seatrades:
         half_of_the_cabins_min = len(self.cabins) // 2
         for fleet in self.fleets:
             problem += (
-                pulp.lpSum([fleet_assignment[cabin][fleet] for cabin in self.cabins])
-                >= half_of_the_cabins_min,
+                pulp.lpSum([fleet_assignment[cabin][fleet] for cabin in self.cabins]) >= half_of_the_cabins_min,
                 f"Roughly_half_of_cabins_in_fleet_{fleet}",
             )
         # Constraint 9: Divide the number of girls and boys cabins roughly equally between the
         # fleets.
-        cabin_genders = self.cabin_camper_prefs.groupby("cabin")["gender"].agg(
-            lambda grp: pd.Series.mode(grp)[0]
-        )
+        cabin_genders = self.cabin_camper_prefs.groupby("cabin")["gender"].agg(lambda grp: pd.Series.mode(grp)[0])
         for gender in self.cabin_camper_prefs["gender"].unique():
             gender_cabins = cabin_genders[cabin_genders == gender].index.tolist()
             half_of_the_gender_cabins_min = len(gender_cabins) // 2
             for fleet in self.fleets:
                 problem += (
-                    pulp.lpSum(
-                        [fleet_assignment[cabin][fleet] for cabin in gender_cabins]
-                    )
+                    pulp.lpSum([fleet_assignment[cabin][fleet] for cabin in gender_cabins])
                     >= half_of_the_gender_cabins_min,
                     f"Roughly_half_of_{gender}_cabins_in_fleet_{fleet}",
                 )
@@ -322,12 +293,7 @@ class Seatrades:
         if max_seatrades_per_fleet:
             for fleet in self.fleets:
                 problem += (
-                    pulp.lpSum(
-                        [
-                            seatrade_assignment[fleet][f"{seatrade}"]
-                            for seatrade in self.seatrades
-                        ]
-                    )
+                    pulp.lpSum([seatrade_assignment[fleet][f"{seatrade}"] for seatrade in self.seatrades])
                     <= max_seatrades_per_fleet,
                     f"Ensure_{fleet}_has_less_than_{max_seatrades_per_fleet}_seatrades.",
                 )
@@ -351,9 +317,7 @@ class Seatrades:
         # (Reward for assigning friends together).
         if cabins_weight:
             for s in self.seatrades_full:
-                obj += cabins_weight * pulp.lpSum(
-                    [cabin_assignments[cabin][s] for cabin in self.cabins]
-                )
+                obj += cabins_weight * pulp.lpSum([cabin_assignments[cabin][s] for cabin in self.cabins])
 
         # OPTIONAL PENALTY 3: Penalize for number of seatrades assigned to a fleet.
         # (Reward for sparsity, meaning less staff needing to be scheduled).
@@ -371,9 +335,7 @@ class Seatrades:
         else:
             status = problem.solve()
         self.status = status if status else -1
-        self.assignments = (
-            pd.DataFrame(camper_assignments).applymap(pulp.value).transpose()
-        )
+        self.assignments = pd.DataFrame(camper_assignments).map(pulp.value).transpose()
         return problem
 
     def get_assignments_by_cabin(self, assignments: pd.DataFrame) -> dict:
@@ -384,17 +346,13 @@ class Seatrades:
         """Get the assignments organized by seatrade -> Cabin -> Camper."""
         raise NotImplementedError
 
-    def wrangle_assignments_to_longform(
-        self, assignments: pd.DataFrame
-    ) -> pd.DataFrame:
+    def wrangle_assignments_to_longform(self, assignments: pd.DataFrame) -> pd.DataFrame:
         """
         Melts the wide-form sparse dataframe into long-form, and adds column
         for camper preference scores of assigned seatrade.
         """
         df = (
-            assignments.melt(
-                var_name="seatrade", ignore_index=False, value_name="assignment"
-            )
+            assignments.melt(var_name="seatrade", ignore_index=False, value_name="assignment")
             .reset_index()
             .rename(columns={"index": "camper"})
         )
@@ -418,7 +376,7 @@ class Seatrades:
 
         df["preference"] = df.apply(lookup_preference, axis=1)
 
-        def lookup_cabin(row) -> str:
+        def lookup_cabin(row) -> Optional[str]:
             """
             Returns the cabin name that a camper is in.
             """
@@ -428,7 +386,7 @@ class Seatrades:
                     return cabin
             return None
 
-        df["cabin"] = df.apply(lookup_cabin, axis=1)
+        df["cabin"] = df.apply(lookup_cabin, axis=1)  # type: ignore[call-overload]
         df[["block", "seatrade"]] = df["seatrade"].str.split("_", expand=True)
 
         return df
@@ -471,9 +429,7 @@ def wrangle_assignments_to_wideform(
         wideform_campers = assigned_by_camper.index.get_level_values("camper").tolist()
         missing = set(wideform_campers) - set(camper_order)
         if missing:
-            raise ValueError(
-                f"camper_order is missing campers present in wideform: {sorted(missing)}"
-            )
+            raise ValueError(f"camper_order is missing campers present in wideform: {sorted(missing)}")
 
     assigned_by_camper = assigned_by_camper.reset_index()
 
@@ -481,16 +437,15 @@ def wrangle_assignments_to_wideform(
         camper_rank = {name: i for i, name in enumerate(camper_order)}
         assigned_by_camper["_rank"] = assigned_by_camper["camper"].map(camper_rank)
         assigned_by_camper = (
-            assigned_by_camper
-            .sort_values(by="_rank", kind="stable")
-            .drop(columns="_rank")
-            .reset_index(drop=True)
+            assigned_by_camper.sort_values(by="_rank", kind="stable").drop(columns="_rank").reset_index(drop=True)
         )
     else:
         assigned_by_camper = assigned_by_camper.sort_values(by=["cabin", "camper"], kind="stable")
 
     assigned_by_camper = assigned_by_camper[["cabin", "camper"] + seatrade_block_columns]
-    assigned_by_camper.loc[:, seatrade_block_columns] = assigned_by_camper.loc[:, seatrade_block_columns].replace("", pd.NA).fillna("Fleet Time")
+    assigned_by_camper.loc[:, seatrade_block_columns] = (
+        assigned_by_camper.loc[:, seatrade_block_columns].replace("", pd.NA).fillna("Fleet Time")
+    )
 
     return assigned_by_camper
 
@@ -502,8 +457,5 @@ def prepare_seatrade_leaders(longform_df: pd.DataFrame) -> pd.DataFrame:
     Sorted by block → seatrade → cabin → camper.
     """
     assigned = longform_df[longform_df["assignment"] == 1.0]
-    sorted_assigned = assigned.sort_values(
-        by=["block", "seatrade", "cabin", "camper"], kind="stable"
-    )
+    sorted_assigned = assigned.sort_values(by=["block", "seatrade", "cabin", "camper"], kind="stable")
     return sorted_assigned[["block", "seatrade", "camper", "cabin"]].reset_index(drop=True)
-

@@ -98,6 +98,55 @@ Run tests with:
 pytest
 ```
 
+## Development Setup
+
+Activate the virtual environment and install dev dependencies:
+
+```bash
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Dev dependencies include: `ruff`, `mypy`, `pandas-stubs`, `types-PyYAML`, `pandera[mypy]`, `pre-commit`, `pytest`, `pytest-cov`.
+
+Install pre-commit hooks (runs automatically on every commit):
+
+```bash
+pre-commit install
+```
+
+## Linting & Type Checking
+
+Run these before pushing. CI enforces all of them:
+
+```bash
+ruff check .          # lint
+ruff format .         # auto-format
+mypy .                # type check
+pytest                # tests
+pre-commit run --all-files  # all of the above via hooks
+```
+
+CI runs two parallel jobs: **lint** (ruff + mypy) and **test** (pytest). Both must pass.
+
+### Pandera type suppressions
+
+Mypy doesn't fully understand pandera `DataFrameModel` subclasses — they're DataFrames at runtime but mypy can't verify DataFrame method access on them. When working with pandera models, use targeted `# type: ignore` comments and document each suppression at the module level:
+
+```python
+"""Module docstring.
+
+Pandera mypy suppressions:
+- type: ignore[attr-defined] on .set_index(): pandera DataFrameModel subclasses
+  are DataFrames at runtime but mypy doesn't recognize set_index as a valid method.
+- type: ignore[index] on bracket indexing: same root cause.
+
+Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
+"""
+```
+
+This keeps suppressions discoverable and easy to clean up when pandera's type support improves.
+
 ## Documentation
 
 - Domain glossary: `CONTEXT.md`

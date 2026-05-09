@@ -1,4 +1,5 @@
 """Tests for seatrades/results.py."""
+
 from unittest.mock import MagicMock
 
 import pytest

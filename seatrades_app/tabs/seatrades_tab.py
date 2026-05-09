@@ -1,8 +1,17 @@
+"""Seatrade preferences tab — upload, validate, or simulate available seatrades.
+
+Pandera mypy suppressions:
+- type: ignore[return-value] on SeatradesConfig.validate (line ~119): pandera
+  validate() returns DataFrame[X] but the function signature declares X. The runtime
+  behavior is correct since validate() returns the validated DataFrame.
+
+Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
+"""
+
+import random
 from dataclasses import dataclass
 
-
 import numpy as np
-import random
 import pandas as pd
 import streamlit as st
 
@@ -46,10 +55,13 @@ class SeatradeSimulationConfigTab:
         uploaded_seatrade_prefs = st.file_uploader(
             label="Upload your preferences for this weeks seatrades.",
             type="csv",
-            help="""Upload preferences as a .csv file. 
-            Uploaded data **must** have the same columns as seen below, and an example form can be downloaded by interacting with the displayed data below.
-            Seatrades preferences are the list of available seatrades, as well as the minimum and maximum campers that seatrade needs to run. 
-            Setting a minimum above 0 for a seatrade will ensure that seatrade is always selected.
+            help="""Upload preferences as a .csv file.
+            Uploaded data **must** have the same columns as seen below, and an example form
+            can be downloaded by interacting with the displayed data below.
+            Seatrades preferences are the list of available seatrades, as well as the
+            minimum and maximum campers that seatrade needs to run.
+            Setting a minimum above 0 for a seatrade will ensure that seatrade is always
+            selected.
             """,
         )
         if uploaded_seatrade_prefs:
@@ -60,9 +72,7 @@ class SeatradeSimulationConfigTab:
         st.write("")
         st.write("---")
         with st.expander("No Seatrades Data? Simulate Seatrades Here."):
-            with st.form(
-                "Simulation Config", border=False
-            ) as seatrade_simulation_config_form:
+            with st.form("Simulation Config", border=False):
                 st.subheader("Seatrade Simulation Config")
                 num_seatrades = st.slider(
                     "num_seatrades",
@@ -100,9 +110,7 @@ def _simulate_seatrade_preferences(
 ) -> preferences.SeatradesConfig:
     """Get our seatrade preferences for our optimization problem."""
     # Mock Data for Now
-    seatrade_name_sample = random.sample(
-        SEATRADE_EXAMPLES, k=seatrade_simulation_config.num_seatrades
-    )
+    seatrade_name_sample = random.sample(SEATRADE_EXAMPLES, k=seatrade_simulation_config.num_seatrades)
 
     seatrades_prefs_dict = {
         f"{seatrade}": {
@@ -118,22 +126,20 @@ def _simulate_seatrade_preferences(
         for seatrade in seatrade_name_sample
     }
     seatrades_prefs = pd.DataFrame(seatrades_prefs_dict).T.reset_index(names="seatrade")
-    return preferences.SeatradesConfig.validate(seatrades_prefs)
+    return preferences.SeatradesConfig.validate(seatrades_prefs)  # type: ignore[return-value]
 
 
 def _validate_and_update_seatrade_preferences(seatrades_preferences: pd.DataFrame):
     try:
         preferences.SeatradesConfig.validate(seatrades_preferences)
         st.session_state["seatrade_preferences"] = seatrades_preferences
-        st.toast(f"Updating Seatrade Preferences.")
+        st.toast("Updating Seatrade Preferences.")
     except Exception as e:
         with st.popover(
             "Continuing without updating Seatrades Config. Click to see Error.",
             icon="🚨",
         ):
-            st.write(
-                "Uploaded file does not meet expected schema. Error is as follows:"
-            )
+            st.write("Uploaded file does not meet expected schema. Error is as follows:")
             st.write(e)
             st.toast(
                 "Continuing without updating Seatrades Config.",
@@ -145,20 +151,17 @@ def _update_seatrade_simulation_config(
     seatrade_simulation_config: SeatradeSimulationConfig,
 ):
     """Update config for the mock data parameters."""
-    if (
-        seatrade_simulation_config.camper_capacity_min
-        >= seatrade_simulation_config.camper_capacity_max
-    ):
+    if seatrade_simulation_config.camper_capacity_min >= seatrade_simulation_config.camper_capacity_max:
         st.toast(
-            "Error updating simulation configuration.\n Camper per Seatrade min must be strictly less than camper per Seatrade max.\n"
-            f"Instead found {seatrade_simulation_config.camper_capacity_min} >= {seatrade_simulation_config.camper_capacity_max}.",
+            "Error updating simulation configuration.\n"
+            " Camper per Seatrade min must be strictly less than camper per Seatrade max.\n"
+            f"Instead found {seatrade_simulation_config.camper_capacity_min}"
+            f" >= {seatrade_simulation_config.camper_capacity_max}.",
             icon="🚨",
         )
         return
     if st.session_state.get("seatrade_simulation_config") is not None:
-        st.toast(
-            f"Updating Seatrade Simulation Configuration.\n\n{seatrade_simulation_config}"
-        )
+        st.toast(f"Updating Seatrade Simulation Configuration.\n\n{seatrade_simulation_config}")
     st.session_state["seatrade_simulation_config"] = seatrade_simulation_config
     _clear_optimization_results()
     if "seatrade_preferences" in st.session_state:

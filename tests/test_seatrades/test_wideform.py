@@ -4,10 +4,11 @@ TODO: Add a test fixture with mixed assigned/unassigned rows (assignment == 0.0)
 verify wrangle_assignments_to_wideform correctly filters them out. Currently only
 prepare_seatrade_leaders has this test coverage via sample_mixed_assignment_df.
 """
+
 import pandas as pd
 import pytest
 
-from seatrades.seatrades import wrangle_assignments_to_wideform, prepare_seatrade_leaders
+from seatrades.seatrades import prepare_seatrade_leaders, wrangle_assignments_to_wideform
 
 
 @pytest.fixture
@@ -19,13 +20,41 @@ def longform_assigned():
     """
     rows = [
         # Cabin1 campers
-        {"camper": "Alice", "cabin": "Cabin1", "block": "1a", "seatrade": "Archery", "assignment": 1.0, "preference": 1},
-        {"camper": "Alice", "cabin": "Cabin1", "block": "2b", "seatrade": "Sailing", "assignment": 1.0, "preference": 2},
+        {
+            "camper": "Alice",
+            "cabin": "Cabin1",
+            "block": "1a",
+            "seatrade": "Archery",
+            "assignment": 1.0,
+            "preference": 1,
+        },
+        {
+            "camper": "Alice",
+            "cabin": "Cabin1",
+            "block": "2b",
+            "seatrade": "Sailing",
+            "assignment": 1.0,
+            "preference": 2,
+        },
         {"camper": "Bob", "cabin": "Cabin1", "block": "1b", "seatrade": "Climbing", "assignment": 1.0, "preference": 1},
         {"camper": "Bob", "cabin": "Cabin1", "block": "2a", "seatrade": "Archery", "assignment": 1.0, "preference": 3},
         # Cabin2 campers
-        {"camper": "Carol", "cabin": "Cabin2", "block": "1a", "seatrade": "Sailing", "assignment": 1.0, "preference": 1},
-        {"camper": "Carol", "cabin": "Cabin2", "block": "2b", "seatrade": "Archery", "assignment": 1.0, "preference": 2},
+        {
+            "camper": "Carol",
+            "cabin": "Cabin2",
+            "block": "1a",
+            "seatrade": "Sailing",
+            "assignment": 1.0,
+            "preference": 1,
+        },
+        {
+            "camper": "Carol",
+            "cabin": "Cabin2",
+            "block": "2b",
+            "seatrade": "Archery",
+            "assignment": 1.0,
+            "preference": 2,
+        },
         {"camper": "Dave", "cabin": "Cabin2", "block": "1b", "seatrade": "Archery", "assignment": 1.0, "preference": 1},
         {"camper": "Dave", "cabin": "Cabin2", "block": "2a", "seatrade": "Sailing", "assignment": 1.0, "preference": 2},
     ]
@@ -44,9 +73,12 @@ class TestWideformShape:
         """Wide-form columns: cabin, camper, Seatrade 1a, Seatrade 1b, Seatrade 2a, Seatrade 2b."""
         result = wrangle_assignments_to_wideform(longform_assigned)
         assert result.columns.tolist() == [
-            "cabin", "camper",
-            "Seatrade 1a", "Seatrade 1b",
-            "Seatrade 2a", "Seatrade 2b",
+            "cabin",
+            "camper",
+            "Seatrade 1a",
+            "Seatrade 1b",
+            "Seatrade 2a",
+            "Seatrade 2b",
         ]
 
 
