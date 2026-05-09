@@ -261,18 +261,18 @@ def _run_assignment_and_capture_logs(
 
 
 def render_view(
-    df: pd.DataFrame,
-    selection: Literal["Captain's Book", "Seatrade Leaders"],
+    longform_df: pd.DataFrame,
+    view_name: Literal["Captain's Book", "Seatrade Leaders"],
     camper_order: Optional[List[str]] = None,
 ) -> pd.DataFrame:
     """Render the selected assignment view.
 
     Parameters
     ----------
-    df : pd.DataFrame
+    longform_df : pd.DataFrame
         Longform assignments dataframe.
-    selection : str
-        Selectbox label: "Captain's Book" or "Seatrade Leaders".
+    view_name : Literal["Captain's Book", "Seatrade Leaders"]
+        Which assignment view to render.
     camper_order : Optional[List[str]]
         Ordered camper names for Captain's Book sort. Passed through to
         wrangle_assignments_to_wideform. Ignored for Seatrade Leaders.
@@ -282,6 +282,6 @@ def render_view(
     pd.DataFrame
         Filtered, sorted, and re-ordered dataframe for display.
     """
-    if selection == "Captain's Book":
-        return wrangle_assignments_to_wideform(df, camper_order=camper_order)
-    return prepare_seatrade_leaders(df)
+    if view_name == "Captain's Book":
+        return wrangle_assignments_to_wideform(longform_df, camper_order=camper_order)
+    return prepare_seatrade_leaders(longform_df)

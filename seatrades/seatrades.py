@@ -460,12 +460,12 @@ def wrangle_assignments_to_wideform(
         fill_value="",
     )
 
-    # Enforce column order
-    col_order = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
-    for col in col_order:
-        if col not in pivot.columns:
-            pivot[col] = ""
-    pivot = pivot[col_order]
+    # pivot_table may omit empty block columns; ensure fixed order
+    seatrade_block_columns = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
+    for column in seatrade_block_columns:
+        if column not in pivot.columns:
+            pivot[column] = ""
+    pivot = pivot[seatrade_block_columns]
 
     if camper_order is not None:
         wideform_campers = pivot.index.get_level_values("camper").tolist()
@@ -478,14 +478,13 @@ def wrangle_assignments_to_wideform(
     pivot = pivot.reset_index()
 
     if camper_order is not None:
-        camper_sort_key = {name: i for i, name in enumerate(camper_order)}
-        pivot["_sort"] = pivot["camper"].map(camper_sort_key)
-        pivot = pivot.sort_values(by="_sort", kind="stable").drop(columns="_sort")
+        camper_rank = {name: i for i, name in enumerate(camper_order)}
+        pivot["_rank"] = pivot["camper"].map(camper_rank)
+        pivot = pivot.sort_values(by="_rank", kind="stable").drop(columns="_rank")
     else:
         pivot = pivot.sort_values(by=["cabin", "camper"], kind="stable")
 
-    # Reorder final columns
-    pivot = pivot[["cabin", "camper"] + col_order]
+    pivot = pivot[["cabin", "camper"] + seatrade_block_columns]
 
     return pivot
 

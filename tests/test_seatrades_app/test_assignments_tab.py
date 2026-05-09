@@ -6,7 +6,7 @@ transitional and will become dead weight once the old function names are fully g
 import pytest
 
 from seatrades_app.tabs.assignments_tab import render_view
-from seatrades.seatrades import wrangle_assignments_to_wideform, prepare_seatrade_leaders
+from seatrades.seatrades import wrangle_assignments_to_wideform
 
 
 class TestRemovedViews:
