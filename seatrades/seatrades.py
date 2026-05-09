@@ -480,7 +480,12 @@ def wrangle_assignments_to_wideform(
     if camper_order is not None:
         camper_rank = {name: i for i, name in enumerate(camper_order)}
         assigned_by_camper["_rank"] = assigned_by_camper["camper"].map(camper_rank)
-        assigned_by_camper = assigned_by_camper.sort_values(by="_rank", kind="stable").drop(columns="_rank")
+        assigned_by_camper = (
+            assigned_by_camper
+            .sort_values(by="_rank", kind="stable")
+            .drop(columns="_rank")
+            .reset_index(drop=True)
+        )
     else:
         assigned_by_camper = assigned_by_camper.sort_values(by=["cabin", "camper"], kind="stable")
 
