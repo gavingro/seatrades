@@ -15,8 +15,7 @@ def display_assignments(seatrades: Seatrades) -> alt.Chart:
     """
     if seatrades.status == 0:
         raise ValueError(
-            "Seatrades.assignments (and status code) not found. "
-            "Did you remember to run Seatrades.assign() first?"
+            "Seatrades.assignments (and status code) not found. Did you remember to run Seatrades.assign() first?"
         )
     elif seatrades.status < 0:
         raise ValueError(
@@ -31,17 +30,13 @@ def display_assignments(seatrades: Seatrades) -> alt.Chart:
         x=alt.X("seatrade", sort=seatrades.seatrades_full, title=None),
         y=alt.Y("camper", sort=seatrades.campers, title=None),
     )
-    assignment_rectangles = assignment_base.mark_rect(
-        stroke="black", strokeWidth=0.1
-    ).encode(
+    assignment_rectangles = assignment_base.mark_rect(stroke="black", strokeWidth=0.1).encode(
         color=alt.Color(
             "preference:O",
         )
     )
     assignment_text = (
-        assignment_base.mark_text(color="white")
-        .encode(text="preference:O")
-        .transform_filter(alt.datum.preference > 0)
+        assignment_base.mark_text(color="white").encode(text="preference:O").transform_filter(alt.datum.preference > 0)
     )
     assignment_chart = (
         (assignment_rectangles + assignment_text)

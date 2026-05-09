@@ -3,8 +3,8 @@ This file contains logic and data objects capturing the preferences of campers
 and camp staff towards seatrades.
 """
 
-from pandera import DataFrameModel, Field, dataframe_check
 import pandas as pd
+from pandera import DataFrameModel, Field, dataframe_check
 
 
 class SeatradesConfig(DataFrameModel):

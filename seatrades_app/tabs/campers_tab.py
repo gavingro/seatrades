@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from random import sample
 
-
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -43,27 +42,22 @@ BOY_CABIN_EXAMPLES = [
     "Columbia",
     "Terra Nova",
 ]
-ALL_CABIN_DICT = {cabin: "female" for cabin in GIRL_CABIN_EXAMPLES} | {
-    cabin: "male" for cabin in BOY_CABIN_EXAMPLES
-}
+ALL_CABIN_DICT = {cabin: "female" for cabin in GIRL_CABIN_EXAMPLES} | {cabin: "male" for cabin in BOY_CABIN_EXAMPLES}
 
 
 def _update_camper_simulation_config(camper_simulation_config: CamperSimulationConfig):
     """Update config for the mock data parameters."""
-    if (
-        camper_simulation_config.camper_per_cabin_min
-        >= camper_simulation_config.camper_per_cabin_max
-    ):
+    if camper_simulation_config.camper_per_cabin_min >= camper_simulation_config.camper_per_cabin_max:
         st.toast(
-            "Error updating simulation configuration.\n Camper per cabin min must be strictly less than camper per cabin max.\n"
-            f"Instead found {camper_simulation_config.camper_per_cabin_min} >= {camper_simulation_config.camper_per_cabin_max}.",
+            "Error updating simulation configuration.\n"
+            " Camper per cabin min must be strictly less than camper per cabin max.\n"
+            f"Instead found {camper_simulation_config.camper_per_cabin_min}"
+            f" >= {camper_simulation_config.camper_per_cabin_max}.",
             icon="🚨",
         )
         return
     if st.session_state.get("camper_simulation_config") is not None:
-        st.toast(
-            f"Updating Camper Simulation Configuration.\n\n{camper_simulation_config}"
-        )
+        st.toast(f"Updating Camper Simulation Configuration.\n\n{camper_simulation_config}")
     st.session_state["camper_simulation_config"] = camper_simulation_config
     _clear_optimization_results()
     if "cabin_camper_prefs" in st.session_state:
@@ -78,10 +72,13 @@ class CamperSimulationConfigTab:
         uploaded_camper_prefs = st.file_uploader(
             label="Upload your seatrade preferences for each camper.",
             type="csv",
-            help="""Upload preferences as a .csv file. 
-            Uploaded data **must** have the same columns as seen below, and an example form can be downloaded by interacting with the displayed data below.
-            Current camper preferences include their name, cabin, gender, as well as the top 4 seatrades each camper wants to attend, in order.
-            Seatrades must match the seatrades listed in the Seatrade Preferences tab, which are assumed to contain all seatrades for the week.
+            help="""Upload preferences as a .csv file.
+            Uploaded data **must** have the same columns as seen below, and an example form
+            can be downloaded by interacting with the displayed data below.
+            Current camper preferences include their name, cabin, gender, as well as the top
+            4 seatrades each camper wants to attend, in order.
+            Seatrades must match the seatrades listed in the Seatrade Preferences tab, which
+            are assumed to contain all seatrades for the week.
             """,
         )
         if uploaded_camper_prefs:
@@ -93,9 +90,7 @@ class CamperSimulationConfigTab:
         st.write("")
         st.write("---")
         with st.expander("No Camper Data? Simulate Cabins Here."):
-            with st.form(
-                "Camper Simulation Config", border=False
-            ) as camper_simulation_config_form:
+            with st.form("Camper Simulation Config", border=False):
                 st.subheader("Camper Simulation Config")
                 num_cabins = st.slider(
                     "num_cabins",
@@ -137,9 +132,7 @@ class CamperSimulationConfigTab:
 
 def _validate_and_update_camper_preferences(camper_preferences: pd.DataFrame):
     try:
-        available_seatrades = st.session_state["seatrade_preferences"][
-            "seatrade"
-        ].tolist()
+        available_seatrades = st.session_state["seatrade_preferences"]["seatrade"].tolist()
 
         class UpdatedCamperPrefs(preferences.CamperSeatradePreferences):
             seatrade_1: str = Field(ignore_na=False, isin=available_seatrades)
@@ -149,15 +142,13 @@ def _validate_and_update_camper_preferences(camper_preferences: pd.DataFrame):
 
         UpdatedCamperPrefs.validate(camper_preferences)
         st.session_state["cabin_camper_prefs"] = camper_preferences
-        st.toast(f"Updating Camper Preferences.")
+        st.toast("Updating Camper Preferences.")
     except Exception as e:
         with st.popover(
             "Continuing without updating Camper Config. Click to see Error.",
             icon="🚨",
         ):
-            st.write(
-                "Uploaded file does not meet expected schema. Error is as follows:"
-            )
+            st.write("Uploaded file does not meet expected schema. Error is as follows:")
             st.write(e)
             st.toast(
                 "Continuing without updating Camper Config.",
@@ -183,18 +174,14 @@ def _simulate_cabin_camper_preferences(
     for cabin in cabins:
         cabin_info = {}
         cabin_gender = ALL_CABIN_DICT[cabin]
-        for camper in range(
+        for _camper in range(
             np.random.randint(
                 camper_simulation_config.camper_per_cabin_min,
                 camper_simulation_config.camper_per_cabin_max,
             )
         ):
             # camper_name = f"Camper{num_campers:0>3}"
-            camper_name = (
-                name_faker.name_male()
-                if cabin_gender == "male"
-                else name_faker.name_female()
-            )
+            camper_name = name_faker.name_male() if cabin_gender == "male" else name_faker.name_female()
             seatrade_prefs = sample(
                 all_seatrades,
                 camper_simulation_config.num_preferences,
@@ -210,18 +197,13 @@ def _simulate_cabin_camper_preferences(
         .dropna(subset="seatrade")
         .reset_index(drop=True)
     )
-    cabin_camper_prefs.loc[:, "gender"] = cabin_camper_prefs["cabin"].map(
-        ALL_CABIN_DICT
-    )
+    cabin_camper_prefs.loc[:, "gender"] = cabin_camper_prefs["cabin"].map(ALL_CABIN_DICT)
 
     # This is inefficient from a wrangling point of view but it's okay it's just to start.
     cabin_camper_prefs = cabin_camper_prefs.drop(columns="seatrade").join(
         pd.DataFrame(
             cabin_camper_prefs["seatrade"].to_list(),
-            columns=[
-                f"seatrade_{i+1}"
-                for i in range(camper_simulation_config.num_preferences)
-            ],
+            columns=[f"seatrade_{i + 1}" for i in range(camper_simulation_config.num_preferences)],
         )
     )
     return preferences.CamperSeatradePreferences.validate(cabin_camper_prefs)

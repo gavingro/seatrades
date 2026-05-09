@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 import tomli
-
+import yaml
 
 PROJECT_ROOT = subprocess.run(
     ["git", "rev-parse", "--show-toplevel"],
@@ -98,6 +98,30 @@ class TestMypyConfig:
         assert pyproject_config["tool"]["mypy"]["warn_return_any"] is False
 
 
+class TestFormattingBaseline:
+    """Codebase is formatted and lint-clean after initial ruff pass."""
+
+    def test_ruff_format_check_passes(self):
+        """All .py files pass ruff format --check (no reformats needed)."""
+        result = subprocess.run(
+            ["ruff", "format", "--check", "."],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+        )
+        assert result.returncode == 0, f"Unformatted files:\n{result.stdout}"
+
+    def test_ruff_check_no_errors(self):
+        """ruff check . exits 0 (no violations)."""
+        result = subprocess.run(
+            ["ruff", "check", "."],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+        )
+        assert result.returncode == 0, f"Ruff violations found:\n{result.stdout}"
+
+
 class TestDevDeps:
     """Dev dependency group exists with required tools."""
 
@@ -112,3 +136,69 @@ class TestDevDeps:
         dev_deps = pyproject_config["project"]["optional-dependencies"]["dev"]
         dev_dep_names = {d.split(">=")[0].split("==")[0].split("[")[0].strip() for d in dev_deps}
         assert self.REQUIRED_PACKAGES.issubset(dev_dep_names)
+
+
+class TestPreCommitConfig:
+    """Pre-commit config exists, is valid YAML, and has all required hooks."""
+
+    EXPECTED_HOOK_IDS = {
+        "ruff-format",
+        "ruff-check",
+        "trailing-whitespace",
+        "end-of-file-fixer",
+        "no-commit-to-branch",
+    }
+
+    @pytest.fixture()
+    def pre_commit_config(self):
+        """Parse .pre-commit-config.yaml."""
+        config_path = PROJECT_ROOT + "/.pre-commit-config.yaml"
+        with open(config_path) as f:
+            return yaml.safe_load(f)
+
+    def test_pre_commit_config_exists_and_parses(self, pre_commit_config):
+        """.pre-commit-config.yaml exists and parses as valid YAML."""
+        assert pre_commit_config is not None
+
+    def test_pre_commit_config_has_five_hooks(self, pre_commit_config):
+        """Config contains exactly the five expected hooks."""
+        hook_ids = {hook["id"] for repo in pre_commit_config["repos"] for hook in repo["hooks"]}
+        assert self.EXPECTED_HOOK_IDS == hook_ids
+
+    def test_ruff_hooks_reference_installed_version(self, pre_commit_config):
+        """Ruff hooks reference the currently installed ruff version."""
+        result = subprocess.run(
+            ["ruff", "version"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        # "ruff 0.15.12 (hash date)" -> "0.15.12"
+        installed_version = result.stdout.strip().split()[1]
+
+        for repo in pre_commit_config["repos"]:
+            for hook in repo["hooks"]:
+                if hook["id"].startswith("ruff"):
+                    assert repo["rev"].endswith(installed_version), (
+                        f"Hook {hook['id']} rev {repo['rev']} doesn't match ruff {installed_version}"
+                    )
+
+    def test_no_commit_to_main_hook_configured(self, pre_commit_config):
+        """no-commit-to-branch hook prevents commits to main."""
+        hook_ids = [hook["id"] for repo in pre_commit_config["repos"] for hook in repo["hooks"]]
+        assert "no-commit-to-branch" in hook_ids
+        # Verify it's configured to protect main
+        for repo in pre_commit_config["repos"]:
+            for hook in repo["hooks"]:
+                if hook["id"] == "no-commit-to-branch":
+                    assert "--branch" in hook.get("args", []) and "main" in hook["args"]
+
+    def test_pre_commit_run_all_files(self):
+        """pre-commit run --all-files passes for all configured hooks."""
+        result = subprocess.run(
+            ["pre-commit", "run", "--all-files"],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+        )
+        assert result.returncode == 0, f"pre-commit failures:\n{result.stdout}\n{result.stderr}"

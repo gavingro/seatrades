@@ -1,26 +1,23 @@
 import streamlit as st
-import pandas as pd
 
 from seatrades_app.tabs.assignments_tab import AssignmentsTab
-from seatrades_app.tabs.optimization_config_tab import OptimizationConfig
-from seatrades_app.tabs.optimization_config_tab import OptimizationConfigForm
-from seatrades_app.tabs.optimization_config_tab import _update_optimization_config
+from seatrades_app.tabs.campers_tab import (
+    CamperSimulationConfig,
+    CamperSimulationConfigTab,
+    _simulate_cabin_camper_preferences,
+    _update_camper_simulation_config,
+)
+from seatrades_app.tabs.optimization_config_tab import (
+    OptimizationConfig,
+    OptimizationConfigForm,
+    _update_optimization_config,
+)
 from seatrades_app.tabs.seatrades_tab import (
     SeatradeSimulationConfig,
     SeatradeSimulationConfigTab,
+    _simulate_seatrade_preferences,
     _update_seatrade_simulation_config,
 )
-from seatrades_app.tabs.campers_tab import (
-    CamperSimulationConfigTab,
-)
-from seatrades_app.tabs.campers_tab import (
-    CamperSimulationConfig,
-)
-from seatrades_app.tabs.campers_tab import (
-    _update_camper_simulation_config,
-)
-from seatrades_app.tabs.campers_tab import _simulate_cabin_camper_preferences
-from seatrades_app.tabs.seatrades_tab import _simulate_seatrade_preferences
 
 
 # Set up logging to capture all info level logs from the root logger
@@ -73,13 +70,9 @@ def _initial_page_setup():
     if "optimization_config" not in st.session_state:
         _update_optimization_config(optimization_config=OptimizationConfig())
     if "seatrade_simulation_config" not in st.session_state:
-        _update_seatrade_simulation_config(
-            seatrade_simulation_config=SeatradeSimulationConfig()
-        )
+        _update_seatrade_simulation_config(seatrade_simulation_config=SeatradeSimulationConfig())
     if "camper_simulation_config" not in st.session_state:
-        _update_camper_simulation_config(
-            camper_simulation_config=CamperSimulationConfig()
-        )
+        _update_camper_simulation_config(camper_simulation_config=CamperSimulationConfig())
 
     # Initialize Mock Data
     if "seatrade_preferences" not in st.session_state:

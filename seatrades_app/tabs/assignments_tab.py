@@ -1,23 +1,22 @@
-from copy import deepcopy
-import logging
 import queue
 import re
 import threading
 import time
+from copy import deepcopy
 from typing import List, Literal, Optional
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
-from seatrades_app.tabs.optimization_config_tab import (
-    OptimizationConfig,
-    SEATRADES_LOG_PATH,
-)
 from seatrades import preferences, results
 from seatrades.seatrades import (
     Seatrades,
-    wrangle_assignments_to_wideform,
     prepare_seatrade_leaders,
+    wrangle_assignments_to_wideform,
+)
+from seatrades_app.tabs.optimization_config_tab import (
+    SEATRADES_LOG_PATH,
+    OptimizationConfig,
 )
 
 status_queue = queue.Queue()
@@ -45,15 +44,11 @@ class AssignmentsTab:
                 st.write("Optimization not successful.")
             else:
                 st.write("Optimization Success. Seatrades assigned for each camper.")
-                results_chart = results.display_assignments(
-                    st.session_state["assigned_seatrades"]
-                )
+                results_chart = results.display_assignments(st.session_state["assigned_seatrades"])
                 st.altair_chart(results_chart)
 
                 seatrades_obj = st.session_state["assigned_seatrades"]
-                longform_df = seatrades_obj.wrangle_assignments_to_longform(
-                    seatrades_obj.assignments
-                )
+                longform_df = seatrades_obj.wrangle_assignments_to_longform(seatrades_obj.assignments)
 
                 st.divider()
                 st.subheader("Assignment Data")
@@ -66,9 +61,7 @@ class AssignmentsTab:
                     key="assignment_view_selector",
                 )
 
-                st.dataframe(
-                    render_view(longform_df, selected_view, camper_order=seatrades_obj.campers)
-                )
+                st.dataframe(render_view(longform_df, selected_view, camper_order=seatrades_obj.campers))
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -78,21 +71,28 @@ def _generate_intro_dialogue():
     """
     st.markdown(
         """
-    This web application is designed to help the **Scheduling Captain** to optimally assign campers to seatrades, balancing cabin cohesion, camper preferences, and activity availability.
+    This web application is designed to help the **Scheduling Captain** to optimally assign
+    campers to seatrades, balancing cabin cohesion, camper preferences, and activity
+    availability.
 
-    Each week, Keats Camps hosts ~250 campers across ~22 cabins, and on the first day of camp, each camper submits their top Seatrade preferences.
-    Your daunting task as the Scheduling Captain is to assign cabins to two fleets, assign seatrades to each fleet, and assign each camper to the seatrades.
+    Each week, Keats Camps hosts ~250 campers across ~22 cabins, and on the first day of
+    camp, each camper submits their top Seatrade preferences. Your daunting task as the
+    Scheduling Captain is to assign cabins to two fleets, assign seatrades to each fleet,
+    and assign each camper to the seatrades.
 
-    This app streamlines the process, optimizing assignments to create the best experience for campers while saving you time and effort.
+    This app streamlines the process, optimizing assignments to create the best experience
+    for campers while saving you time and effort.
 
-    Some example mock data has already been preloaded for example, so you can see what it looks like to assign seatrades.
-    There are 3 steps to repeat this process with your own data for a week at camp:
+    Some example mock data has already been preloaded for example, so you can see what it
+    looks like to assign seatrades. There are 3 steps to repeat this process with your own
+    data for a week at camp:
     """
     )
     cols = st.columns(3)
     with cols[0]:
         st.info(
-            "Upload your own **Seatrade preferences** you might have to describe your week at camp in the **Seatrade Setup** tab.",
+            "Upload your own **Seatrade preferences** you might have to describe your week"
+            " at camp in the **Seatrade Setup** tab.",
             icon=":material/camping:",
         )
     with cols[1]:
@@ -102,7 +102,8 @@ def _generate_intro_dialogue():
         )
     with cols[2]:
         st.warning(
-            "Adjust your **constraints and preferences** to describe this week's goals in the **Optimization Config** tab.",
+            "Adjust your **constraints and preferences** to describe this week's goals"
+            " in the **Optimization Config** tab.",
             icon=":material/tune:",
         )
     st.markdown("Happy scheduling!")
@@ -142,9 +143,7 @@ def _assign_seatrades(
         solver_thread.start()
         while solver_thread.is_alive():
             elapsed_seconds = int(time.time() - started)
-            elapsed_pct_of_time_limit = (
-                elapsed_seconds / optimization_config.solver.timeLimit
-            )
+            elapsed_pct_of_time_limit = elapsed_seconds / optimization_config.solver.timeLimit
             if elapsed_pct_of_time_limit > 1.0:
                 timeout = True
             progress_bar.progress(
@@ -155,9 +154,7 @@ def _assign_seatrades(
             try:
                 if SEATRADES_LOG_PATH.exists():
                     with open(SEATRADES_LOG_PATH, "r") as log_file:
-                        log_text = "".join(
-                            [line for line in log_file.readlines()][::-1]
-                        )
+                        log_text = "".join([line for line in log_file.readlines()][::-1])
                     if log_text != old_log_text:
                         log_container.text_area(
                             "Solver Logs.",
@@ -166,19 +163,13 @@ def _assign_seatrades(
                             key=str(log_counter) + log_text,
                         )
                         old_log_text = log_text
-                        if re.compile("Result - Stopped on time limit").search(
-                            old_log_text
-                        ):
+                        if re.compile("Result - Stopped on time limit").search(old_log_text):
                             timeout = True
 
                         if not timeout:
-                            status.update(
-                                label="Step 2/3: Optimizing Seatrade Assignments."
-                            )
+                            status.update(label="Step 2/3: Optimizing Seatrade Assignments.")
                         elif timeout:
-                            status.update(
-                                label="Step 3/3: Stopping Optimization based on timeout duration."
-                            )
+                            status.update(label="Step 3/3: Stopping Optimization based on timeout duration.")
 
             except Exception as e:
                 log_container.text_area(
@@ -197,9 +188,7 @@ def _assign_seatrades(
             height=300,
             key="logs",
         )
-        timeout_kwd_match = re.search(
-            r"(Result - Stopped on time limit)", string=log_text
-        )
+        timeout_kwd_match = re.search(r"(Result - Stopped on time limit)", string=log_text)
         timeout = timeout or timeout_kwd_match
         timeout_status = " - Timeout Reached" if timeout else ""
         actual_gap_kwd = re.search(
@@ -219,12 +208,7 @@ def _assign_seatrades(
             st.toast("Optimization Problem Solved!", icon="🎉")
             status.update(
                 state="complete",
-                label=(
-                    "Seatrades assigned successfully"
-                    + timeout_status
-                    + optimality_status
-                    + "."
-                ),
+                label=("Seatrades assigned successfully" + timeout_status + optimality_status + "."),
                 expanded=False,
             )
             seatrades.status = 1
@@ -238,12 +222,10 @@ def _assign_seatrades(
     return seatrades
 
 
-def _run_assignment_and_capture_logs(
-    seatrades: Seatrades, optimization_config: OptimizationConfig
-):
+def _run_assignment_and_capture_logs(seatrades: Seatrades, optimization_config: OptimizationConfig):
     """Run seatrades assignment and capture status to status_queue, intended to be run in a separate thread."""
     try:
-        solved_problem = seatrades.assign(
+        seatrades.assign(
             preference_weight=optimization_config.preference_weight,
             cabins_weight=optimization_config.cabins_weight,
             sparsity_weight=optimization_config.sparsity_weight,

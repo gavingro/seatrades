@@ -4,7 +4,6 @@ import subprocess
 
 import yaml
 
-
 PROJECT_ROOT = subprocess.run(
     ["git", "rev-parse", "--show-toplevel"],
     capture_output=True,

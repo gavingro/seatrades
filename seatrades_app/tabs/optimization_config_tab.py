@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
-import streamlit as st
 import pulp
+import streamlit as st
 
 SEATRADES_LOG_PATH = Path("seatrades_assignment.log")
 
@@ -14,16 +14,14 @@ class OptimizationConfig:
     cabins_weight: int = 2
     sparsity_weight: int = 1
     max_seatrades_per_fleet: Optional[int] = None
-    solver: pulp.apis.LpSolver = pulp.apis.PULP_CBC_CMD(
-        timeLimit=60, gapRel=0.10, logPath=SEATRADES_LOG_PATH
-    )
+    solver: pulp.apis.LpSolver = pulp.apis.PULP_CBC_CMD(timeLimit=60, gapRel=0.10, logPath=SEATRADES_LOG_PATH)
 
 
 class OptimizationConfigForm:
     """Component: Optimization Config Form"""
 
     def generate(self):
-        with st.form("Optimization Config") as optimization_config_form:
+        with st.form("Optimization Config"):
             st.header("Optimization Config")
             preference_weight = st.slider(
                 "preference_weight",
@@ -47,11 +45,9 @@ class OptimizationConfigForm:
                 "max_seatrades_per_fleet",
                 min_value=0,
                 max_value=(
-                    st.session_state["num_seatrades"]
-                    if st.session_state.get("num_seatrades") != None
-                    else 10
+                    st.session_state["num_seatrades"] if st.session_state.get("num_seatrades") is not None else 10
                 ),
-                disabled=st.session_state.get("num_seatrades") != None,
+                disabled=st.session_state.get("num_seatrades") is not None,
                 value=OptimizationConfig().max_seatrades_per_fleet,
             )
             timeout_limit_minutes = st.slider(
