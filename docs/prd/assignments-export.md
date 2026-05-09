@@ -10,7 +10,7 @@ Keep the existing Altair visualization as the primary view. Add two table views 
 
 ### Why two views instead of three
 
-The original design had three views (Captain's Book, Cabin Leaders, Seatrade Leaders). After QA review, the Cabin Leaders view was removed because it was identical to the Captain's Book in columns — only the sort order differed, and the Captain's Book already sorts by cabin → camper, which satisfies the cabin distribution use case.
+The original design had three views (Captain's Book, Cabin Leaders, Seatrade Leaders). After QA review, the Cabin Leaders view was removed because it was identical to the Captain's Book in columns — only the sort order differed. The Captain's Book now supports both sort orders: the default cabin → camper sort, and the uploaded camper order (which is what the Cabin Leaders view would have provided).
 
 ### Why wide form for the Captain's Book
 
@@ -38,7 +38,7 @@ The sub-block notation encodes fleet assignment: "a" means the cabin does their 
 
 | View | Shape | Sort Order | Columns |
 |------|-------|------------|---------|
-| Captain's Book | Wide (1 row/camper) | cabin → camper | cabin, camper, Seatrade 1a, Seatrade 1b, Seatrade 2a, Seatrade 2b |
+| Captain's Book | Wide (1 row/camper) | uploaded camper order (default: cabin → camper) | cabin, camper, Seatrade 1a, Seatrade 1b, Seatrade 2a, Seatrade 2b |
 | Seatrade Leaders | Long (1 row/assignment) | block → seatrade → cabin → camper | block, seatrade, camper, cabin |
 
 Sub-block columns (1a, 1b, 2a, 2b) encode fleet assignment. Each camper fills exactly 2 of 4 seatrade columns; the rest are blank. Preference ranks are omitted from both views.
@@ -53,7 +53,9 @@ Sub-block columns (1a, 1b, 2a, 2b) encode fleet assignment. Each camper fills ex
 
 - Test that Captain's Book produces wide-form with correct columns (cabin, camper, Seatrade 1a, Seatrade 1b, Seatrade 2a, Seatrade 2b)
 - Test that each camper row has exactly 2 of 4 seatrade columns filled
-- Test that Captain's Book sorts by cabin → camper
+- Test that Captain's Book sorts by cabin → camper when no `camper_order` is provided
+- Test that Captain's Book sorts by uploaded camper order when `camper_order` is passed
+- Test that passing `camper_order` with a missing camper raises `ValueError`
 - Test that Seatrade Leaders sorts by block → seatrade → cabin → camper
 - Test that Seatrade Leaders has no preference or assignment columns
 - Test that CSV download produces valid CSV with correct column order

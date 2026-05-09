@@ -90,6 +90,27 @@ class TestWideformSort:
         assert result["cabin"].tolist() == ["Cabin1", "Cabin1", "Cabin2", "Cabin2"]
 
 
+class TestCamperOrderSort:
+    """When camper_order is provided, rows follow that order."""
+
+    def test_sorts_by_camper_order(self, longform_assigned):
+        """Rows follow camper_order, not cabin → camper."""
+        camper_order = ["Dave", "Carol", "Bob", "Alice"]
+        result = wrangle_assignments_to_wideform(longform_assigned, camper_order=camper_order)
+        assert result["camper"].tolist() == ["Dave", "Carol", "Bob", "Alice"]
+
+    def test_camper_order_missing_camper_raises(self, longform_assigned):
+        """ValueError if camper in wideform is missing from camper_order."""
+        incomplete_order = ["Alice", "Bob"]
+        with pytest.raises(ValueError, match="camper_order"):
+            wrangle_assignments_to_wideform(longform_assigned, camper_order=incomplete_order)
+
+    def test_camper_order_none_preserves_cabin_sort(self, longform_assigned):
+        """camper_order=None preserves current cabin → camper sort."""
+        result = wrangle_assignments_to_wideform(longform_assigned, camper_order=None)
+        assert result["camper"].tolist() == ["Alice", "Bob", "Carol", "Dave"]
+
+
 class TestSeatradeLeaders:
     def test_columns_are_block_seatrade_camper_cabin(self, seatrade_sort_df):
         """Seatrade Leaders should have columns: block, seatrade, camper, cabin."""

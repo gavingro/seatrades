@@ -434,12 +434,19 @@ class Seatrades:
         return df
 
 
-def wrangle_assignments_to_wideform(longform_df: pd.DataFrame) -> pd.DataFrame:
+def wrangle_assignments_to_wideform(
+    longform_df: pd.DataFrame,
+    camper_order: Optional[List[str]] = None,
+) -> pd.DataFrame:
     """Pivot long-form assignments to wide-form Captain's Book.
 
     1 row per camper. Columns: cabin, camper, Seatrade 1a, Seatrade 1b,
     Seatrade 2a, Seatrade 2b. Each camper fills exactly 2 of the 4 seatrade
     columns (one per block); the rest are blank.
+
+    When camper_order is provided, rows are sorted to match that order.
+    When None, rows are sorted by cabin → camper.
+    Raises ValueError if a camper in the wideform is missing from camper_order.
     """
     assigned = longform_df[longform_df["assignment"] == 1.0].copy()
     assigned["block_label"] = "Seatrade " + assigned["block"]
@@ -453,19 +460,31 @@ def wrangle_assignments_to_wideform(longform_df: pd.DataFrame) -> pd.DataFrame:
         fill_value="",
     )
 
-    # Enforce column order
-    col_order = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
-    for col in col_order:
-        if col not in pivot.columns:
-            pivot[col] = ""
-    pivot = pivot[col_order]
+    # pivot_table may omit empty block columns; ensure fixed order
+    seatrade_block_columns = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
+    for column in seatrade_block_columns:
+        if column not in pivot.columns:
+            pivot[column] = ""
+    pivot = pivot[seatrade_block_columns]
 
-    # Sort by cabin → camper, flatten multi-index
-    pivot = pivot.sort_values(by=["cabin", "camper"], kind="stable")
+    if camper_order is not None:
+        wideform_campers = pivot.index.get_level_values("camper").tolist()
+        missing = set(wideform_campers) - set(camper_order)
+        if missing:
+            raise ValueError(
+                f"camper_order is missing campers present in wideform: {sorted(missing)}"
+            )
+
     pivot = pivot.reset_index()
 
-    # Reorder final columns
-    pivot = pivot[["cabin", "camper"] + col_order]
+    if camper_order is not None:
+        camper_rank = {name: i for i, name in enumerate(camper_order)}
+        pivot["_rank"] = pivot["camper"].map(camper_rank)
+        pivot = pivot.sort_values(by="_rank", kind="stable").drop(columns="_rank")
+    else:
+        pivot = pivot.sort_values(by=["cabin", "camper"], kind="stable")
+
+    pivot = pivot[["cabin", "camper"] + seatrade_block_columns]
 
     return pivot
 
