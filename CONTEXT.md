@@ -8,11 +8,14 @@ Keats Camp seatrade scheduling optimization.
 
 A child attending camp. Has:
 
-- **Name** - Unique identifier
+- **Name** - Display name (not a unique identifier — two campers can share a name)
 - **Cabin** - Group of ~12 campers staying together
 - **Age** - Camp year (determines cabin assignment)
 - **Gender** - Used for fleet balance constraints
 - **Preferences** - Ranked list of 4 seatrades (required)
+- **Composite key** - `(cabin, name)` uniquely identifies a camper
+
+Internally, the solver identifies campers by a zero-indexed row ID (`camper_id`), never by name. The composite key `(cabin, name)` is used in all user-facing output. Names stay clean — no suffixes or mangling.
 
 Camper identity (name, cabin, gender) and camper preferences (name, seatrade rankings) come from different sources in the real world — registration data vs. preference forms. The service layer joins them.
 
