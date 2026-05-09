@@ -16,6 +16,8 @@ Pandera mypy suppressions:
   set_index as a valid method on them.
 - type: ignore[index] on bracket indexing (lines ~51, ~55, ~59): same root cause —
   mypy can't verify DataFrameModel is indexable.
+- type: ignore[call-overload] on df.apply(lookup_cabin, axis=1) (line ~387): pandas-stubs
+  has no overload variant matching a callable returning Optional[str] with axis=1.
 
 Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
 """
@@ -384,7 +386,7 @@ class Seatrades:
                     return cabin
             return None
 
-        df["cabin"] = df.apply(lookup_cabin, axis=1)
+        df["cabin"] = df.apply(lookup_cabin, axis=1)  # type: ignore[call-overload]
         df[["block", "seatrade"]] = df["seatrade"].str.split("_", expand=True)
 
         return df
