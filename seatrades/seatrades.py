@@ -448,11 +448,11 @@ def wrangle_assignments_to_wideform(
     When None, rows are sorted by cabin → camper.
     Raises ValueError if a camper in the wideform is missing from camper_order.
     """
-    assigned = longform_df[longform_df["assignment"] == 1.0].copy()
-    assigned["block_label"] = "Seatrade " + assigned["block"]
-    assigned["seatrade_name"] = assigned["seatrade"]
+    assignments = longform_df[longform_df["assignment"] == 1.0].copy()
+    assignments["block_label"] = "Seatrade " + assignments["block"]
+    assignments["seatrade_name"] = assignments["seatrade"]
 
-    pivot = assigned.pivot_table(
+    assigned_by_camper = assignments.pivot_table(
         index=["cabin", "camper"],
         columns="block_label",
         values="seatrade_name",
@@ -463,31 +463,31 @@ def wrangle_assignments_to_wideform(
     # pivot_table may omit empty block columns; ensure fixed order
     seatrade_block_columns = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
     for column in seatrade_block_columns:
-        if column not in pivot.columns:
-            pivot[column] = ""
-    pivot = pivot[seatrade_block_columns]
+        if column not in assigned_by_camper.columns:
+            assigned_by_camper[column] = "Fleet Time"
+    assigned_by_camper = assigned_by_camper[seatrade_block_columns]
 
     if camper_order is not None:
-        wideform_campers = pivot.index.get_level_values("camper").tolist()
+        wideform_campers = assigned_by_camper.index.get_level_values("camper").tolist()
         missing = set(wideform_campers) - set(camper_order)
         if missing:
             raise ValueError(
                 f"camper_order is missing campers present in wideform: {sorted(missing)}"
             )
 
-    pivot = pivot.reset_index()
+    assigned_by_camper = assigned_by_camper.reset_index()
 
     if camper_order is not None:
         camper_rank = {name: i for i, name in enumerate(camper_order)}
-        pivot["_rank"] = pivot["camper"].map(camper_rank)
-        pivot = pivot.sort_values(by="_rank", kind="stable").drop(columns="_rank")
+        assigned_by_camper["_rank"] = assigned_by_camper["camper"].map(camper_rank)
+        assigned_by_camper = assigned_by_camper.sort_values(by="_rank", kind="stable").drop(columns="_rank")
     else:
-        pivot = pivot.sort_values(by=["cabin", "camper"], kind="stable")
+        assigned_by_camper = assigned_by_camper.sort_values(by=["cabin", "camper"], kind="stable")
 
-    pivot = pivot[["cabin", "camper"] + seatrade_block_columns]
-    pivot.loc[:, seatrade_block_columns] = pivot.loc[:, seatrade_block_columns].replace("", pd.NA).fillna("Fleet Time")
+    assigned_by_camper = assigned_by_camper[["cabin", "camper"] + seatrade_block_columns]
+    assigned_by_camper.loc[:, seatrade_block_columns] = assigned_by_camper.loc[:, seatrade_block_columns].replace("", pd.NA).fillna("Fleet Time")
 
-    return pivot
+    return assigned_by_camper
 
 
 def prepare_seatrade_leaders(longform_df: pd.DataFrame) -> pd.DataFrame:
