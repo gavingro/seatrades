@@ -19,6 +19,8 @@ Internally, the solver identifies campers by a zero-indexed row ID (`camper_id`)
 
 Camper identity (name, cabin, gender) and camper preferences (name, seatrade rankings) come from different sources in the real world — registration data vs. preference forms. The service layer joins them.
 
+Camper identity (name, cabin, gender) and camper preferences (name, seatrade rankings) come from different sources in the real world — registration data vs. preference forms. The service layer joins them.
+
 ### Cabin
 
 A group of campers staying together. Properties:
