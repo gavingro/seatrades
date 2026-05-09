@@ -1,4 +1,4 @@
-"""Verify CI workflow has ruff and mypy steps with correct configuration."""
+"""Verify CI workflow has lint and test jobs with correct configuration."""
 
 import subprocess
 
@@ -19,12 +19,8 @@ def _load_workflow():
         return yaml.safe_load(f)
 
 
-def _step_names(workflow):
-    return [s.get("name", s.get("uses", "")) for s in workflow["jobs"]["build"]["steps"]]
-
-
-def _find_step(workflow, keyword):
-    for s in workflow["jobs"]["build"]["steps"]:
+def _find_step(workflow, keyword, job):
+    for s in workflow["jobs"][job]["steps"]:
         name = s.get("name", "")
         run = s.get("run", "")
         if keyword.lower() in name.lower() or keyword.lower() in run.lower():
@@ -32,37 +28,41 @@ def _find_step(workflow, keyword):
     return None
 
 
-class TestCIRuffStep:
-    """CI workflow includes a ruff check step."""
+class TestCILintJob:
+    """CI lint job includes ruff and mypy steps."""
+
+    def test_lint_job_exists(self):
+        workflow = _load_workflow()
+        assert "lint" in workflow["jobs"]
+
+    def test_lint_job_installs_dev_deps(self):
+        """Lint job has a separate install step with dev deps."""
+        step = _find_step(_load_workflow(), "install", "lint")
+        run = step.get("run", "")
+        assert ".[dev]" in run or "[dev]" in run
 
     def test_ruff_step_exists(self):
-        workflow = _load_workflow()
-        assert _find_step(workflow, "ruff") is not None
-
-    def test_ruff_step_installs_dev_deps(self):
-        """Ruff step uses pip install -e '.[dev]' to get ruff."""
-        step = _find_step(_load_workflow(), "ruff")
-        run = step.get("run", "")
-        assert ".[dev]" in run or "[dev]" in run
-
-
-class TestCIMypyStep:
-    """CI workflow includes a mypy step."""
+        step = _find_step(_load_workflow(), "ruff", "lint")
+        assert step is not None
 
     def test_mypy_step_exists(self):
-        workflow = _load_workflow()
-        assert _find_step(workflow, "mypy") is not None
+        step = _find_step(_load_workflow(), "mypy", "lint")
+        assert step is not None
 
-    def test_mypy_step_installs_dev_deps(self):
-        """Mypy step uses pip install -e '.[dev]' to get mypy."""
-        step = _find_step(_load_workflow(), "mypy")
+
+class TestCITestJob:
+    """CI test job includes pytest."""
+
+    def test_test_job_exists(self):
+        workflow = _load_workflow()
+        assert "test" in workflow["jobs"]
+
+    def test_test_job_installs_dev_deps(self):
+        """Test job has a separate install step with dev deps."""
+        step = _find_step(_load_workflow(), "install", "test")
         run = step.get("run", "")
         assert ".[dev]" in run or "[dev]" in run
 
-
-class TestCIPytestPreserved:
-    """Existing pytest step is still present."""
-
     def test_pytest_step_exists(self):
-        workflow = _load_workflow()
-        assert _find_step(workflow, "pytest") is not None
+        step = _find_step(_load_workflow(), "pytest", "test")
+        assert step is not None
