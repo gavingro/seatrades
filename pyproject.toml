@@ -29,7 +29,6 @@ dev = [
   "ruff",
   "mypy",
   "pre-commit",
-  "types-all",
 ]
 
 [project.urls]
