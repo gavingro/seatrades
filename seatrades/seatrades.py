@@ -485,6 +485,7 @@ def wrangle_assignments_to_wideform(
         pivot = pivot.sort_values(by=["cabin", "camper"], kind="stable")
 
     pivot = pivot[["cabin", "camper"] + seatrade_block_columns]
+    pivot.loc[:, seatrade_block_columns] = pivot.loc[:, seatrade_block_columns].replace("", pd.NA).fillna("Fleet Time")
 
     return pivot
 
