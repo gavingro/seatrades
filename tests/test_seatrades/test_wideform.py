@@ -51,14 +51,14 @@ class TestWideformShape:
 
 
 class TestWideformBlanks:
-    """Each camper fills exactly 2 of 4 seatrade columns; the rest are blank."""
+    """Each camper fills exactly 2 of 4 seatrade columns; the rest are Fleet Time."""
 
     def test_camper_fills_two_columns(self, longform_assigned):
         """Each camper has exactly 2 non-blank seatrade columns."""
         result = wrangle_assignments_to_wideform(longform_assigned)
         seatrade_cols = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
         for _, row in result.iterrows():
-            filled = sum(row[col] != "" for col in seatrade_cols)
+            filled = sum(row[col] != "Fleet Time" for col in seatrade_cols)
             assert filled == 2, f"{row['camper']} should have 2 filled columns, got {filled}"
 
     def test_alice_assigned_correctly(self, longform_assigned):
@@ -66,18 +66,18 @@ class TestWideformBlanks:
         result = wrangle_assignments_to_wideform(longform_assigned)
         alice = result[result["camper"] == "Alice"].iloc[0]
         assert alice["Seatrade 1a"] == "Archery"
-        assert alice["Seatrade 1b"] == ""
-        assert alice["Seatrade 2a"] == ""
+        assert alice["Seatrade 1b"] == "Fleet Time"
+        assert alice["Seatrade 2a"] == "Fleet Time"
         assert alice["Seatrade 2b"] == "Sailing"
 
     def test_bob_assigned_correctly(self, longform_assigned):
         """Bob: 1b=Climbing, 2a=Archery, others blank."""
         result = wrangle_assignments_to_wideform(longform_assigned)
         bob = result[result["camper"] == "Bob"].iloc[0]
-        assert bob["Seatrade 1a"] == ""
+        assert bob["Seatrade 1a"] == "Fleet Time"
         assert bob["Seatrade 1b"] == "Climbing"
         assert bob["Seatrade 2a"] == "Archery"
-        assert bob["Seatrade 2b"] == ""
+        assert bob["Seatrade 2b"] == "Fleet Time"
 
 
 class TestWideformSort:

@@ -58,7 +58,7 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Assignment Data")
 
-                view_options = ["Captain's Book", "Seatrade Leaders"]
+                view_options = ["By Camper", "By Seatrade"]
                 selected_view = st.selectbox(
                     "View",
                     options=view_options,
@@ -262,7 +262,7 @@ def _run_assignment_and_capture_logs(
 
 def render_view(
     longform_df: pd.DataFrame,
-    view_name: Literal["Captain's Book", "Seatrade Leaders"],
+    view_name: Literal["By Camper", "By Seatrade"],
     camper_order: Optional[List[str]] = None,
 ) -> pd.DataFrame:
     """Render the selected assignment view.
@@ -282,6 +282,6 @@ def render_view(
     pd.DataFrame
         Filtered, sorted, and re-ordered dataframe for display.
     """
-    if view_name == "Captain's Book":
+    if view_name == "By Camper":
         return wrangle_assignments_to_wideform(longform_df, camper_order=camper_order)
     return prepare_seatrade_leaders(longform_df)
