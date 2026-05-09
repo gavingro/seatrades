@@ -16,7 +16,9 @@ Config is passed at `build(config)` time, not at `SchedulingProblem.__init__` ti
 
 ## Consequences
 
+- The data pipeline validates and joins 3 source DataFrames (camper identity, camper preferences, seatrade setup) into 2 (joined campers, seatrade setup) in `preferences.py` before reaching `SchedulingProblem`. Camper identity and preferences come from different sources (registration data vs. preference forms) — the user shouldn't have to join them. Simulation produces the same 3 DataFrames and goes through the same pipeline.
 - Simulation data generation, validation, and config dataclasses move out of tab files into `seatrades/simulation.py`, `seatrades/preferences.py`, and `seatrades/config.py`.
 - Cross-tab coupling (`_clear_optimization_results` imported across tabs) disappears — state management moves to session state keys via `app/state.py`.
 - The `Seatrades` class (426 lines, monolith) splits into `SchedulingProblem` (stateful problem builder in `problem.py`), `solver.py` (orchestration), and `results.py` (`AssignmentSolution` dataclass + free wrangling/export functions). Wrangling functions take `AssignmentSolution`, not the problem object — keeps results portable.
 - `seatrades_app/` renames to `app/` following Streamlit convention.
+- `OptimizationConfig` keeps its PuLP dependency — it owns the solver object directly. Plain config values (time_limit, gap_rel) would require an extra mapping layer in the solver, and the config IS for PuLP.

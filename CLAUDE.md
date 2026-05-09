@@ -26,6 +26,10 @@ pytest tests/test_foo.py  # single file
 pytest -k "test_bar"      # single test
 ```
 
+## Documentation updates
+
+Doc updates (`CONTEXT.md`, `docs/adr/`, etc.) are welcome in any PR. Don't skip them.
+
 ## Agent skills
 
 - Issue tracker: `docs/agents/issue-tracker.md`
