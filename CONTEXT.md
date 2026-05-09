@@ -14,6 +14,8 @@ A child attending camp. Has:
 - **Gender** - Used for fleet balance constraints
 - **Preferences** - Ranked list of 4 seatrades (required)
 
+Camper identity (name, cabin, gender) and camper preferences (name, seatrade rankings) come from different sources in the real world — registration data vs. preference forms. The service layer joins them.
+
 ### Cabin
 
 A group of campers staying together. Properties:
@@ -28,7 +30,7 @@ An activity offered at camp. Properties:
 
 - **Name** - e.g., "Sailing", "Kayaking", "Rowing"
 - **Capacity** - Min/max campers per session
-- **Blocks available** - Which time blocks it's offered in (by default, all 4).
+- **Blocks available** - All 4 blocks always (hardcoded domain knowledge, not a parameter).
 
 ### Block
 
@@ -38,6 +40,8 @@ A time slot within a fleet. There are 4 blocks per day:
 - `1b` - Fleet 1, second session
 - `2a` - Fleet 2, first session
 - `2b` - Fleet 2, second session
+
+Blocks and fleets are hardcoded domain knowledge — not parameters to `SchedulingProblem`.
 
 ### Fleet
 
@@ -84,17 +88,15 @@ flowchart LR
 
     subgraph Service [seatrades/ — Service Layer]
         Sim[simulation.py: Generate Mock Data]
-        Val[preferences.py: Validate Inputs]
+        Val[preferences.py: Validate + Join 3→2]
         Prob[SchedulingProblem: Build MILP]
         Solve[solver.py: Solve + SolverStatus]
         Result[results.py: AssignmentSolution]
     end
 
     Upload --> Sim
-    Sim --> Val
-    Val --> Prob
-    Prob -->|pulp.LpProblem| Solve
-    Solve -->|AssignmentSolution| Result
+    Sim -->|3 DataFrames| Val
+    Val -->|2 DataFrames| Prob
     Solve -->|AssignmentSolution| Fragment
     Result --> Display
 ```
@@ -102,9 +104,9 @@ flowchart LR
 ### Pipeline (happy path)
 
 ```
-1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation
-2. Input DataFrames validated → seatrades.preferences (Pandera + cross-ref)
-3. SchedulingProblem(campers, cabins, seatrades, blocks, fleets, preferences) → holds parsed domain state
+1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation (produces 3 DataFrames: camper identity, camper preferences, seatrade setup)
+2. preferences.py validates (names match, seatrades exist in setup) and joins 3 DataFrames → 2 (joined campers, seatrade setup)
+3. SchedulingProblem(joined_campers, seatrade_setup) → holds parsed domain state
 4. solver.run(problem, config) → calls problem.build(config) internally, returns AssignmentSolution (with SolverStatus inside)
 5. UI reads AssignmentSolution.status via @st.fragment, displays assignments
 6. AssignmentSolution.export(view="camper"|"cabin"|"seatrade") → formatted DataFrame
@@ -146,9 +148,9 @@ The scheduler solves a mixed-integer linear programming problem with these const
 | `solver.py` | `solver.run(problem, config) -> AssignmentSolution` — orchestrates build + solve + wrangle. Calls `problem.build(config)` internally. Manages solver thread and CBC log reading. |
 | `results.py` | `AssignmentSolution` dataclass + free functions for wrangling (`wrangle_assignments_to_longform`, `wrangle_assignments_to_wideform`, `prepare_seatrade_leaders`) and export views. Functions take `AssignmentSolution`, not the problem. |
 | `visualization.py` | Build `alt.Chart` specs from `AssignmentSolution`. No Streamlit dependency — renders in any Altair-capable frontend. |
-| `preferences.py` | Pandera schemas + cross-reference validation (e.g., camper prefs must name seatrades that exist) |
-| `simulation.py` | Generate mock camper + seatrade data |
-| `config.py` | `OptimizationConfig`, `CamperSimulationConfig`, `SeatradeSimulationConfig` |
+| `preferences.py` | Pandera schemas + cross-reference validation (camper names match between sources, seatrade names in prefs exist in setup) + 3→2 DataFrame join (camper identity + camper preferences → joined campers) |
+| `simulation.py` | Generate mock data as 3 separate DataFrames (camper identity, camper preferences, seatrade setup) — goes through same validation pipeline as real uploads |
+| `config.py` | `OptimizationConfig`, `CamperSimulationConfig`, `SeatradeSimulationConfig`. Has PuLP dependency — `OptimizationConfig` owns its solver object directly. |
 
 ## Architecture Grilling — Decisions Log
 
@@ -162,11 +164,11 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 
 4. **Solver monitoring splits: service layer runs solver + reads CBC log, UI polls `AssignmentSolution.status` via `@st.fragment`.** PuLP/CBC doesn't support mid-solve callbacks — log file is the only progress signal. `@st.fragment(run_every=...)` replaces manual `while`+`sleep` polling. Progress percent stays in UI polling layer, not in SolverStatus.
 
-5. **Simulation data generation moves to service layer** (`seatrades/simulation.py`). It's domain logic, not UI.
+5. **Simulation data generation moves to service layer** (`seatrades/simulation.py`). It's domain logic, not UI. Simulation produces 3 separate DataFrames (camper identity, camper preferences, seatrade setup) — goes through same validation pipeline as real uploads.
 
-6. **Cross-reference validation moves to service layer** (`seatrades/preferences.py`). Dynamic Pandera subclass generation for checking camper prefs against available seatrades becomes a function that takes `available_seatrades` as a parameter.
+6. **Cross-reference validation and 3→2 join moves to service layer** (`seatrades/preferences.py`). Camper identity and preferences come from different sources (registration data vs. preference forms) — the user shouldn't have to join them. `preferences.py` validates (names match, seatrades exist in setup) and joins 3 DataFrames into 2 (joined campers, seatrade setup) before passing to `SchedulingProblem`. Dynamic Pandera subclass generation for checking camper prefs against available seatrades becomes a function that takes `available_seatrades` as a parameter.
 
-7. **Config dataclasses move to service layer** (`seatrades/config.py`). `OptimizationConfig`, `CamperSimulationConfig`, `SeatradeSimulationConfig` don't belong in UI files.
+7. **Config dataclasses move to service layer** (`seatrades/config.py`). `OptimizationConfig`, `CamperSimulationConfig`, `SeatradeSimulationConfig` don't belong in UI files. `OptimizationConfig` has PuLP dependency — it owns its solver object directly, since PuLP requires solver params at instantiation time and the config IS for the solver.
 
 8. **Infeasibility: report only for now (A), diagnose later (B).** `SolverStatus` reports error state + message. Structured constraint-conflict diagnostics are future work.
 
@@ -175,6 +177,10 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 10. **Rename `seatrades_app/` → `app/`**. Follows Streamlit convention, avoids naming confusion with `seatrades/` service package.
 
 11. **Altair chart → separate `seatrades/visualization.py` module.** Chart is neither presentation layer nor data model — it's a visualization spec that consumes `AssignmentSolution`. Stays in service layer (no Streamlit dep) so it's reusable outside the app (API, notebooks, other frontends). `results.py` stays clean: data model + export only. `app/` renders via `st.altair_chart()`.
+
+12. **Fleets and blocks are hardcoded domain knowledge.** Keats Camp always has 2 fleets with 2 blocks each (1a, 1b, 2a, 2b). Not parameters to `SchedulingProblem` — derived from the domain. Block availability for seatrades is always "all blocks."
+
+13. **SchedulingProblem receives 2 DataFrames, not 6 params.** After `preferences.py` joins the 3 source DataFrames, the problem builder gets `joined_campers` (identity + preferences merged) and `seatrade_setup` (name, min, max).
 
 ## Tech Stack
 
