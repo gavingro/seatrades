@@ -39,21 +39,21 @@ An activity offered at camp. Properties:
 
 ### Block
 
-A time slot within a fleet. There are 4 blocks per day:
+A time slot within a fleet. There are 4 blocks per week:
 
-- `1a` - Fleet 1, first session
-- `1b` - Fleet 1, second session
-- `2a` - Fleet 2, first session
-- `2b` - Fleet 2, second session
+- `1a` - Fleet 1, first half of the week
+- `1b` - Fleet 2, first half of the week
+- `2a` - Fleet 1, second half of the week
+- `2b` - Fleet 2, second half of the week
 
 Blocks and fleets are hardcoded domain knowledge — not parameters to `SchedulingProblem`.
 
 ### Fleet
 
-A group of 2 blocks (morning or afternoon):
+A group within each of 2 halves of the week (identifies morning session or afternoon session):
 
-- **Fleet 1** - Blocks 1a + 1b
-- **Fleet 2** - Blocks 2a + 2b
+- **Fleet 1** - Morning Session
+- **Fleet 2** - Afternoon Session
 
 Each cabin is assigned to one fleet for the week.
 
@@ -75,8 +75,7 @@ The app exports assignments in 3 formats for different audiences:
 
 | Format | Sort Order | Use Case |
 |--------|------------|----------|
-| Captain's Book | Camper (upload order) | Internal logistics and bookkeeping |
-| Cabin Leaders | Cabin → Block → Camper | Distribute to cabin leaders for their campers |
+| Captain's Book | Camper (Cabin upload order) | Internal logistics and bookkeeping, Distribute to cabin leaders for their campers |
 | Seatrade Leaders | Block → Seatrade → Cabin → Camper | Day-of attendance at each seatrade session |
 
 Each export includes columns: camper, seatrade, assignment (0/1), preference (1-4), cabin, block.

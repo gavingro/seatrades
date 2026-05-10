@@ -6,11 +6,14 @@ A Streamlit app for Keats Camp seatrade scheduling.
 
 - **Issue tracker:** GitHub Issues
 - **Domain docs:** `CONTEXT.md` + `docs/adr/` at repo root.
-- **Contributing:** See `docs/CONTRIBUTING.md`
+- **Contributing and Development:** See `docs/CONTRIBUTING.md`
 
 ## Setup
 
-This project uses a `.venv` virtual environment. Activate it before running Python:
+This project uses a `.venv` virtual environment.
+Check if it is already active with `which python`.
+
+If not, activate it before running Python:
 
 ```bash
 source .venv/bin/activate
