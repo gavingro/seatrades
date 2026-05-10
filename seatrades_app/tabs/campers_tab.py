@@ -1,51 +1,21 @@
 """Camper preferences tab — upload, validate, or simulate camper-seatrade preference data.
 
 Pandera mypy suppressions:
-- type: ignore[index] on SeatradesConfig bracket indexing (line ~164): pandera
-  DataFrameModel subclasses are indexable DataFrames at runtime but mypy can't verify this.
-- type: ignore[return-value] on CamperSeatradePreferences.validate (line ~209): pandera
+- type: ignore[return-value] on CamperSeatradePreferences.validate: pandera
   validate() returns DataFrame[X] but the function signature declares X. The runtime
   behavior is correct since validate() returns the validated DataFrame.
 
 Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
 """
 
-from random import sample
-
-import numpy as np
 import pandas as pd
 import streamlit as st
-from faker import Faker
 from pandera import Field
 
 from seatrades import preferences
 from seatrades.config import CamperSimulationConfig
+from seatrades.simulation import ALL_CABIN_DICT
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
-
-GIRL_CABIN_EXAMPLES = [
-    "Puffin",
-    "Pelican",
-    "Merganser",
-    "Kingfisher",
-    "Cormorant",
-    "Britannia",
-    "Acadia",
-    "Sovereign",
-    "Bounty",
-    "Santa Maria",
-]
-BOY_CABIN_EXAMPLES = [
-    "Tillikum",
-    "Caledonia",
-    "Girona",
-    "Grafton",
-    "Spindrift",
-    "Amherst",
-    "Buonaventure",
-    "Columbia",
-    "Terra Nova",
-]
-ALL_CABIN_DICT = {cabin: "female" for cabin in GIRL_CABIN_EXAMPLES} | {cabin: "male" for cabin in BOY_CABIN_EXAMPLES}
 
 
 def _update_camper_simulation_config(camper_simulation_config: CamperSimulationConfig):
@@ -157,56 +127,3 @@ def _validate_and_update_camper_preferences(camper_preferences: pd.DataFrame):
                 "Continuing without updating Camper Config.",
                 icon="🚨",
             )
-
-
-def _simulate_cabin_camper_preferences(
-    camper_simulation_config: CamperSimulationConfig,
-    seatrade_preferences: preferences.SeatradesConfig,
-) -> preferences.CamperSeatradePreferences:
-    """Get our cabin-camper preferences for our optimization problem."""
-    all_seatrades = seatrade_preferences["seatrade"].tolist()  # type: ignore[index]
-
-    # Mock Cabins -- Assume bigender for now.
-    cabins = sample(list(ALL_CABIN_DICT.keys()), k=camper_simulation_config.num_cabins)
-    # cabins = [f"Cabin{i:0>2}" for i in range(camper_simulation_config.num_cabins)]
-
-    # Mock Campers and Preferences
-    camper_prefs = {}
-    num_campers = 0
-    name_faker = Faker(locale=["en", "es", "it_IT", "fr_FR", "fr_QC"])
-    for cabin in cabins:
-        cabin_info = {}
-        cabin_gender = ALL_CABIN_DICT[cabin]
-        for _camper in range(
-            np.random.randint(
-                camper_simulation_config.camper_per_cabin_min,
-                camper_simulation_config.camper_per_cabin_max,
-            )
-        ):
-            # camper_name = f"Camper{num_campers:0>3}"
-            camper_name = name_faker.name_male() if cabin_gender == "male" else name_faker.name_female()
-            seatrade_prefs = sample(
-                all_seatrades,
-                camper_simulation_config.num_preferences,
-            )
-            cabin_info[camper_name] = seatrade_prefs
-            num_campers += 1
-        camper_prefs[cabin] = cabin_info
-
-    cabin_camper_prefs = (
-        pd.DataFrame(camper_prefs)
-        .reset_index(names="camper")
-        .melt(id_vars=["camper"], var_name="cabin", value_name="seatrade")
-        .dropna(subset="seatrade")
-        .reset_index(drop=True)
-    )
-    cabin_camper_prefs.loc[:, "gender"] = cabin_camper_prefs["cabin"].map(ALL_CABIN_DICT)
-
-    # This is inefficient from a wrangling point of view but it's okay it's just to start.
-    cabin_camper_prefs = cabin_camper_prefs.drop(columns="seatrade").join(
-        pd.DataFrame(
-            cabin_camper_prefs["seatrade"].to_list(),
-            columns=[f"seatrade_{i + 1}" for i in range(camper_simulation_config.num_preferences)],
-        )
-    )
-    return preferences.CamperSeatradePreferences.validate(cabin_camper_prefs)  # type: ignore[return-value]

@@ -1,43 +1,12 @@
-"""Seatrade preferences tab — upload, validate, or simulate available seatrades.
+"""Seatrade preferences tab — upload, validate, or simulate available seatrades."""
 
-Pandera mypy suppressions:
-- type: ignore[return-value] on SeatradesConfig.validate (line ~119): pandera
-  validate() returns DataFrame[X] but the function signature declares X. The runtime
-  behavior is correct since validate() returns the validated DataFrame.
-
-Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
-"""
-
-import random
-
-import numpy as np
 import pandas as pd
 import streamlit as st
 
 from seatrades import preferences
 from seatrades.config import SeatradeSimulationConfig
+from seatrades.simulation import SEATRADE_EXAMPLES
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
-
-# From Keats Website (and memory)
-SEATRADE_EXAMPLES = [
-    "Low Ropes",
-    "High Ropes",
-    "Giant Swing",
-    "Laser Tag",
-    "Frisbee Golf",
-    "Field Sports",  # Lmao
-    "Climbing",
-    "Crafts",
-    "Archery",
-    "Seal Spotting",
-    "Wakeboarding",
-    "Tubing",
-    "Swimming",
-    "Sailing",
-    "Paddleboarding",
-    "Canoeing and Kayaking",
-    "Wibit",
-]
 
 
 class SeatradeSimulationConfigTab:
@@ -96,30 +65,6 @@ class SeatradeSimulationConfigTab:
                     on_click=_update_seatrade_simulation_config,
                     kwargs={"seatrade_simulation_config": seatrade_simulation_config},
                 )
-
-
-def _simulate_seatrade_preferences(
-    seatrade_simulation_config: SeatradeSimulationConfig,
-) -> preferences.SeatradesConfig:
-    """Get our seatrade preferences for our optimization problem."""
-    # Mock Data for Now
-    seatrade_name_sample = random.sample(SEATRADE_EXAMPLES, k=seatrade_simulation_config.num_seatrades)
-
-    seatrades_prefs_dict = {
-        f"{seatrade}": {
-            "campers_min": (temp := np.random.randint(0, 2)),
-            "campers_max": temp
-            + (
-                np.random.randint(
-                    seatrade_simulation_config.camper_capacity_min,
-                    seatrade_simulation_config.camper_capacity_max,
-                )
-            ),
-        }
-        for seatrade in seatrade_name_sample
-    }
-    seatrades_prefs = pd.DataFrame(seatrades_prefs_dict).T.reset_index(names="seatrade")
-    return preferences.SeatradesConfig.validate(seatrades_prefs)  # type: ignore[return-value]
 
 
 def _validate_and_update_seatrade_preferences(seatrades_preferences: pd.DataFrame):

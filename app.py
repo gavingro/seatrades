@@ -1,10 +1,10 @@
 import streamlit as st
 
 from seatrades.config import CamperSimulationConfig, OptimizationConfig, SeatradeSimulationConfig
+from seatrades.simulation import simulate_cabin_camper_preferences, simulate_seatrade_preferences
 from seatrades_app.tabs.assignments_tab import AssignmentsTab
 from seatrades_app.tabs.campers_tab import (
     CamperSimulationConfigTab,
-    _simulate_cabin_camper_preferences,
     _update_camper_simulation_config,
 )
 from seatrades_app.tabs.optimization_config_tab import (
@@ -13,7 +13,6 @@ from seatrades_app.tabs.optimization_config_tab import (
 )
 from seatrades_app.tabs.seatrades_tab import (
     SeatradeSimulationConfigTab,
-    _simulate_seatrade_preferences,
     _update_seatrade_simulation_config,
 )
 
@@ -74,11 +73,11 @@ def _initial_page_setup():
 
     # Initialize Mock Data
     if "seatrade_preferences" not in st.session_state:
-        st.session_state["seatrade_preferences"] = _simulate_seatrade_preferences(
+        st.session_state["seatrade_preferences"] = simulate_seatrade_preferences(
             st.session_state["seatrade_simulation_config"]
         )
     if "cabin_camper_prefs" not in st.session_state:
-        st.session_state["cabin_camper_prefs"] = _simulate_cabin_camper_preferences(
+        st.session_state["cabin_camper_prefs"] = simulate_cabin_camper_preferences(
             camper_simulation_config=st.session_state["camper_simulation_config"],
             seatrade_preferences=st.session_state["seatrade_preferences"],
         )
