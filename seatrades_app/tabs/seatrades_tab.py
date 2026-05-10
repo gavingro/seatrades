@@ -102,5 +102,6 @@ def _update_seatrade_simulation_config(
         st.toast(f"Updating Seatrade Simulation Configuration.\n\n{seatrade_simulation_config}")
     st.session_state["seatrade_simulation_config"] = seatrade_simulation_config
     _clear_optimization_results()
-    if "seatrade_preferences" in st.session_state:
-        del st.session_state["seatrade_preferences"]
+    for key in ("seatrade_preferences", "cabin_camper_prefs", "camper_preferences"):
+        if key in st.session_state:
+            del st.session_state[key]

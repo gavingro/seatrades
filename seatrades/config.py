@@ -48,6 +48,37 @@ class SeatradesConfig(DataFrameModel):
         return df["campers_min"] <= df["campers_max"]
 
 
+class CamperIdentity(DataFrameModel):
+    """Camper identity data — cabin, name, gender."""
+
+    cabin: str = Field(ignore_na=False)
+    camper: str = Field(ignore_na=False)
+    gender: str = Field(ignore_na=False)
+
+
+class CamperPreferences(DataFrameModel):
+    """Camper seatrade preferences — ranked choices."""
+
+    camper: str = Field(ignore_na=False)
+    seatrade_1: str = Field(ignore_na=False)
+    seatrade_2: str = Field(ignore_na=False)
+    seatrade_3: str = Field(ignore_na=False)
+    seatrade_4: str = Field(ignore_na=False)
+
+    @dataframe_check
+    def campers_must_choose_4_unique_seatrades(cls, df: pd.DataFrame):  # type: ignore[misc]
+        """Each camper must choose 4 unique seatrades."""
+        return (
+            (df["seatrade_1"] != df["seatrade_2"])
+            & (df["seatrade_1"] != df["seatrade_3"])
+            & (df["seatrade_1"] != df["seatrade_4"])
+            & (df["seatrade_2"] != df["seatrade_3"])
+            & (df["seatrade_2"] != df["seatrade_4"])
+            & (df["seatrade_3"] != df["seatrade_4"])
+        )
+
+
+# Kept for backward compatibility during migration — will be removed.
 class CamperSeatradePreferences(DataFrameModel):
     """Camper preferences for which seatrade they want to be assigned."""
 

@@ -85,6 +85,60 @@ def simulate_seatrade_preferences(
     return preferences.SeatradesConfig.validate(seatrades_prefs)  # type: ignore[return-value]
 
 
+def simulate_camper_identity(
+    camper_simulation_config: CamperSimulationConfig,
+) -> pd.DataFrame:
+    """Generate simulated camper identity DataFrame (cabin, camper, gender)."""
+    cabins = sample(list(ALL_CABIN_DICT.keys()), k=camper_simulation_config.num_cabins)
+    name_faker = Faker(locale=["en", "es", "it_IT", "fr_FR", "fr_QC"])
+
+    rows = []
+    for cabin in cabins:
+        cabin_gender = ALL_CABIN_DICT[cabin]
+        for _ in range(
+            np.random.randint(
+                camper_simulation_config.camper_per_cabin_min,
+                camper_simulation_config.camper_per_cabin_max,
+            )
+        ):
+            name = name_faker.name_male() if cabin_gender == "male" else name_faker.name_female()
+            rows.append({"cabin": cabin, "camper": name, "gender": cabin_gender})
+
+    result = pd.DataFrame(rows)
+    return preferences.CamperIdentity.validate(result)  # type: ignore[return-value]
+
+
+def simulate_camper_preferences(
+    identity_df: pd.DataFrame,
+    seatrade_preferences: pd.DataFrame,
+) -> pd.DataFrame:
+    """Generate simulated camper preferences DataFrame (camper, seatrade_1..4).
+
+    identity_df should come from simulate_camper_identity — camper names are
+    taken from it to guarantee a match between identity and preferences.
+
+    seatrade_preferences should be a SeatradesConfig-conforming DataFrame
+    (e.g. from simulate_seatrade_preferences) — used to pick valid seatrade names.
+    """
+    all_seatrades = seatrade_preferences["seatrade"].tolist()  # type: ignore[index]
+
+    rows = []
+    for name in identity_df["camper"]:
+        prefs = sample(all_seatrades, 4)
+        rows.append(
+            {
+                "camper": name,
+                "seatrade_1": prefs[0],
+                "seatrade_2": prefs[1],
+                "seatrade_3": prefs[2],
+                "seatrade_4": prefs[3],
+            }
+        )
+
+    result = pd.DataFrame(rows)
+    return preferences.CamperPreferences.validate(result)  # type: ignore[return-value]
+
+
 def simulate_cabin_camper_preferences(
     camper_simulation_config: CamperSimulationConfig,
     seatrade_preferences: pd.DataFrame,

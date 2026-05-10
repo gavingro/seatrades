@@ -5,6 +5,8 @@ import pytest
 from pandera.errors import SchemaError
 
 from seatrades.config import (
+    CamperIdentity,
+    CamperPreferences,
     CamperSeatradePreferences,
     CamperSimulationConfig,
     OptimizationConfig,
@@ -129,9 +131,67 @@ class TestCamperSeatradePreferences:
             CamperSeatradePreferences.validate(df)
 
 
+class TestCamperIdentity:
+    def test_valid_data_passes_validation(self):
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Tillikum"],
+                "camper": ["Alice", "Bob"],
+                "gender": ["female", "male"],
+            }
+        )
+        validated = CamperIdentity.validate(df)
+        assert len(validated) == 2
+
+    def test_missing_column_fails(self):
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin"],
+                "camper": ["Alice"],
+            }
+        )
+        with pytest.raises(SchemaError):
+            CamperIdentity.validate(df)
+
+
+class TestCamperPreferences:
+    def test_valid_data_passes_validation(self):
+        df = pd.DataFrame(
+            {
+                "camper": ["Alice"],
+                "seatrade_1": ["Sailing"],
+                "seatrade_2": ["Climbing"],
+                "seatrade_3": ["Archery"],
+                "seatrade_4": ["Swimming"],
+            }
+        )
+        validated = CamperPreferences.validate(df)
+        assert len(validated) == 1
+
+    def test_duplicate_choices_fail(self):
+        df = pd.DataFrame(
+            {
+                "camper": ["Alice"],
+                "seatrade_1": ["Sailing"],
+                "seatrade_2": ["Sailing"],
+                "seatrade_3": ["Climbing"],
+                "seatrade_4": ["Swimming"],
+            }
+        )
+        with pytest.raises(SchemaError):
+            CamperPreferences.validate(df)
+
+
 class TestReexports:
-    def test_seatrades_config_importable_from_preferences(self):
-        from seatrades.preferences import CamperSeatradePreferences, SeatradesConfig
+    def test_models_importable_from_preferences(self):
+        from seatrades.preferences import (
+            CamperSeatradePreferences,
+            SeatradesConfig,
+            ValidationError,
+            join_and_validate,
+        )
 
         assert SeatradesConfig is not None
         assert CamperSeatradePreferences is not None
+        assert ValidationError is not None
+        assert join_and_validate is not None

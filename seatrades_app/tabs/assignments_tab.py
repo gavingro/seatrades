@@ -8,8 +8,9 @@ from typing import List, Literal, Optional
 import pandas as pd
 import streamlit as st
 
-from seatrades import preferences, results
+from seatrades import results
 from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
+from seatrades.preferences import ValidationError, join_and_validate
 from seatrades.seatrades import (
     Seatrades,
     prepare_seatrade_leaders,
@@ -30,8 +31,6 @@ class AssignmentsTab:
             "Assign Seatrades.",
             on_click=_assign_seatrades,
             kwargs={
-                "cabin_camper_preferences": st.session_state["cabin_camper_prefs"],
-                "seatrade_preferences": st.session_state["seatrade_preferences"],
                 "optimization_config": st.session_state["optimization_config"],
             },
         )
@@ -111,12 +110,28 @@ def _generate_intro_dialogue():
 
 
 def _assign_seatrades(
-    seatrade_preferences: preferences.SeatradesConfig,
-    cabin_camper_preferences: preferences.CamperSeatradePreferences,
     optimization_config: OptimizationConfig,
 ) -> None:
+    identity = st.session_state.get("camper_identity")
+    camper_prefs = st.session_state.get("camper_preferences")
+    seatrade_prefs = st.session_state.get("seatrade_preferences")
+
+    if identity is None or camper_prefs is None or seatrade_prefs is None:
+        st.toast("Missing camper or seatrade data. Upload or simulate first.", icon="🚨")
+        return
+
+    try:
+        joined_campers, seatrade_setup = join_and_validate(identity, camper_prefs, seatrade_prefs)
+    except ValidationError as e:
+        st.toast("Cross-reference validation failed.", icon="🚨")
+        with st.popover("Validation errors. Click for details.", icon="🚨"):
+            for error in e.errors:
+                st.write(error)
+        return
+
+    st.session_state["cabin_camper_prefs"] = joined_campers
     st.toast("Beginning Seatrade Optimization.")
-    seatrades = Seatrades(cabin_camper_preferences, seatrade_preferences)
+    seatrades = Seatrades(joined_campers, seatrade_setup)  # type: ignore[arg-type]
     with st.status("Step 1/3: Setting Up Optimization Problem") as status:
         # CAUTION: Does not actually stop the solver subthread which will keep running.
         # This will be a problem later if a user starts a ton of solver threads behind the scenes.

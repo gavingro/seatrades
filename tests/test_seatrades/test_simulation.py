@@ -9,6 +9,8 @@ from seatrades.simulation import (
     GIRL_CABIN_EXAMPLES,
     SEATRADE_EXAMPLES,
     simulate_cabin_camper_preferences,
+    simulate_camper_identity,
+    simulate_camper_preferences,
     simulate_seatrade_preferences,
 )
 
@@ -107,3 +109,72 @@ class TestDataConstants:
     def test_all_cabin_dict_maps_to_gender(self):
         for _cabin, gender in ALL_CABIN_DICT.items():
             assert gender in ("female", "male")
+
+
+class TestSimulateCamperIdentity:
+    """simulate_camper_identity produces a valid CamperIdentity DataFrame."""
+
+    def test_returns_dataframe_with_expected_columns(self):
+        config = CamperSimulationConfig()
+        result = simulate_camper_identity(config)
+        assert isinstance(result, pd.DataFrame)
+        for col in ["cabin", "camper", "gender"]:
+            assert col in result.columns
+
+    def test_cabin_count_matches_config(self):
+        config = CamperSimulationConfig(num_cabins=4)
+        result = simulate_camper_identity(config)
+        assert result["cabin"].nunique() <= config.num_cabins
+
+    def test_genders_match_cabin_assignments(self):
+        config = CamperSimulationConfig(num_cabins=4)
+        result = simulate_camper_identity(config)
+        for cabin in result["cabin"].unique():
+            gender = result.loc[result["cabin"] == cabin, "gender"].iloc[0]
+            assert gender == ALL_CABIN_DICT[cabin]
+
+    def test_pandera_validation_passes(self):
+        config = CamperSimulationConfig()
+        result = simulate_camper_identity(config)
+        from seatrades.config import CamperIdentity
+
+        CamperIdentity.validate(result)
+
+
+class TestSimulateCamperPreferences:
+    """simulate_camper_preferences produces a valid CamperPreferences DataFrame."""
+
+    def test_returns_dataframe_with_expected_columns(self):
+        seatrade_prefs = simulate_seatrade_preferences(SeatradeSimulationConfig())
+        config = CamperSimulationConfig()
+        identity_df = simulate_camper_identity(config)
+        result = simulate_camper_preferences(identity_df, seatrade_prefs)
+        assert isinstance(result, pd.DataFrame)
+        for col in ["camper", "seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]:
+            assert col in result.columns
+
+    def test_preferences_are_from_available_seatrades(self):
+        seatrade_prefs = simulate_seatrade_preferences(SeatradeSimulationConfig())
+        config = CamperSimulationConfig(num_cabins=4)
+        identity_df = simulate_camper_identity(config)
+        result = simulate_camper_preferences(identity_df, seatrade_prefs)
+        available = set(seatrade_prefs["seatrade"].tolist())
+        for col in ["seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]:
+            for val in result[col]:
+                assert val in available
+
+    def test_camper_names_match_identity(self):
+        seatrade_prefs = simulate_seatrade_preferences(SeatradeSimulationConfig())
+        config = CamperSimulationConfig(num_cabins=4)
+        identity_df = simulate_camper_identity(config)
+        result = simulate_camper_preferences(identity_df, seatrade_prefs)
+        assert set(result["camper"]) == set(identity_df["camper"])
+
+    def test_pandera_validation_passes(self):
+        seatrade_prefs = simulate_seatrade_preferences(SeatradeSimulationConfig())
+        config = CamperSimulationConfig(num_cabins=4)
+        identity_df = simulate_camper_identity(config)
+        result = simulate_camper_preferences(identity_df, seatrade_prefs)
+        from seatrades.config import CamperPreferences
+
+        CamperPreferences.validate(result)
