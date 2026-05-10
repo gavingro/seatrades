@@ -9,13 +9,13 @@ Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel supp
 """
 
 import random
-from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 
 from seatrades import preferences
+from seatrades.config import SeatradeSimulationConfig
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
 
 # From Keats Website (and memory)
@@ -38,13 +38,6 @@ SEATRADE_EXAMPLES = [
     "Canoeing and Kayaking",
     "Wibit",
 ]
-
-
-@dataclass
-class SeatradeSimulationConfig:
-    num_seatrades: int = 16
-    camper_capacity_min: int = 8
-    camper_capacity_max: int = 15
 
 
 class SeatradeSimulationConfigTab:

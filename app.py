@@ -1,19 +1,17 @@
 import streamlit as st
 
+from seatrades.config import CamperSimulationConfig, OptimizationConfig, SeatradeSimulationConfig
 from seatrades_app.tabs.assignments_tab import AssignmentsTab
 from seatrades_app.tabs.campers_tab import (
-    CamperSimulationConfig,
     CamperSimulationConfigTab,
     _simulate_cabin_camper_preferences,
     _update_camper_simulation_config,
 )
 from seatrades_app.tabs.optimization_config_tab import (
-    OptimizationConfig,
     OptimizationConfigForm,
     _update_optimization_config,
 )
 from seatrades_app.tabs.seatrades_tab import (
-    SeatradeSimulationConfig,
     SeatradeSimulationConfigTab,
     _simulate_seatrade_preferences,
     _update_seatrade_simulation_config,

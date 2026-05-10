@@ -9,14 +9,11 @@ import pandas as pd
 import streamlit as st
 
 from seatrades import preferences, results
+from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
 from seatrades.seatrades import (
     Seatrades,
     prepare_seatrade_leaders,
     wrangle_assignments_to_wideform,
-)
-from seatrades_app.tabs.optimization_config_tab import (
-    SEATRADES_LOG_PATH,
-    OptimizationConfig,
 )
 
 status_queue: queue.Queue[int] = queue.Queue()

@@ -10,7 +10,6 @@ Pandera mypy suppressions:
 Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
 """
 
-from dataclasses import dataclass
 from random import sample
 
 import numpy as np
@@ -20,16 +19,8 @@ from faker import Faker
 from pandera import Field
 
 from seatrades import preferences
+from seatrades.config import CamperSimulationConfig
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
-
-
-@dataclass
-class CamperSimulationConfig:
-    num_cabins: int = 8
-    num_preferences: int = 4
-    camper_per_cabin_min: int = 8
-    camper_per_cabin_max: int = 12
-
 
 GIRL_CABIN_EXAMPLES = [
     "Puffin",
