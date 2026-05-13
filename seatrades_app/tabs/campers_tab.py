@@ -3,9 +3,10 @@
 import pandas as pd
 import streamlit as st
 
-from seatrades.config import CamperSimulationConfig
-from seatrades.preferences import ValidationError, join_and_validate
+from seatrades.config import CamperIdentity, CamperPreferences, CamperSimulationConfig
+from seatrades.preferences import ValidationError, join_and_validate, read_csv_for_schema, validate_schema
 from seatrades.simulation import ALL_CABIN_DICT, simulate_camper_identity, simulate_camper_preferences
+from seatrades_app.components import show_validation_error
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
 
 
@@ -44,8 +45,12 @@ class CamperSimulationConfigTab:
             key="identity_uploader",
         )
         if uploaded_identity:
-            identity_data = pd.read_csv(uploaded_identity, index_col=None)
-            _validate_and_update_identity(identity_data)
+            try:
+                identity_data = read_csv_for_schema(uploaded_identity, CamperIdentity)
+            except ValidationError as e:
+                show_validation_error("Camper Identity", e)
+            else:
+                _validate_and_update_identity(identity_data)
         if "camper_identity" in st.session_state:
             st.data_editor(st.session_state["camper_identity"], disabled=True)
 
@@ -57,8 +62,12 @@ class CamperSimulationConfigTab:
             key="prefs_uploader",
         )
         if uploaded_prefs:
-            prefs_data = pd.read_csv(uploaded_prefs, index_col=None)
-            _validate_and_update_preferences(prefs_data)
+            try:
+                prefs_data = read_csv_for_schema(uploaded_prefs, CamperPreferences)
+            except ValidationError as e:
+                show_validation_error("Camper Preferences", e)
+            else:
+                _validate_and_update_preferences(prefs_data)
         if "camper_preferences" in st.session_state:
             st.data_editor(st.session_state["camper_preferences"], disabled=True)
 
@@ -101,27 +110,23 @@ class CamperSimulationConfigTab:
 def _validate_and_update_identity(identity_data: pd.DataFrame):
     """Validate camper identity CSV and store in session state."""
     try:
-        from seatrades.config import CamperIdentity
-
-        CamperIdentity.validate(identity_data)
+        validate_schema(CamperIdentity, identity_data, "Camper Identity")
         st.session_state["camper_identity"] = identity_data
         _try_join_and_validate()
         st.toast("Updating Camper Identity.")
-    except Exception as e:
-        _show_validation_error("Camper Identity", e)
+    except ValidationError as e:
+        show_validation_error("Camper Identity", e)
 
 
 def _validate_and_update_preferences(prefs_data: pd.DataFrame):
     """Validate camper preferences CSV and store in session state."""
     try:
-        from seatrades.config import CamperPreferences
-
-        CamperPreferences.validate(prefs_data)
+        validate_schema(CamperPreferences, prefs_data, "Camper Preferences")
         st.session_state["camper_preferences"] = prefs_data
         _try_join_and_validate()
         st.toast("Updating Camper Preferences.")
-    except Exception as e:
-        _show_validation_error("Camper Preferences", e)
+    except ValidationError as e:
+        show_validation_error("Camper Preferences", e)
 
 
 def _try_join_and_validate():
@@ -137,10 +142,7 @@ def _try_join_and_validate():
         joined_campers, seatrade_setup = join_and_validate(identity, preferences, seatrades)
         st.session_state["cabin_camper_prefs"] = joined_campers
     except ValidationError as e:
-        with st.popover("Cross-reference validation failed. Click for details.", icon="🚨"):
-            for error in e.errors:
-                st.write(error)
-        st.toast("Cross-reference validation failed.", icon="🚨")
+        show_validation_error("Cross-reference Validation", e)
 
 
 def _simulate_campers(camper_simulation_config: CamperSimulationConfig):
@@ -168,20 +170,4 @@ def _simulate_campers(camper_simulation_config: CamperSimulationConfig):
         joined_campers, seatrade_setup = join_and_validate(identity_df, preferences_df, seatrade_prefs)
         st.session_state["cabin_camper_prefs"] = joined_campers
     except ValidationError as e:
-        with st.popover("Cross-reference validation failed. Click for details.", icon="🚨"):
-            for error in e.errors:
-                st.write(error)
-        st.toast("Cross-reference validation failed.", icon="🚨")
-
-
-def _show_validation_error(label: str, error: Exception):
-    with st.popover(
-        f"Continuing without updating {label}. Click to see Error.",
-        icon="🚨",
-    ):
-        st.write("Uploaded file does not meet expected schema. Error is as follows:")
-        st.write(error)
-        st.toast(
-            f"Continuing without updating {label}.",
-            icon="🚨",
-        )
+        show_validation_error("Cross-reference Validation", e)

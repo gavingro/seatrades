@@ -3,9 +3,11 @@
 import pandas as pd
 import streamlit as st
 
-from seatrades import preferences
-from seatrades.config import SeatradeSimulationConfig
+from seatrades.config import SeatradesConfig, SeatradeSimulationConfig
+from seatrades.preferences import ValidationError, read_csv_for_schema, validate_schema
 from seatrades.simulation import SEATRADE_EXAMPLES
+from seatrades_app.components import show_validation_error
+from seatrades_app.tabs.campers_tab import _try_join_and_validate
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
 
 
@@ -27,8 +29,12 @@ class SeatradeSimulationConfigTab:
             """,
         )
         if uploaded_seatrade_prefs:
-            seatrade_prefs_data = pd.read_csv(uploaded_seatrade_prefs, index_col=None)
-            _validate_and_update_seatrade_preferences(seatrade_prefs_data)
+            try:
+                seatrade_prefs_data = read_csv_for_schema(uploaded_seatrade_prefs, SeatradesConfig)
+            except ValidationError as e:
+                show_validation_error("Seatrade Setup", e)
+            else:
+                _validate_and_update_seatrade_preferences(seatrade_prefs_data)
         st.data_editor(st.session_state["seatrade_preferences"], disabled=True)
 
         st.write("")
@@ -69,20 +75,12 @@ class SeatradeSimulationConfigTab:
 
 def _validate_and_update_seatrade_preferences(seatrades_preferences: pd.DataFrame):
     try:
-        preferences.SeatradesConfig.validate(seatrades_preferences)
+        validate_schema(SeatradesConfig, seatrades_preferences, "Seatrade Setup")
         st.session_state["seatrade_preferences"] = seatrades_preferences
+        _try_join_and_validate()
         st.toast("Updating Seatrade Preferences.")
-    except Exception as e:
-        with st.popover(
-            "Continuing without updating Seatrades Config. Click to see Error.",
-            icon="🚨",
-        ):
-            st.write("Uploaded file does not meet expected schema. Error is as follows:")
-            st.write(e)
-            st.toast(
-                "Continuing without updating Seatrades Config.",
-                icon="🚨",
-            )
+    except ValidationError as e:
+        show_validation_error("Seatrade Setup", e)
 
 
 def _update_seatrade_simulation_config(
