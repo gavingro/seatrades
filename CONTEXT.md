@@ -214,7 +214,9 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 - **UI:** Streamlit
 - **Optimizer:** PuLP (mixed-integer linear programming)
 - **Validation:** Pandera (DataFrame schemas)
-- **Deployment:** Streamlit Cloud
+- **Deployment:** Streamlit Community Cloud
+- **App URL:** https://keats-seatrades.streamlit.app/
+- **Entry point:** app.py
 
 ## Git Workflow
 
