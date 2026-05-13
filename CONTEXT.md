@@ -48,6 +48,10 @@ A time slot within a fleet. There are 4 blocks per week:
 
 Blocks and fleets are hardcoded domain knowledge — not parameters to `SchedulingProblem`.
 
+### Session
+
+A specific seatrade within a specific fleet and block. E.g., "Sailing in 1a". Sessions are the unit of assignment in the solver — a camper is assigned to a seatrade in a fleet+block, and that combination is a session.
+
 ### Fleet
 
 A group within each of 2 halves of the week (identifies morning session or afternoon session):
@@ -56,6 +60,22 @@ A group within each of 2 halves of the week (identifies morning session or after
 - **Fleet 2** - Afternoon Session
 
 Each cabin is assigned to one fleet for the week.
+
+### Camper Relationship
+
+A social constraint between a pair of campers. Each relationship has:
+
+- **Pair** - Two campers identified by `(cabin, name)` composite keys
+- **Type** - One of: `friends`, `besties`, `frenemies`
+- **Symmetric** - Order doesn't matter; (Alice, Bob) is the same as (Bob, Alice)
+
+| Type | Constraint |
+|------|-----------|
+| Friends | Pair shares ≥1 session (same seatrade, same fleet+block) |
+| Besties | Pair shares both sessions (identical schedule) |
+| Frenemies | Pair shares zero sessions (no seatrade overlap in any block) |
+
+All relationship types are hard constraints — the solver must satisfy them or report infeasibility. Relationships are optional input; when absent, no relationship constraints are applied.
 
 ### Assignment
 
@@ -92,15 +112,15 @@ flowchart LR
 
     subgraph Service [seatrades/ — Service Layer]
         Sim[simulation.py: Generate Mock Data]
-        Val[preferences.py: Validate + Join 3→2]
+        Val[preferences.py: Validate + Join 3→2 + Relationships]
         Prob[SchedulingProblem: Build MILP]
         Solve[solver.py: Solve + SolverStatus]
         Result[results.py: AssignmentSolution]
     end
 
     Upload --> Sim
-    Sim -->|3 DataFrames| Val
-    Val -->|2 DataFrames| Prob
+    Sim -->|3 DataFrames + optional relationships| Val
+    Val -->|2 DataFrames + validated relationships| Prob
     Solve -->|AssignmentSolution| Fragment
     Result --> Display
 ```
@@ -108,9 +128,9 @@ flowchart LR
 ### Pipeline (happy path)
 
 ```
-1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation (produces 3 DataFrames: camper identity, camper preferences, seatrade setup)
-2. preferences.py validates (names match, seatrades exist in setup) and joins 3 DataFrames → 2 (joined campers, seatrade setup)
-3. SchedulingProblem(joined_campers, seatrade_setup) → holds parsed domain state
+1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation (produces 3 DataFrames: camper identity, camper preferences, seatrade setup + optional relationships)
+2. preferences.py validates (names match, seatrades exist in setup, relationship pairs valid) and joins 3 DataFrames → 2 (joined campers, seatrade setup) + validated relationships
+3. SchedulingProblem(joined_campers, seatrade_setup, relationships) → holds parsed domain state
 4. solver.run(problem, config) → calls problem.build(config) internally, returns AssignmentSolution (with SolverStatus inside)
 5. UI reads AssignmentSolution.status via @st.fragment, displays assignments
 6. AssignmentSolution.export(view="camper"|"cabin"|"seatrade") → formatted DataFrame
@@ -128,6 +148,7 @@ The scheduler solves a mixed-integer linear programming problem with these const
 6. **Cabin max per seatrade** - Max k campers from same cabin in one seatrade (by default k=4)
 7. **Fleet balance** - Cabins split evenly between fleets
 8. **Gender balance** - Boys/girls cabins split evenly between fleets
+9. **Camper relationships** - Friends (share ≥1 session), besties (identical schedule), frenemies (share zero sessions). Hard constraints, optional input.
 
 ## Module Boundaries
 
@@ -142,7 +163,7 @@ The scheduler solves a mixed-integer linear programming problem with these const
 |--------|------|
 | `app.py` | Entry point, tab layout |
 | `state.py` | Constants for all session state keys (low priority, replace scattered strings) |
-| `tabs/` | Thin Streamlit presentation — widgets, forms, file uploads. Call service functions, display results. |
+| `tabs/` | Thin Streamlit presentation — widgets, forms, file uploads. Call service functions, display results. Includes Friends tab for optional relationship CSV upload. |
 
 ### seatrades/ modules
 
@@ -152,8 +173,8 @@ The scheduler solves a mixed-integer linear programming problem with these const
 | `solver.py` | `solver.run(problem, config) -> AssignmentSolution` — orchestrates build + solve + wrangle. Calls `problem.build(config)` internally. Manages solver thread and CBC log reading. |
 | `results.py` | `AssignmentSolution` dataclass + free functions for wrangling (`wrangle_assignments_to_longform`, `wrangle_assignments_to_wideform`, `prepare_seatrade_leaders`) and export views. Functions take `AssignmentSolution`, not the problem. |
 | `visualization.py` | Build `alt.Chart` specs from `AssignmentSolution`. No Streamlit dependency — renders in any Altair-capable frontend. |
-| `preferences.py` | Pandera schemas + cross-reference validation (camper names match between sources, seatrade names in prefs exist in setup) + 3→2 DataFrame join (camper identity + camper preferences → joined campers) |
-| `simulation.py` | Generate mock data as 3 separate DataFrames (camper identity, camper preferences, seatrade setup) — goes through same validation pipeline as real uploads |
+| `preferences.py` | Pandera schemas + cross-reference validation (camper names match between sources, seatrade names in prefs exist in setup) + 3→2 DataFrame join (camper identity + camper preferences → joined campers) + relationship validation (self-pairs, duplicate pairs, camper existence) |
+| `simulation.py` | Generate mock data as 3 separate DataFrames (camper identity, camper preferences, seatrade setup) + optional relationships DataFrame — goes through same validation pipeline as real uploads |
 | `config.py` | `OptimizationConfig`, `CamperSimulationConfig`, `SeatradeSimulationConfig`. Has PuLP dependency — `OptimizationConfig` owns its solver object directly. |
 
 ## Architecture Grilling — Decisions Log
@@ -185,6 +206,8 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 12. **Fleets and blocks are hardcoded domain knowledge.** Keats Camp always has 2 fleets with 2 blocks each (1a, 1b, 2a, 2b). Not parameters to `SchedulingProblem` — derived from the domain. Block availability for seatrades is always "all blocks."
 
 13. **SchedulingProblem receives 2 DataFrames, not 6 params.** After `preferences.py` joins the 3 source DataFrames, the problem builder gets `joined_campers` (identity + preferences merged) and `seatrade_setup` (name, min, max).
+
+14. **Camper relationships are hard MILP constraints with a dedicated input DataFrame.** Schema: `(cabin_1, camper_1, cabin_2, camper_2, relationship)` with values `friends`, `besties`, `frenemies`. Uses composite keys matching existing domain model. Session = seatrade + fleet + block; all relationship constraints operate on sessions. Validation rejects self-pairs and duplicate pairs (regardless of order). Relationships are optional — no constraints by default. Diagnosing contradictory constraint chains causing infeasibility is future work. PRD: `docs/prd/camper-relationships.md`.
 
 ## Tech Stack
 
