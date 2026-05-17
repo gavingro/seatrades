@@ -8,7 +8,7 @@ prepare_seatrade_leaders has this test coverage via sample_mixed_assignment_df.
 import pandas as pd
 import pytest
 
-from seatrades.seatrades import prepare_seatrade_leaders, wrangle_assignments_to_wideform
+from seatrades.results import prepare_seatrade_leaders, wrangle_assignments_to_wideform
 
 
 @pytest.fixture

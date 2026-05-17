@@ -1,21 +1,20 @@
 import streamlit as st
 
-from seatrades_app.tabs.assignments_tab import AssignmentsTab
-from seatrades_app.tabs.campers_tab import (
-    CamperSimulationConfig,
-    CamperSimulationConfigTab,
-    _simulate_cabin_camper_preferences,
-    _update_camper_simulation_config,
+from seatrades.config import CamperSimulationConfig, OptimizationConfig, SeatradeSimulationConfig
+from seatrades.preferences import join_and_validate
+from seatrades.simulation import (
+    simulate_camper_identity,
+    simulate_camper_preferences,
+    simulate_seatrade_preferences,
 )
+from seatrades_app.tabs.assignments_tab import AssignmentsTab
+from seatrades_app.tabs.campers_tab import CamperSimulationConfigTab, _update_camper_simulation_config
 from seatrades_app.tabs.optimization_config_tab import (
-    OptimizationConfig,
     OptimizationConfigForm,
     _update_optimization_config,
 )
 from seatrades_app.tabs.seatrades_tab import (
-    SeatradeSimulationConfig,
     SeatradeSimulationConfigTab,
-    _simulate_seatrade_preferences,
     _update_seatrade_simulation_config,
 )
 
@@ -26,9 +25,6 @@ def main():
 
     # Page Content
     st.title("Keats Seatrade Scheduler")
-
-    # with st.sidebar as sidebar:
-    #     st.text("Sidebar Placeholder.")
 
     # Setup Tabs
     (
@@ -53,19 +49,10 @@ def main():
     with optimization_config_tab:
         st.subheader("Optimization Setup")
         OptimizationConfigForm().generate()
-    # Temp for Debugging
-    # st.write("---")
-    # st.caption("Camper Simulation Config")
-    # st.dataframe(st.session_state["camper_simulation_config"])
-    # st.caption("Seatrade Simulation Config")
-    # st.dataframe(st.session_state["seatrade_simulation_config"])
-    # st.caption("Optimization Config")
-    # st.dataframe(st.session_state["optimization_config"])
-    # st.write("")
 
 
 def _initial_page_setup():
-    """Setup initial config and simulation preferences before user imput."""
+    """Setup initial config and simulation preferences before user input."""
     # Setup Base Config and Data before Preferences
     if "optimization_config" not in st.session_state:
         _update_optimization_config(optimization_config=OptimizationConfig())
@@ -76,14 +63,23 @@ def _initial_page_setup():
 
     # Initialize Mock Data
     if "seatrade_preferences" not in st.session_state:
-        st.session_state["seatrade_preferences"] = _simulate_seatrade_preferences(
+        st.session_state["seatrade_preferences"] = simulate_seatrade_preferences(
             st.session_state["seatrade_simulation_config"]
         )
-    if "cabin_camper_prefs" not in st.session_state:
-        st.session_state["cabin_camper_prefs"] = _simulate_cabin_camper_preferences(
-            camper_simulation_config=st.session_state["camper_simulation_config"],
-            seatrade_preferences=st.session_state["seatrade_preferences"],
+    if "camper_identity" not in st.session_state:
+        identity_df = simulate_camper_identity(st.session_state["camper_simulation_config"])
+        st.session_state["camper_identity"] = identity_df
+        st.session_state["camper_preferences"] = simulate_camper_preferences(
+            identity_df, st.session_state["seatrade_preferences"]
         )
+    # cabin_camper_prefs is the joined result used by Seatrides
+    if "cabin_camper_prefs" not in st.session_state:
+        joined_campers, _seatrade_setup = join_and_validate(
+            st.session_state["camper_identity"],
+            st.session_state["camper_preferences"],
+            st.session_state["seatrade_preferences"],
+        )
+        st.session_state["cabin_camper_prefs"] = joined_campers
 
 
 if __name__ == "__main__":

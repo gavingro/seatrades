@@ -1,50 +1,14 @@
-"""Seatrade preferences tab — upload, validate, or simulate available seatrades.
+"""Seatrade preferences tab — upload, validate, or simulate available seatrades."""
 
-Pandera mypy suppressions:
-- type: ignore[return-value] on SeatradesConfig.validate (line ~119): pandera
-  validate() returns DataFrame[X] but the function signature declares X. The runtime
-  behavior is correct since validate() returns the validated DataFrame.
-
-Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
-"""
-
-import random
-from dataclasses import dataclass
-
-import numpy as np
 import pandas as pd
 import streamlit as st
 
-from seatrades import preferences
+from seatrades.config import SeatradesConfig, SeatradeSimulationConfig
+from seatrades.preferences import ValidationError, read_csv_for_schema, validate_schema
+from seatrades.simulation import SEATRADE_EXAMPLES
+from seatrades_app.components import show_validation_error
+from seatrades_app.tabs.campers_tab import _try_join_and_validate
 from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
-
-# From Keats Website (and memory)
-SEATRADE_EXAMPLES = [
-    "Low Ropes",
-    "High Ropes",
-    "Giant Swing",
-    "Laser Tag",
-    "Frisbee Golf",
-    "Field Sports",  # Lmao
-    "Climbing",
-    "Crafts",
-    "Archery",
-    "Seal Spotting",
-    "Wakeboarding",
-    "Tubing",
-    "Swimming",
-    "Sailing",
-    "Paddleboarding",
-    "Canoeing and Kayaking",
-    "Wibit",
-]
-
-
-@dataclass
-class SeatradeSimulationConfig:
-    num_seatrades: int = 16
-    camper_capacity_min: int = 8
-    camper_capacity_max: int = 15
 
 
 class SeatradeSimulationConfigTab:
@@ -65,8 +29,12 @@ class SeatradeSimulationConfigTab:
             """,
         )
         if uploaded_seatrade_prefs:
-            seatrade_prefs_data = pd.read_csv(uploaded_seatrade_prefs, index_col=None)
-            _validate_and_update_seatrade_preferences(seatrade_prefs_data)
+            try:
+                seatrade_prefs_data = read_csv_for_schema(uploaded_seatrade_prefs, SeatradesConfig)
+            except ValidationError as e:
+                show_validation_error("Seatrade Setup", e)
+            else:
+                _validate_and_update_seatrade_preferences(seatrade_prefs_data)
         st.data_editor(st.session_state["seatrade_preferences"], disabled=True)
 
         st.write("")
@@ -105,46 +73,14 @@ class SeatradeSimulationConfigTab:
                 )
 
 
-def _simulate_seatrade_preferences(
-    seatrade_simulation_config: SeatradeSimulationConfig,
-) -> preferences.SeatradesConfig:
-    """Get our seatrade preferences for our optimization problem."""
-    # Mock Data for Now
-    seatrade_name_sample = random.sample(SEATRADE_EXAMPLES, k=seatrade_simulation_config.num_seatrades)
-
-    seatrades_prefs_dict = {
-        f"{seatrade}": {
-            "campers_min": (temp := np.random.randint(0, 2)),
-            "campers_max": temp
-            + (
-                np.random.randint(
-                    seatrade_simulation_config.camper_capacity_min,
-                    seatrade_simulation_config.camper_capacity_max,
-                )
-            ),
-        }
-        for seatrade in seatrade_name_sample
-    }
-    seatrades_prefs = pd.DataFrame(seatrades_prefs_dict).T.reset_index(names="seatrade")
-    return preferences.SeatradesConfig.validate(seatrades_prefs)  # type: ignore[return-value]
-
-
 def _validate_and_update_seatrade_preferences(seatrades_preferences: pd.DataFrame):
     try:
-        preferences.SeatradesConfig.validate(seatrades_preferences)
+        validate_schema(SeatradesConfig, seatrades_preferences, "Seatrade Setup")
         st.session_state["seatrade_preferences"] = seatrades_preferences
+        _try_join_and_validate()
         st.toast("Updating Seatrade Preferences.")
-    except Exception as e:
-        with st.popover(
-            "Continuing without updating Seatrades Config. Click to see Error.",
-            icon="🚨",
-        ):
-            st.write("Uploaded file does not meet expected schema. Error is as follows:")
-            st.write(e)
-            st.toast(
-                "Continuing without updating Seatrades Config.",
-                icon="🚨",
-            )
+    except ValidationError as e:
+        show_validation_error("Seatrade Setup", e)
 
 
 def _update_seatrade_simulation_config(
@@ -164,5 +100,6 @@ def _update_seatrade_simulation_config(
         st.toast(f"Updating Seatrade Simulation Configuration.\n\n{seatrade_simulation_config}")
     st.session_state["seatrade_simulation_config"] = seatrade_simulation_config
     _clear_optimization_results()
-    if "seatrade_preferences" in st.session_state:
-        del st.session_state["seatrade_preferences"]
+    for key in ("seatrade_preferences", "cabin_camper_prefs", "camper_preferences"):
+        if key in st.session_state:
+            del st.session_state[key]

@@ -1,37 +1,42 @@
 # ADR 0005: Git Branching Strategy
 
 **Date:** 2026-05-06
+**Updated:** 2026-05-10
 **Status:** Accepted
 
 ## Context
 
-SeaTrades uses a shared GitHub account (`gavingro`) with branch protection on `main` (PR + 1 approval). Work is tracked as GitHub issues. Some features are large (PRD-level) and need QA as a coherent whole before merging to main. Previously, all branches were flat off main with no hierarchy.
+SeaTrades uses a shared GitHub account (`gavingro`) with branch protection on `main` (PR + 1 approval). Work is tracked as GitHub issues. Some features are large (PRD-level) and need QA as a coherent whole before merging to main.
+
+We initially adopted a tiered branching model with `dev/` branches forking off `feature/` branches for each sub-issue. In practice, creating a separate branch and PR for every small sub-issue was tedious and slowed the working rhythm. Sub-issues are now implemented as commits directly on the feature branch instead.
 
 ## Decision
 
-Adopt a tiered branching strategy with four branch patterns:
+Adopt a three-pattern branching strategy:
 
 | Branch type | Prefix | Source | Merges into | Has PRD doc? | Lifecycle |
 |---|---|---|---|---|---|
 | Large feature (PRD) | `feature/13-csv-import` | `main` | `main` | Yes | Long-lived until QA complete |
-| Dev (part of PRD) | `dev/42-csv-upload` | Parent `feature/` branch | Parent `feature/` branch | No (links to parent PRD issue) | Short-lived |
 | Dev (standalone) | `dev/55-small-fix` | `main` | `main` | No | Short-lived |
 | Bug fix | `fix/56-header-crash` | `main` | `main` | No | Short-lived |
 
-The `dev/` prefix is for small-scope work regardless of target. A `dev/` branch sources from its parent `feature/` when it supports a PRD, or from `main` when standalone.
+Sub-issues of a PRD are implemented as **commits on the feature branch**, not as separate `dev/` branches. The `dev/` prefix is only for standalone small work unrelated to any PRD.
+
+### Sub-issue commits on feature branches
+
+Each sub-issue is a commit on the feature branch. Commit messages reference the issue number for GitHub auto-close (loose convention, e.g. `Implement CSV upload (#42)`). The final PR body can also close multiple issues at once using GitHub keywords.
 
 ### Merge strategy
 
-- **All merges use squash merge** — one clean commit per issue on the PRD branch, one clean commit per PRD on main.
+- **All merges use squash merge** — one clean commit per PRD on main, one clean commit per standalone dev/fix on main.
 - **All merges require a PR** — for traceability and auto-closing issues via GitHub keywords.
-- **`dev/` → `feature/`**: PR created, self-merged (no approval required).
+- **`feature/` → `main`**: PR created, requires approval (branch protection). One formal review at the end; informal mid-feature reviews are optional.
 - **`dev/` → `main`**: PR created, requires approval (branch protection).
-- **`feature/` → `main`**: PR created, requires approval (existing branch protection).
-- **`fix/` → `main`**: PR created, requires approval (same as any merge to main).
+- **`fix/` → `main`**: PR created, requires approval (branch protection).
 
 ### Syncing
 
-Long-lived `feature/` branches stay current by **merging `main` into `feature/`** (not rebasing). This preserves history and avoids breaking any `dev/` branches based on the feature branch.
+Long-lived `feature/` branches stay current by **merging `main` into `feature/`** (not rebasing). This preserves history and avoids breaking in-progress work.
 
 ### Branch cleanup
 
@@ -42,10 +47,6 @@ Long-lived `feature/` branches stay current by **merging `main` into `feature/`*
 
 All branches follow `{prefix}/{issue}-{name}` format. This is convention, not programmatically enforced.
 
-### PRD branches as landing zones
-
-Create a `feature/` branch when the PRD issue is opened, before any dev work starts. This gives incoming `dev/` branches a target to branch from and PR into. If a PRD is abandoned, delete the branch manually along with the issue.
-
 ### PRD tracking
 
 PRDs are tracked as GitHub issues. No milestones for now.
@@ -55,13 +56,15 @@ PRDs are tracked as GitHub issues. No milestones for now.
 ### Positive
 
 - QA can validate a full feature before it reaches main.
-- New issues discovered during QA can be added to the PRD branch mid-flight.
-- One commit per issue on PRD branches keeps history readable.
+- Simpler workflow — no sub-branch management for PRD work.
+- Commit-per-sub-issue on feature branches keeps history readable.
 - PRs auto-close issues, keeping the tracker current.
+- Fewer branches and PRs to manage.
 
 ### Negative
 
 - Long-lived feature branches can drift from main and require merge commits to sync.
 - More branch management overhead than trunk-based development.
+- Sub-issue work on feature branches is unreviewed until the final PR (informal mid-feature reviews are optional, not required).
+- Squash-merge loses granular commit history (preserved in closed PR on GitHub).
 - Empty feature branches may accumulate if PRDs are abandoned without cleanup.
-- Squash-merge loses granular commit history (preserved in closed PRs on GitHub).

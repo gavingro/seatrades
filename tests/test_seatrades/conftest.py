@@ -3,6 +3,57 @@
 import pandas as pd
 import pytest
 
+from seatrades.config import OptimizationConfig
+from seatrades.problem import SchedulingProblem
+from seatrades.results import AssignmentSolution, SolverState, SolverStatus
+
+
+@pytest.fixture
+def joined_campers_df():
+    """DataFrame matching output of join_and_validate().
+
+    4 campers across 2 cabins, 4 seatrade preferences each.
+    Camper names do NOT have .{index} suffix — SchedulingProblem adds it.
+    """
+    return pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "camper": ["Alice", "Bob", "Carol", "Dave"],
+            "gender": ["F", "M", "F", "M"],
+            "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
+            "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
+            "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
+            "seatrade_4": ["Kayaking", "Kayaking", "Kayaking", "Kayaking"],
+        }
+    )
+
+
+@pytest.fixture
+def seatrade_setup_df():
+    """DataFrame matching the seatrade_setup output of join_and_validate().
+
+    4 seatrades with capacity constraints.
+    """
+    return pd.DataFrame(
+        {
+            "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+            "campers_min": [0, 0, 0, 0],
+            "campers_max": [10, 10, 10, 10],
+        }
+    )
+
+
+@pytest.fixture
+def default_config():
+    """OptimizationConfig with default values."""
+    return OptimizationConfig()
+
+
+@pytest.fixture
+def scheduling_problem(joined_campers_df, seatrade_setup_df):
+    """SchedulingProblem constructed from fixture DataFrames."""
+    return SchedulingProblem(joined_campers_df, seatrade_setup_df)
+
 
 @pytest.fixture
 def sample_mixed_assignment_df():
@@ -33,3 +84,43 @@ def seatrade_sort_df():
         "preference": [1, 2, 1, 1],
     }
     return pd.DataFrame(data)
+
+
+@pytest.fixture
+def sample_assignment_solution():
+    """Minimal AssignmentSolution matching PuLP output format.
+
+    4 campers across 2 cabins, 2 blocks (1a, 2b), 3 seatrades.
+    """
+    assignments_df = pd.DataFrame(
+        {
+            "1a_Archery": [1.0, 0.0, 0.0, 1.0],
+            "1a_Sailing": [0.0, 1.0, 0.0, 0.0],
+            "1a_Climbing": [0.0, 0.0, 1.0, 0.0],
+            "2b_Archery": [0.0, 0.0, 1.0, 0.0],
+            "2b_Sailing": [1.0, 0.0, 0.0, 0.0],
+            "2b_Climbing": [0.0, 1.0, 0.0, 1.0],
+        },
+        index=pd.Index(["Alice_0", "Bob_0", "Carol_0", "Dave_0"], name="camper"),
+    )
+    status = SolverStatus(state=SolverState.OPTIMAL)
+    return AssignmentSolution(
+        assignments=assignments_df,
+        status=status,
+        cabins=["Cabin1", "Cabin2"],
+        campers=["Alice_0", "Bob_0", "Carol_0", "Dave_0"],
+        seatrades_full=["1a_Archery", "1a_Sailing", "1a_Climbing", "2b_Archery", "2b_Sailing", "2b_Climbing"],
+        cabin_camper_prefs=pd.DataFrame(
+            {"cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"]},
+            index=pd.Index(["Alice_0", "Bob_0", "Carol_0", "Dave_0"], name="camper"),
+        ),
+        camper_prefs=pd.Series(
+            [
+                ["Archery", "Sailing", "Climbing", "Kayaking"],
+                ["Climbing", "Archery", "Sailing", "Kayaking"],
+                ["Sailing", "Archery", "Climbing", "Kayaking"],
+                ["Archery", "Climbing", "Sailing", "Kayaking"],
+            ],
+            index=pd.Index(["Alice_0", "Bob_0", "Carol_0", "Dave_0"], name="camper"),
+        ),
+    )
