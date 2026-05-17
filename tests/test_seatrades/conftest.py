@@ -3,7 +3,56 @@
 import pandas as pd
 import pytest
 
+from seatrades.config import OptimizationConfig
+from seatrades.problem import SchedulingProblem
 from seatrades.results import AssignmentSolution, SolverState, SolverStatus
+
+
+@pytest.fixture
+def joined_campers_df():
+    """DataFrame matching output of join_and_validate().
+
+    4 campers across 2 cabins, 4 seatrade preferences each.
+    Camper names do NOT have .{index} suffix — SchedulingProblem adds it.
+    """
+    return pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "camper": ["Alice", "Bob", "Carol", "Dave"],
+            "gender": ["F", "M", "F", "M"],
+            "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
+            "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
+            "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
+            "seatrade_4": ["Kayaking", "Kayaking", "Kayaking", "Kayaking"],
+        }
+    )
+
+
+@pytest.fixture
+def seatrade_setup_df():
+    """DataFrame matching the seatrade_setup output of join_and_validate().
+
+    4 seatrades with capacity constraints.
+    """
+    return pd.DataFrame(
+        {
+            "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+            "campers_min": [0, 0, 0, 0],
+            "campers_max": [10, 10, 10, 10],
+        }
+    )
+
+
+@pytest.fixture
+def default_config():
+    """OptimizationConfig with default values."""
+    return OptimizationConfig()
+
+
+@pytest.fixture
+def scheduling_problem(joined_campers_df, seatrade_setup_df):
+    """SchedulingProblem constructed from fixture DataFrames."""
+    return SchedulingProblem(joined_campers_df, seatrade_setup_df)
 
 
 @pytest.fixture

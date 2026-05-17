@@ -1,3 +1,4 @@
+import logging
 import queue
 import re
 import threading
@@ -19,14 +20,18 @@ from seatrades.results import (
 )
 from seatrades.seatrades import Seatrades
 
+logger = logging.getLogger(__name__)
+
 status_queue: queue.Queue[int] = queue.Queue()
 log_counter = 1
+_TIMEOUT_LOG_PATTERN = re.compile(r"Result - Stopped on time limit")
+_GAP_PATTERN = re.compile(r"(?<=Gap:                            )(\d+\.?\d*)")
 
 
 class AssignmentsTab:
     """Tab Content for Assigning Seatrades"""
 
-    def generate(self):
+    def generate(self) -> None:
         if "introduced" not in st.session_state or not st.session_state["introduced"]:
             _generate_intro_dialogue()
         st.button(
@@ -65,7 +70,7 @@ class AssignmentsTab:
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
-def _generate_intro_dialogue():
+def _generate_intro_dialogue() -> None:
     """
     Generate intro dialog if not seen already.
     """
@@ -174,7 +179,7 @@ def _assign_seatrades(
             try:
                 if SEATRADES_LOG_PATH.exists():
                     with open(SEATRADES_LOG_PATH, "r") as log_file:
-                        log_text = "".join([line for line in log_file.readlines()][::-1])
+                        log_text = "".join(log_file.readlines()[::-1])
                     if log_text != old_log_text:
                         log_container.text_area(
                             "Solver Logs.",
@@ -183,12 +188,12 @@ def _assign_seatrades(
                             key=str(log_counter) + log_text,
                         )
                         old_log_text = log_text
-                        if re.compile("Result - Stopped on time limit").search(old_log_text):
+                        if _TIMEOUT_LOG_PATTERN.search(old_log_text):
                             timeout = True
 
                         if not timeout:
                             status.update(label="Step 2/3: Optimizing Seatrade Assignments.")
-                        elif timeout:
+                        else:
                             status.update(label="Step 3/3: Stopping Optimization based on timeout duration.")
 
             except Exception as e:
@@ -208,13 +213,10 @@ def _assign_seatrades(
             height=300,
             key="logs",
         )
-        timeout_kwd_match = re.search(r"(Result - Stopped on time limit)", string=log_text)
+        timeout_kwd_match = _TIMEOUT_LOG_PATTERN.search(log_text)
         timeout = bool(timeout or timeout_kwd_match)
         timeout_status = " - Timeout Reached" if timeout else ""
-        actual_gap_kwd = re.search(
-            r"(?<=Gap:                            )(\d+\.?\d*)",
-            string=log_text,
-        )
+        actual_gap_kwd = _GAP_PATTERN.search(log_text)
         actual_gap = float(actual_gap_kwd.group()) if actual_gap_kwd else 1.0
         actual_optimality = 1.0 - actual_gap
         optimality_status = f" - {actual_optimality:.0%} Optimal Solution found"
@@ -241,23 +243,17 @@ def _assign_seatrades(
     stop_button.empty()
 
 
-def _run_assignment_and_capture_logs(seatrades: Seatrades, optimization_config: OptimizationConfig):
+def _run_assignment_and_capture_logs(seatrades: Seatrades, optimization_config: OptimizationConfig) -> None:
     """Run seatrades assignment and capture status to status_queue, intended to be run in a separate thread."""
     try:
-        seatrades.assign(
-            preference_weight=optimization_config.preference_weight,
-            cabins_weight=optimization_config.cabins_weight,
-            sparsity_weight=optimization_config.sparsity_weight,
-            max_seatrades_per_fleet=optimization_config.max_seatrades_per_fleet,
-            solver=optimization_config.solver,
-        )
+        seatrades.assign(optimization_config)
         if seatrades.status:
             status_queue.put(seatrades.status)
         else:
             status_queue.put(0)
 
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error("Solver thread failed: %s", e)
         status_queue.put(-1)
 
 

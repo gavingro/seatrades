@@ -183,9 +183,7 @@ def join_and_validate(
 from seatrades.config import CamperSeatradePreferences  # noqa: F401, E402
 
 
-def add_index_to_campername(
-    camper_prefs: CamperSeatradePreferences,
-) -> CamperSeatradePreferences:
-    """Add index to Camper Names within the prefrence object to avoid name collisions."""
-    camper_prefs.loc[:, "camper"] += "." + camper_prefs.index.astype(str)  # type: ignore[attr-defined]
+def add_index_to_campername(camper_prefs: pd.DataFrame) -> pd.DataFrame:
+    """Append .{index} to camper names to avoid collisions."""
+    camper_prefs.loc[:, "camper"] += "." + camper_prefs.index.astype(str)
     return camper_prefs
