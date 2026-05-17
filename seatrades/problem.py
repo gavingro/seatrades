@@ -1,6 +1,7 @@
 """SchedulingProblem — builds PuLP model from domain data."""
 
 import logging
+from typing import Any
 
 import pandas as pd
 import pulp
@@ -28,6 +29,7 @@ class SchedulingProblem:
             ["seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]
         ].apply(list, axis="columns")
         self.campers = joined_campers["camper"].tolist()
+        self.cabin_genders = self.cabin_camper_prefs.groupby("cabin")["gender"].agg(lambda grp: pd.Series.mode(grp)[0])
 
         self.seatrades_prefs = seatrade_setup.set_index("seatrade")
         self.seatrades = seatrade_setup["seatrade"]
@@ -46,7 +48,6 @@ class SchedulingProblem:
         """
         problem = pulp.LpProblem(name="seatrades_assignment")
 
-        # Decision variables
         camper_assignments = pulp.LpVariable.dicts(
             "Camper_Assignments",
             (self.campers, self.seatrades_full),
@@ -55,28 +56,55 @@ class SchedulingProblem:
             cat=pulp.LpBinary,
         )
         cabin_assignments = pulp.LpVariable.dicts(
-            "Cabin Assignment",
+            "Cabin_Assignment",
             (self.cabins, self.seatrades_full),
             lowBound=0,
             upBound=1,
             cat=pulp.LpBinary,
         )
         fleet_assignment = pulp.LpVariable.dicts(
-            "Cabin Fleet Assignment",
+            "Cabin_Fleet_Assignment",
             (self.cabins, self.fleets),
             lowBound=0,
             upBound=1,
             cat=pulp.LpBinary,
         )
         seatrade_assignment = pulp.LpVariable.dicts(
-            "Seatrade Fleet Assignment",
+            "Seatrade_Fleet_Assignment",
             (self.fleets, self.seatrades),
             lowBound=0,
             upBound=1,
             cat=pulp.LpBinary,
         )
 
-        # Linking constraints: helper variables track camper assignments
+        self._add_linking_constraints(
+            problem, camper_assignments, cabin_assignments, fleet_assignment, seatrade_assignment
+        )
+        self._add_assignment_constraints(problem, camper_assignments)
+        self._add_no_duplicate_seatrade_constraints(problem, camper_assignments)
+        self._add_capacity_constraints(problem, camper_assignments)
+        self._add_preference_constraints(problem, camper_assignments)
+        self._add_top2_guarantee_constraints(problem, camper_assignments)
+        self._add_cabin_max_constraints(problem, camper_assignments)
+        self._add_fleet_assignment_constraints(problem, fleet_assignment)
+        self._add_fleet_balance_constraints(problem, fleet_assignment)
+        self._add_gender_balance_constraints(problem, fleet_assignment)
+        self._add_max_seatrades_per_fleet_constraints(problem, seatrade_assignment, config)
+        self._add_objective(problem, camper_assignments, cabin_assignments, seatrade_assignment, config)
+
+        return problem
+
+    VarDict = dict[Any, dict[Any, pulp.LpVariable]]
+
+    def _add_linking_constraints(
+        self,
+        problem: pulp.LpProblem,
+        camper_assignments: VarDict,
+        cabin_assignments: VarDict,
+        fleet_assignment: VarDict,
+        seatrade_assignment: VarDict,
+    ):
+        """Link helper variables to camper assignments so they track activation."""
         for s in self.seatrades_full:
             for cabin in self.cabins:
                 for c in self.campers_by_cabin[cabin]:
@@ -95,7 +123,8 @@ class SchedulingProblem:
                 for c in self.campers:
                     problem += seatrade_assignment[fleet][seatrade] >= camper_assignments[c][s]
 
-        # Constraint 1: Each camper assigned 1 seatrade per block pair
+    def _add_assignment_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
+        """Each camper is assigned exactly one seatrade per block pair."""
         for block_index, seatrades in enumerate(
             [self.seatrades1a + self.seatrades1b, self.seatrades2a + self.seatrades2b],
         ):
@@ -105,7 +134,8 @@ class SchedulingProblem:
                     f"{c}_in_only_1_seatrade_block_{block_index}",
                 )
 
-        # Constraint 2: No camper takes same seatrade in multiple blocks
+    def _add_no_duplicate_seatrade_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
+        """No camper takes the same seatrade in more than one block pair."""
         for seatrade in self.seatrades:
             for c in self.campers:
                 problem += (
@@ -121,7 +151,8 @@ class SchedulingProblem:
                     f"{c} can't take {seatrade} in both blocks",
                 )
 
-        # Constraint 3: Seatrade capacity (min and max)
+    def _add_capacity_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
+        """Seatrade camper counts stay within min/max capacity bounds."""
         for s in self.seatrades_full:
             seatrade = s[3:]
             seatrade_campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
@@ -135,15 +166,18 @@ class SchedulingProblem:
                 f"Less_than_{seatrade_campers_max}_in_{s}",
             )
 
-        # Constraint 4: No unrequested seatrades
+    def _add_preference_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
+        """Campers cannot be assigned to seatrades they didn't request."""
         for c, seatrade_prefs in self.camper_prefs.items():
             problem += (
                 pulp.lpSum([camper_assignments[c][s] for s in self.seatrades_full if s[3:] not in seatrade_prefs]) == 0,
                 f"{c}_prefers_not_these_seatrades.",
             )
 
-        # Constraint 5: Guaranteed one of top 2 choices
+    def _add_top2_guarantee_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
+        """Each camper gets at least one seatrade from their top 2 choices."""
         for c, preferences in self.camper_prefs.items():
+            # sum(pref_index) <= 4 guarantees at least one choice from top-2 (rank 0 or 1)
             problem += (
                 pulp.lpSum(
                     [camper_assignments[c][f"1a_{s}"] * (preferences.index(s)) for s in preferences]
@@ -151,11 +185,12 @@ class SchedulingProblem:
                     + [camper_assignments[c][f"2a_{s}"] * (preferences.index(s)) for s in preferences]
                     + [camper_assignments[c][f"2b_{s}"] * (preferences.index(s)) for s in preferences]
                 )
-                <= 4,  # sum(pref_index) ≤ 4 guarantees at least one choice from top 2
+                <= 4,
                 f"{c} guaranteed one of the first two seatrades.",
             )
 
-        # Constraint 6: Max 4 campers from same cabin per seatrade
+    def _add_cabin_max_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
+        """At most 4 campers from the same cabin per seatrade."""
         for s in self.seatrades_full:
             for cabin in self.cabins:
                 problem += (
@@ -163,7 +198,8 @@ class SchedulingProblem:
                     f"{cabin} must contribute <= 4 campers to {s}.",
                 )
 
-        # Constraint 7: Cabin assigned to exactly 1 fleet per block pair
+    def _add_fleet_assignment_constraints(self, problem: pulp.LpProblem, fleet_assignment: VarDict):
+        """Each cabin is assigned to exactly one fleet per block pair."""
         for fleet_blocks in [["1a", "1b"], ["2a", "2b"]]:
             for cabin in self.cabins:
                 problem += (
@@ -171,7 +207,8 @@ class SchedulingProblem:
                     f"{cabin}_in_only_1_fleet_{fleet_blocks}",
                 )
 
-        # Constraint 8: Roughly equal cabin distribution across fleets
+    def _add_fleet_balance_constraints(self, problem: pulp.LpProblem, fleet_assignment: VarDict):
+        """Cabins are roughly evenly distributed across fleets."""
         half_of_the_cabins_min = len(self.cabins) // 2
         for fleet in self.fleets:
             problem += (
@@ -179,10 +216,10 @@ class SchedulingProblem:
                 f"Roughly_half_of_cabins_in_fleet_{fleet}",
             )
 
-        # Constraint 9: Gender balance across fleets
-        cabin_genders = self.cabin_camper_prefs.groupby("cabin")["gender"].agg(lambda grp: pd.Series.mode(grp)[0])
-        for gender in self.cabin_camper_prefs["gender"].unique():
-            gender_cabins = cabin_genders[cabin_genders == gender].index.tolist()
+    def _add_gender_balance_constraints(self, problem: pulp.LpProblem, fleet_assignment: VarDict):
+        """Each gender's cabins are roughly evenly distributed across fleets."""
+        for gender in self.cabin_genders.unique():
+            gender_cabins = self.cabin_genders[self.cabin_genders == gender].index.tolist()
             half_of_the_gender_cabins_min = len(gender_cabins) // 2
             for fleet in self.fleets:
                 problem += (
@@ -191,7 +228,10 @@ class SchedulingProblem:
                     f"Roughly_half_of_{gender}_cabins_in_fleet_{fleet}",
                 )
 
-        # Constraint 10 (optional): Max seatrades per fleet
+    def _add_max_seatrades_per_fleet_constraints(
+        self, problem: pulp.LpProblem, seatrade_assignment: VarDict, config: OptimizationConfig
+    ):
+        """Cap the number of distinct seatrades per fleet (optional)."""
         if config.max_seatrades_per_fleet:
             for fleet in self.fleets:
                 problem += (
@@ -200,23 +240,26 @@ class SchedulingProblem:
                     f"Ensure_{fleet}_has_less_than_{config.max_seatrades_per_fleet}_seatrades.",
                 )
 
-        # Objective function
+    def _add_objective(
+        self,
+        problem: pulp.LpProblem,
+        camper_assignments: VarDict,
+        cabin_assignments: VarDict,
+        seatrade_assignment: VarDict,
+        config: OptimizationConfig,
+    ):
+        """Minimize preference penalty, with optional cabin-distribution and sparsity terms."""
         obj = 0
-        # Preference penalty
         for c, preferences in self.camper_prefs.items():
             for block in self.fleets:
                 obj += config.preference_weight * pulp.lpSum(
                     [camper_assignments[c][f"{block}_{s}"] * (preferences.index(s)) for s in preferences]
                 )
-        # Cabins penalty (optional)
         if config.cabins_weight:
             for s in self.seatrades_full:
                 obj += config.cabins_weight * pulp.lpSum([cabin_assignments[cabin][s] for cabin in self.cabins])
-        # Sparsity penalty (optional)
         if config.sparsity_weight:
             for fleet in self.fleets:
                 for s in self.seatrades:
                     obj += config.sparsity_weight * seatrade_assignment[fleet][s]
-
         problem += obj
-        return problem
