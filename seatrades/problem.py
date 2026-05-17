@@ -137,15 +137,7 @@ class SchedulingProblem:
         for seatrade in self.seatrades:
             for c in self.campers:
                 problem += (
-                    pulp.lpSum(
-                        [
-                            camper_assignments[c][f"1a_{seatrade}"],
-                            camper_assignments[c][f"1b_{seatrade}"],
-                            camper_assignments[c][f"2a_{seatrade}"],
-                            camper_assignments[c][f"2b_{seatrade}"],
-                        ]
-                    )
-                    <= 1,
+                    pulp.lpSum([camper_assignments[c][f"{fleet}_{seatrade}"] for fleet in self.fleets]) <= 1,
                     f"{c}_cant_take_{seatrade}_in_both_blocks",
                 )
 
