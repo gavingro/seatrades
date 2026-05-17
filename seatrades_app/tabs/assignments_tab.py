@@ -8,14 +8,16 @@ from typing import List, Literal, Optional
 import pandas as pd
 import streamlit as st
 
-from seatrades import results
 from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
 from seatrades.preferences import ValidationError, join_and_validate
-from seatrades.seatrades import (
-    Seatrades,
+from seatrades.results import (
+    AssignmentSolution,
+    display_assignments,
     prepare_seatrade_leaders,
+    wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
+from seatrades.seatrades import Seatrades
 
 status_queue: queue.Queue[int] = queue.Queue()
 log_counter = 1
@@ -40,11 +42,12 @@ class AssignmentsTab:
                 st.write("Optimization not successful.")
             else:
                 st.write("Optimization Success. Seatrades assigned for each camper.")
-                results_chart = results.display_assignments(st.session_state["assigned_seatrades"])
+                seatrades_obj = st.session_state["assigned_seatrades"]
+                solution = AssignmentSolution.from_seatrades(seatrades_obj)
+                results_chart = display_assignments(solution)
                 st.altair_chart(results_chart)
 
-                seatrades_obj = st.session_state["assigned_seatrades"]
-                longform_df = seatrades_obj.wrangle_assignments_to_longform(seatrades_obj.assignments)
+                longform_df = wrangle_assignments_to_longform(solution)
 
                 st.divider()
                 st.subheader("Assignment Data")
@@ -58,7 +61,7 @@ class AssignmentsTab:
                 )
                 assert selected_view in view_options
 
-                st.dataframe(render_view(longform_df, selected_view, camper_order=seatrades_obj.campers))
+                st.dataframe(render_view(longform_df, selected_view, camper_order=solution.campers))
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -269,11 +272,11 @@ def render_view(
     ----------
     longform_df : pd.DataFrame
         Longform assignments dataframe.
-    view_name : Literal["Captain's Book", "Seatrade Leaders"]
+    view_name : Literal["By Camper", "By Seatrade"]
         Which assignment view to render.
     camper_order : Optional[List[str]]
-        Ordered camper names for Captain's Book sort. Passed through to
-        wrangle_assignments_to_wideform. Ignored for Seatrade Leaders.
+        Ordered camper names for "By Camper" sort. Passed through to
+        wrangle_assignments_to_wideform. Ignored for "By Seatrade".
 
     Returns
     -------

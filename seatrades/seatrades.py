@@ -5,11 +5,6 @@ TODO: Extract FLEETS constant — "1a","1b","2a","2b" is duplicated between
 Seatrades.__init__ (self.fleets) and wrangle_assignments_to_wideform (col_order).
 Derive CAPTAINS_BOOK_COLUMNS from a single source of truth.
 
-TODO: Resolve wideform/longform placement inconsistency — wrangle_assignments_to_wideform
-is a module-level function while wrangle_assignments_to_longform is a method on Seatrades.
-Both are "wrangle assignments to X form" — pick one pattern (either both methods or both
-standalone functions) and apply consistently.
-
 Pandera mypy suppressions:
 - type: ignore[attr-defined] on .set_index() calls (lines ~50, ~52, ~58): pandera
   DataFrameModel subclasses are DataFrames at runtime but mypy doesn't recognize
@@ -23,7 +18,7 @@ Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel supp
 """
 
 import logging
-from typing import List, Optional
+from typing import Optional
 
 import pandas as pd
 import pulp
@@ -77,11 +72,6 @@ class Seatrades:
         self.assignments: pd.DataFrame
         self.status = 0
 
-    # Helper Function
-    def _flatten(self, outer_dict: dict):
-        """Flattens the 2d input dict into 1d."""
-        return {key: value for inner_dict in outer_dict.values() for key, value in inner_dict.items()}
-
     def assign(
         self,
         preference_weight: float = 5.0,
@@ -91,7 +81,7 @@ class Seatrades:
         solver: Optional[pulp.core.LpSolver] = None,
     ) -> pulp.LpProblem:
         """
-                Uses the objects campers_df and seatrades_df to solve a Linear Programming
+        Uses the objects campers_df and seatrades_df to solve a Linear Programming
         problem to assign each camper to their ideal seatrades while respecting
         size constraints.
 
@@ -104,7 +94,7 @@ class Seatrades:
             preferences on seatrade assignments, by default 5.0
         cabins_weight : Optional[float], optional
             A scalar to weight the importance of putting cabinmates
-            together on seatrade assignements (if not none), by default None
+            together on seatrade assignments (if not none), by default None
         sparsity_weight : Optional[float], optional
             A scalar to weight the importance of having fewer seatrades
             in each block (if not none), by default None
@@ -258,8 +248,8 @@ class Seatrades:
                     pulp.lpSum([camper_assignments[c][s] for c in cabin_campers]) <= 4,
                     f"{cabin} must contribute <= 4 campers to {s}.",
                 )
-        # # Constraint 7: Each cabin can only be assigned to a single
-        # # fleet (cabin has to be assigned together).
+        # Constraint 7: Each cabin can only be assigned to a single
+        # fleet (cabin has to be assigned together).
         for fleet_blocks in [["1a", "1b"], ["2a", "2b"]]:
             for cabin in self.cabins:
                 problem += (
@@ -345,117 +335,3 @@ class Seatrades:
     def get_assignments_by_seatrade(self, assignments: pd.DataFrame) -> dict:
         """Get the assignments organized by seatrade -> Cabin -> Camper."""
         raise NotImplementedError
-
-    def wrangle_assignments_to_longform(self, assignments: pd.DataFrame) -> pd.DataFrame:
-        """
-        Melts the wide-form sparse dataframe into long-form, and adds column
-        for camper preference scores of assigned seatrade.
-        """
-        df = (
-            assignments.melt(var_name="seatrade", ignore_index=False, value_name="assignment")
-            .reset_index()
-            .rename(columns={"index": "camper"})
-        )
-
-        def lookup_preference(row) -> int:
-            """
-            Returns the preference number of the
-            seatrade for a given camper.
-            If not selected due to infeasibility,
-            returns 999.
-            """
-            if row.assignment:
-                row_camper_prefs = self.camper_prefs[row.camper]
-                if row.seatrade[3:] in row_camper_prefs:
-                    pref_rank = row_camper_prefs.index(row.seatrade[3:]) + 1
-                else:
-                    pref_rank = 999
-            else:
-                pref_rank = 0
-            return pref_rank
-
-        df["preference"] = df.apply(lookup_preference, axis=1)
-
-        def lookup_cabin(row) -> Optional[str]:
-            """
-            Returns the cabin name that a camper is in.
-            """
-            camper = row.camper
-            for campers, cabin in self.cabin_camper_prefs["cabin"].items():
-                if camper in campers:
-                    return cabin
-            return None
-
-        df["cabin"] = df.apply(lookup_cabin, axis=1)  # type: ignore[call-overload]
-        df[["block", "seatrade"]] = df["seatrade"].str.split("_", expand=True)
-
-        return df
-
-
-def wrangle_assignments_to_wideform(
-    longform_df: pd.DataFrame,
-    camper_order: Optional[List[str]] = None,
-) -> pd.DataFrame:
-    """Pivot long-form assignments to wide-form Captain's Book.
-
-    1 row per camper. Columns: cabin, camper, Seatrade 1a, Seatrade 1b,
-    Seatrade 2a, Seatrade 2b. Each camper fills exactly 2 of the 4 seatrade
-    columns (one per block); the rest are blank.
-
-    When camper_order is provided, rows are sorted to match that order.
-    When None, rows are sorted by cabin → camper.
-    Raises ValueError if a camper in the wideform is missing from camper_order.
-    """
-    assignments = longform_df[longform_df["assignment"] == 1.0].copy()
-    assignments["block_label"] = "Seatrade " + assignments["block"]
-    assignments["seatrade_name"] = assignments["seatrade"]
-
-    assigned_by_camper = assignments.pivot_table(
-        index=["cabin", "camper"],
-        columns="block_label",
-        values="seatrade_name",
-        aggfunc="first",
-        fill_value="",
-    )
-
-    # pivot_table may omit empty block columns; ensure fixed order
-    seatrade_block_columns = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
-    for column in seatrade_block_columns:
-        if column not in assigned_by_camper.columns:
-            assigned_by_camper[column] = "Fleet Time"
-    assigned_by_camper = assigned_by_camper[seatrade_block_columns]
-
-    if camper_order is not None:
-        wideform_campers = assigned_by_camper.index.get_level_values("camper").tolist()
-        missing = set(wideform_campers) - set(camper_order)
-        if missing:
-            raise ValueError(f"camper_order is missing campers present in wideform: {sorted(missing)}")
-
-    assigned_by_camper = assigned_by_camper.reset_index()
-
-    if camper_order is not None:
-        camper_rank = {name: i for i, name in enumerate(camper_order)}
-        assigned_by_camper["_rank"] = assigned_by_camper["camper"].map(camper_rank)
-        assigned_by_camper = (
-            assigned_by_camper.sort_values(by="_rank", kind="stable").drop(columns="_rank").reset_index(drop=True)
-        )
-    else:
-        assigned_by_camper = assigned_by_camper.sort_values(by=["cabin", "camper"], kind="stable")
-
-    assigned_by_camper = assigned_by_camper[["cabin", "camper"] + seatrade_block_columns]
-    assigned_by_camper.loc[:, seatrade_block_columns] = (
-        assigned_by_camper.loc[:, seatrade_block_columns].replace("", pd.NA).fillna("Fleet Time")
-    )
-
-    return assigned_by_camper
-
-
-def prepare_seatrade_leaders(longform_df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare Seatrade Leaders view: block, seatrade, camper, cabin.
-
-    Filters to assigned rows only, drops preference/assignment columns.
-    Sorted by block → seatrade → cabin → camper.
-    """
-    assigned = longform_df[longform_df["assignment"] == 1.0]
-    sorted_assigned = assigned.sort_values(by=["block", "seatrade", "cabin", "camper"], kind="stable")
-    return sorted_assigned[["block", "seatrade", "camper", "cabin"]].reset_index(drop=True)
