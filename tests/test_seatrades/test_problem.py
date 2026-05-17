@@ -174,7 +174,7 @@ class TestSchedulingProblemConstraintGroups:
 
         # 4 seatrades × 4 campers = 16
         assert len(problem.constraints) == len(sp.seatrades) * len(sp.campers)
-        assert any("take" in name and "both_blocks" in name for name in problem.constraints)
+        assert any("_cant_take_" in name and "_in_both_blocks" in name for name in problem.constraints)
 
     def test_add_capacity_constraints(self, scheduling_problem):
         sp = scheduling_problem
@@ -208,7 +208,7 @@ class TestSchedulingProblemConstraintGroups:
 
         # 1 constraint per camper
         assert len(problem.constraints) == len(sp.campers)
-        assert any("guaranteed_one_of_the_first_two" in name for name in problem.constraints)
+        assert any("_guaranteed_one_of_first_two" in name for name in problem.constraints)
 
     def test_add_cabin_max_constraints(self, scheduling_problem):
         sp = scheduling_problem
@@ -220,7 +220,7 @@ class TestSchedulingProblemConstraintGroups:
         # 1 constraint per seatrade_full × cabin
         expected = len(sp.seatrades_full) * len(sp.cabins)
         assert len(problem.constraints) == expected
-        assert any("must_contribute_<=" in name for name in problem.constraints)
+        assert any("_max_4_campers_to_" in name for name in problem.constraints)
 
     def test_add_fleet_assignment_constraints(self, scheduling_problem):
         sp = scheduling_problem

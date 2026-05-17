@@ -1,6 +1,5 @@
 """SchedulingProblem — builds PuLP model from domain data."""
 
-import logging
 from typing import Any
 
 import pandas as pd
@@ -8,8 +7,6 @@ import pulp
 
 from seatrades.config import OptimizationConfig
 from seatrades.preferences import add_index_to_campername
-
-logger = logging.getLogger(__name__)
 
 
 class SchedulingProblem:
@@ -19,6 +16,9 @@ class SchedulingProblem:
     Call ``build(config)`` to create an unsolved LpProblem with a specific
     optimization configuration.
     """
+
+    VarDict = dict[Any, dict[Any, pulp.LpVariable]]
+    _CABIN_MAX_PER_SEATRADE = 4
 
     def __init__(self, joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame):
         joined_campers = add_index_to_campername(joined_campers)
@@ -94,8 +94,6 @@ class SchedulingProblem:
 
         return problem
 
-    VarDict = dict[Any, dict[Any, pulp.LpVariable]]
-
     def _add_linking_constraints(
         self,
         problem: pulp.LpProblem,
@@ -148,13 +146,13 @@ class SchedulingProblem:
                         ]
                     )
                     <= 1,
-                    f"{c} can't take {seatrade} in both blocks",
+                    f"{c}_cant_take_{seatrade}_in_both_blocks",
                 )
 
     def _add_capacity_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
         """Seatrade camper counts stay within min/max capacity bounds."""
         for s in self.seatrades_full:
-            seatrade = s[3:]
+            seatrade = s.split("_", 1)[1]
             seatrade_campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
             problem += (
                 pulp.lpSum([camper_assignments[c][s] for c in self.campers]) >= seatrade_campers_min,
@@ -170,8 +168,11 @@ class SchedulingProblem:
         """Campers cannot be assigned to seatrades they didn't request."""
         for c, seatrade_prefs in self.camper_prefs.items():
             problem += (
-                pulp.lpSum([camper_assignments[c][s] for s in self.seatrades_full if s[3:] not in seatrade_prefs]) == 0,
-                f"{c}_prefers_not_these_seatrades.",
+                pulp.lpSum(
+                    [camper_assignments[c][s] for s in self.seatrades_full if s.split("_", 1)[1] not in seatrade_prefs]
+                )
+                == 0,
+                f"{c}_prefers_not_these_seatrades",
             )
 
     def _add_top2_guarantee_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
@@ -186,16 +187,17 @@ class SchedulingProblem:
                     + [camper_assignments[c][f"2b_{s}"] * (preferences.index(s)) for s in preferences]
                 )
                 <= 4,
-                f"{c} guaranteed one of the first two seatrades.",
+                f"{c}_guaranteed_one_of_first_two_seatrades",
             )
 
     def _add_cabin_max_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
-        """At most 4 campers from the same cabin per seatrade."""
+        """At most _CABIN_MAX_PER_SEATRADE campers from the same cabin per seatrade."""
         for s in self.seatrades_full:
             for cabin in self.cabins:
                 problem += (
-                    pulp.lpSum([camper_assignments[c][s] for c in self.campers_by_cabin[cabin]]) <= 4,
-                    f"{cabin} must contribute <= 4 campers to {s}.",
+                    pulp.lpSum([camper_assignments[c][s] for c in self.campers_by_cabin[cabin]])
+                    <= self._CABIN_MAX_PER_SEATRADE,
+                    f"{cabin}_max_{self._CABIN_MAX_PER_SEATRADE}_campers_to_{s}",
                 )
 
     def _add_fleet_assignment_constraints(self, problem: pulp.LpProblem, fleet_assignment: VarDict):
@@ -237,7 +239,7 @@ class SchedulingProblem:
                 problem += (
                     pulp.lpSum([seatrade_assignment[fleet][seatrade] for seatrade in self.seatrades])
                     <= config.max_seatrades_per_fleet,
-                    f"Ensure_{fleet}_has_less_than_{config.max_seatrades_per_fleet}_seatrades.",
+                    f"Ensure_{fleet}_has_less_than_{config.max_seatrades_per_fleet}_seatrades",
                 )
 
     def _add_objective(
