@@ -21,12 +21,12 @@ source .venv/bin/activate
 
 ## Testing
 
-Run tests with `pytest` (not `python -m pytest`). The venv provides a `pytest` binary directly.
+Run tests directly from the venv — no need to activate it first.
 
 ```bash
-pytest                    # full suite
-pytest tests/test_foo.py  # single file
-pytest -k "test_bar"      # single test
+.venv/bin/pytest                    # full suite
+.venv/bin/pytest tests/test_foo.py  # single file
+.venv/bin/pytest -k "test_bar"      # single test
 ```
 
 ## Documentation updates

@@ -93,9 +93,9 @@ Since credentials are shared, Gavin must manually review and merge in GitHub UI:
 
 ## Testing
 
-Run tests with:
+Run tests directly from the venv — no need to activate it first:
 ```bash
-pytest
+.venv/bin/pytest
 ```
 
 ## Development Setup
@@ -120,11 +120,11 @@ pre-commit install
 Run these before pushing. CI enforces all of them:
 
 ```bash
-ruff check .          # lint
-ruff format .         # auto-format
-mypy .                # type check
-pytest                # tests
-pre-commit run --all-files  # all of the above via hooks
+.venv/bin/ruff check .          # lint
+.venv/bin/ruff format .         # auto-format
+.venv/bin/mypy .                # type check
+.venv/bin/pytest                # tests
+.venv/bin/pre-commit run --all-files  # all of the above via hooks
 ```
 
 CI runs two parallel jobs: **lint** (ruff + mypy) and **test** (pytest). Both must pass.
