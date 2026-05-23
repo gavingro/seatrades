@@ -83,7 +83,7 @@ A mapping of a camper to a seatrade in a specific block. Each camper gets exactl
 
 ### AssignmentSolution
 
-Self-contained and portable — no reference to the MILP model. Fields: assignments DataFrame, SolverStatus, plus domain data (campers, seatrades, preferences) needed by wrangling and visualization. Wrangling functions operate on this, not on the SchedulingProblem.
+Self-contained and portable — no reference to the MILP model. Fields: assignments DataFrame, SolverStatus, plus domain data (campers, seatrades_full, preferences) needed by wrangling and visualization. Wrangling functions operate on this, not on the SchedulingProblem.
 
 ### SolverStatus
 

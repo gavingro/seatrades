@@ -4,11 +4,10 @@ import altair as alt
 
 from seatrades.results import AssignmentSolution, SolverState, wrangle_assignments_to_longform
 
-alt.data_transformers.disable_max_rows()
-
 
 def display_assignments(solution: AssignmentSolution) -> alt.Chart:
     """Display the assignments of the seatrades visually for inference."""
+    alt.data_transformers.disable_max_rows()
     if solution.status.state == SolverState.ERROR:
         raise ValueError(f"No solution found. {solution.status.message}")
     elif solution.status.state == SolverState.INFEASIBLE:
