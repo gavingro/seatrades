@@ -138,6 +138,37 @@ class TestStatusCodeMapping:
         solution = run(scheduling_problem, default_config)
         assert solution.status.state == SolverState.OPTIMAL
 
+    def test_optimal_solution_has_gap(self, scheduling_problem, default_config):
+        solution = run(scheduling_problem, default_config)
+        # Gap may be None if CBC doesn't write a gap line (small problems solve instantly)
+        # but the field should be populated when available
+        assert solution.status.gap is None or isinstance(solution.status.gap, float)
+
+    def test_infeasible_solution_has_no_gap(self):
+        joined = pd.DataFrame(
+            {
+                "cabin": ["Cabin1", "Cabin1"],
+                "camper": ["Alice", "Bob"],
+                "gender": ["F", "M"],
+                "seatrade_1": ["Archery", "Archery"],
+                "seatrade_2": ["Archery", "Archery"],
+                "seatrade_3": ["Archery", "Archery"],
+                "seatrade_4": ["Archery", "Archery"],
+            }
+        )
+        setup = pd.DataFrame(
+            {
+                "seatrade": ["Archery"],
+                "campers_min": [2],
+                "campers_max": [2],
+            }
+        )
+        problem = SchedulingProblem(joined, setup)
+        config = OptimizationConfig(solver=__import__("pulp").apis.PULP_CBC_CMD(msg=0))
+        solution = run(problem, config)
+        assert solution.status.state == SolverState.INFEASIBLE
+        assert solution.status.gap is None
+
     def test_infeasible_problem_returns_infeasible(self):
         """An infeasible problem should return SolverState.INFEASIBLE, not ERROR."""
 

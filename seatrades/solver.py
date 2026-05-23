@@ -1,11 +1,17 @@
 """Solver entry point — build, solve, and extract assignments."""
 
+import re
+from pathlib import Path
+from typing import Optional
+
 import pandas as pd
 import pulp
 
-from seatrades.config import OptimizationConfig
+from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
 from seatrades.problem import SchedulingProblem
-from seatrades.results import AssignmentSolution, SolverStatus
+from seatrades.results import AssignmentSolution, SolverState, SolverStatus
+
+_GAP_PATTERN = re.compile(r"(?<=Gap:                            )(\d+\.?\d*)")
 
 
 def _mangle(name: str) -> str:
@@ -43,6 +49,19 @@ def _extract_camper_assignments(
     return pd.DataFrame(camper_vars).transpose()
 
 
+def _extract_gap_from_log(log_path: Path) -> Optional[float]:
+    """Parse the MIP gap from the CBC solver log file.
+
+    Returns the gap as a float (e.g. 0.05 for 5%) or None if not found.
+    """
+    try:
+        text = log_path.read_text()
+    except (FileNotFoundError, OSError):
+        return None
+    match = _GAP_PATTERN.search(text)
+    return float(match.group(1)) if match else None
+
+
 def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSolution:
     """Build and solve a scheduling problem, returning an AssignmentSolution.
 
@@ -64,6 +83,8 @@ def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSol
     assignments = _extract_camper_assignments(lp_problem, problem.campers, problem.seatrades_full)
 
     solver_status = SolverStatus.from_pulp(status_code)
+    if solver_status.state == SolverState.OPTIMAL:
+        solver_status.gap = _extract_gap_from_log(SEATRADES_LOG_PATH)
 
     return AssignmentSolution(
         assignments=assignments,

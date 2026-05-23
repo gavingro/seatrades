@@ -9,6 +9,8 @@ Pandera mypy suppressions:
 Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
 """
 
+import re
+
 import pandas as pd
 from pandera import DataFrameModel
 from pandera.errors import SchemaError, SchemaErrors
@@ -95,8 +97,6 @@ def read_csv_for_schema(file_like, schema_class: type[DataFrameModel], **kwargs)
     except ValueError as e:
         # Translate pandas usecols error into a user-friendly message.
         # Pandas format: "Usecols do not match columns, columns expected but not found: ['col1', 'col2']"
-        import re
-
         match = re.search(r"columns expected but not found: \[(.+?)]", str(e))
         if match:
             missing = match.group(1).replace("'", "").replace('"', "")
@@ -179,11 +179,8 @@ def join_and_validate(
     return joined, seatrade_validated  # type: ignore[return-value]
 
 
-# Kept for backward compatibility during migration — will be removed.
-from seatrades.config import CamperSeatradePreferences  # noqa: F401, E402
-
-
 def add_index_to_campername(camper_prefs: pd.DataFrame) -> pd.DataFrame:
     """Append .{index} to camper names to avoid collisions."""
+    camper_prefs = camper_prefs.copy()
     camper_prefs.loc[:, "camper"] += "." + camper_prefs.index.astype(str)
     return camper_prefs

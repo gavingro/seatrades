@@ -6,9 +6,7 @@ import streamlit as st
 from seatrades.config import SeatradesConfig, SeatradeSimulationConfig
 from seatrades.preferences import ValidationError, read_csv_for_schema, validate_schema
 from seatrades.simulation import SEATRADE_EXAMPLES
-from seatrades_app.components import show_validation_error
-from seatrades_app.tabs.campers_tab import _try_join_and_validate
-from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
+from seatrades_app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 
 
 class SeatradeSimulationConfigTab:
@@ -77,7 +75,7 @@ def _validate_and_update_seatrade_preferences(seatrades_preferences: pd.DataFram
     try:
         validate_schema(SeatradesConfig, seatrades_preferences, "Seatrade Setup")
         st.session_state["seatrade_preferences"] = seatrades_preferences
-        _try_join_and_validate()
+        try_join_and_validate()
         st.toast("Updating Seatrade Preferences.")
     except ValidationError as e:
         show_validation_error("Seatrade Setup", e)
@@ -99,7 +97,7 @@ def _update_seatrade_simulation_config(
     if st.session_state.get("seatrade_simulation_config") is not None:
         st.toast(f"Updating Seatrade Simulation Configuration.\n\n{seatrade_simulation_config}")
     st.session_state["seatrade_simulation_config"] = seatrade_simulation_config
-    _clear_optimization_results()
+    clear_optimization_results()
     for key in ("seatrade_preferences", "cabin_camper_prefs", "camper_preferences", "camper_identity"):
         if key in st.session_state:
             del st.session_state[key]

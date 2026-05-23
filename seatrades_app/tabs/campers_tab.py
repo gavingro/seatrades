@@ -6,8 +6,7 @@ import streamlit as st
 from seatrades.config import CamperIdentity, CamperPreferences, CamperSimulationConfig
 from seatrades.preferences import ValidationError, join_and_validate, read_csv_for_schema, validate_schema
 from seatrades.simulation import ALL_CABIN_DICT, simulate_camper_identity, simulate_camper_preferences
-from seatrades_app.components import show_validation_error
-from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
+from seatrades_app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 
 
 def _update_camper_simulation_config(camper_simulation_config: CamperSimulationConfig):
@@ -24,7 +23,7 @@ def _update_camper_simulation_config(camper_simulation_config: CamperSimulationC
     if st.session_state.get("camper_simulation_config") is not None:
         st.toast(f"Updating Camper Simulation Configuration.\n\n{camper_simulation_config}")
     st.session_state["camper_simulation_config"] = camper_simulation_config
-    _clear_optimization_results()
+    clear_optimization_results()
     for key in ("camper_identity", "camper_preferences"):
         if key in st.session_state:
             del st.session_state[key]
@@ -112,7 +111,7 @@ def _validate_and_update_identity(identity_data: pd.DataFrame):
     try:
         validate_schema(CamperIdentity, identity_data, "Camper Identity")
         st.session_state["camper_identity"] = identity_data
-        _try_join_and_validate()
+        try_join_and_validate()
         st.toast("Updating Camper Identity.")
     except ValidationError as e:
         show_validation_error("Camper Identity", e)
@@ -123,26 +122,10 @@ def _validate_and_update_preferences(prefs_data: pd.DataFrame):
     try:
         validate_schema(CamperPreferences, prefs_data, "Camper Preferences")
         st.session_state["camper_preferences"] = prefs_data
-        _try_join_and_validate()
+        try_join_and_validate()
         st.toast("Updating Camper Preferences.")
     except ValidationError as e:
         show_validation_error("Camper Preferences", e)
-
-
-def _try_join_and_validate():
-    """If both identity and preferences are present, run cross-reference validation."""
-    identity = st.session_state.get("camper_identity")
-    preferences = st.session_state.get("camper_preferences")
-    seatrades = st.session_state.get("seatrade_preferences")
-
-    if identity is None or preferences is None or seatrades is None:
-        return
-
-    try:
-        joined_campers, seatrade_setup = join_and_validate(identity, preferences, seatrades)
-        st.session_state["cabin_camper_prefs"] = joined_campers
-    except ValidationError as e:
-        show_validation_error("Cross-reference Validation", e)
 
 
 def _simulate_campers(camper_simulation_config: CamperSimulationConfig):
@@ -164,7 +147,7 @@ def _simulate_campers(camper_simulation_config: CamperSimulationConfig):
 
     st.session_state["camper_identity"] = identity_df
     st.session_state["camper_preferences"] = preferences_df
-    _clear_optimization_results()
+    clear_optimization_results()
 
     try:
         joined_campers, seatrade_setup = join_and_validate(identity_df, preferences_df, seatrade_prefs)

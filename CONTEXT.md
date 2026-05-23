@@ -91,7 +91,7 @@ A field inside `AssignmentSolution` (not a separate return). Tracks the outcome 
 
 ### Assignment Export
 
-The app exports assignments in 3 formats for different audiences:
+The app exports assignments in 2 formats for different audiences:
 
 | Format | Sort Order | Use Case |
 |--------|------------|----------|
@@ -119,8 +119,8 @@ flowchart LR
     end
 
     Upload --> Sim
-    Sim -->|3 DataFrames + optional relationships| Val
-    Val -->|2 DataFrames + validated relationships| Prob
+    Sim -->|3 DataFrames + optional relationships [#58]| Val
+    Val -->|2 DataFrames + validated relationships [#58]| Prob
     Solve -->|AssignmentSolution| Fragment
     Result --> Display
 ```
@@ -128,12 +128,12 @@ flowchart LR
 ### Pipeline (happy path)
 
 ```
-1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation (produces 3 DataFrames: camper identity, camper preferences, seatrade setup + optional relationships)
-2. preferences.py validates (names match, seatrades exist in setup, relationship pairs valid) and joins 3 DataFrames → 2 (joined campers, seatrade setup) + validated relationships
-3. SchedulingProblem(joined_campers, seatrade_setup, relationships) → holds parsed domain state
+1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation (produces 3 DataFrames: camper identity, camper preferences, seatrade setup + optional relationships [#58])
+2. preferences.py validates (names match, seatrades exist in setup, relationship pairs valid [#58]) and joins 3 DataFrames → 2 (joined campers, seatrade setup) + validated relationships [#58]
+3. SchedulingProblem(joined_campers, seatrade_setup) → holds parsed domain state (relationships parameter [#58 planned])
 4. solver.run(problem, config) → calls problem.build(config) internally, returns AssignmentSolution (with SolverStatus inside)
 5. UI reads AssignmentSolution.status via @st.fragment, displays assignments
-6. AssignmentSolution.export(view="camper"|"cabin"|"seatrade") → formatted DataFrame
+6. `wrangle_assignments_to_longform(solution)` / `wrangle_assignments_to_wideform(longform_df)` → formatted DataFrames
 ```
 
 ## Optimization Problem
@@ -155,7 +155,7 @@ The scheduler solves a mixed-integer linear programming problem with these const
 | Package | Responsibility |
 |---------|---------------|
 | `seatrades/` | Service layer — domain logic, optimization, simulation, results |
-| `app/` | Presentation layer — Streamlit UI only, no business logic (rename from `seatrades_app/`) |
+| `app/` | Presentation layer — Streamlit UI only, no business logic (currently `seatrades_app/` [planned rename → app/]) |
 
 ### app/ modules
 
@@ -163,7 +163,7 @@ The scheduler solves a mixed-integer linear programming problem with these const
 |--------|------|
 | `app.py` | Entry point, tab layout |
 | `state.py` | Constants for all session state keys (low priority, replace scattered strings) |
-| `tabs/` | Thin Streamlit presentation — widgets, forms, file uploads. Call service functions, display results. Includes Friends tab for optional relationship CSV upload. |
+| `tabs/` | Thin Streamlit presentation — widgets, forms, file uploads. Call service functions, display results. Includes Friends tab for optional relationship CSV upload [#58 planned]. |
 
 ### seatrades/ modules
 
@@ -173,8 +173,8 @@ The scheduler solves a mixed-integer linear programming problem with these const
 | `solver.py` | `solver.run(problem, config) -> AssignmentSolution` — orchestrates build + solve + wrangle. Calls `problem.build(config)` internally. Manages solver thread and CBC log reading. |
 | `results.py` | `AssignmentSolution` dataclass + free functions for wrangling (`wrangle_assignments_to_longform`, `wrangle_assignments_to_wideform`, `prepare_seatrade_leaders`) and export views. Functions take `AssignmentSolution`, not the problem. |
 | `visualization.py` | Build `alt.Chart` specs from `AssignmentSolution`. No Streamlit dependency — renders in any Altair-capable frontend. |
-| `preferences.py` | Pandera schemas + cross-reference validation (camper names match between sources, seatrade names in prefs exist in setup) + 3→2 DataFrame join (camper identity + camper preferences → joined campers) + relationship validation (self-pairs, duplicate pairs, camper existence) |
-| `simulation.py` | Generate mock data as 3 separate DataFrames (camper identity, camper preferences, seatrade setup) + optional relationships DataFrame — goes through same validation pipeline as real uploads |
+| `preferences.py` | Pandera schemas + cross-reference validation (camper names match between sources, seatrade names in prefs exist in setup) + 3→2 DataFrame join (camper identity + camper preferences → joined campers) + relationship validation (self-pairs, duplicate pairs, camper existence) [#58 planned] |
+| `simulation.py` | Generate mock data as 3 separate DataFrames (camper identity, camper preferences, seatrade setup) + optional relationships DataFrame [#58 planned] — goes through same validation pipeline as real uploads |
 | `config.py` | `OptimizationConfig`, `CamperSimulationConfig`, `SeatradeSimulationConfig`. Has PuLP dependency — `OptimizationConfig` owns its solver object directly. |
 
 ## Architecture Grilling — Decisions Log

@@ -4,7 +4,7 @@ No Streamlit imports. All generators are pure functions that take config objects
 and return validated pandas DataFrames.
 """
 
-from random import sample
+import random
 
 import numpy as np
 import pandas as pd
@@ -64,14 +64,12 @@ def simulate_seatrade_preferences(
     config: SeatradeSimulationConfig,
 ) -> pd.DataFrame:
     """Generate simulated seatrade preferences DataFrame."""
-    import random
-
     seatrade_name_sample = random.sample(SEATRADE_EXAMPLES, k=config.num_seatrades)
 
     seatrades_prefs_dict = {
         f"{seatrade}": {
-            "campers_min": (temp := np.random.randint(0, 2)),
-            "campers_max": temp
+            "campers_min": (base_min := np.random.randint(0, 2)),
+            "campers_max": base_min
             + (
                 np.random.randint(
                     config.camper_capacity_min,
@@ -89,7 +87,7 @@ def simulate_camper_identity(
     camper_simulation_config: CamperSimulationConfig,
 ) -> pd.DataFrame:
     """Generate simulated camper identity DataFrame (cabin, camper, gender)."""
-    cabins = sample(list(ALL_CABIN_DICT.keys()), k=camper_simulation_config.num_cabins)
+    cabins = random.sample(list(ALL_CABIN_DICT.keys()), k=camper_simulation_config.num_cabins)
     name_faker = Faker(locale=["en", "es", "it_IT", "fr_FR", "fr_QC"])
 
     rows = []
@@ -124,7 +122,7 @@ def simulate_camper_preferences(
 
     rows = []
     for name in identity_df["camper"]:
-        prefs = sample(all_seatrades, 4)
+        prefs = random.sample(all_seatrades, 4)
         rows.append(
             {
                 "camper": name,
@@ -137,53 +135,3 @@ def simulate_camper_preferences(
 
     result = pd.DataFrame(rows)
     return preferences.CamperPreferences.validate(result)  # type: ignore[return-value]
-
-
-def simulate_cabin_camper_preferences(
-    camper_simulation_config: CamperSimulationConfig,
-    seatrade_preferences: pd.DataFrame,
-) -> pd.DataFrame:
-    """Generate simulated cabin-camper preferences DataFrame.
-
-    seatrade_preferences should be a SeatradesConfig-conforming DataFrame
-    (e.g. from simulate_seatrade_preferences) — used to pick valid seatrade names.
-    """
-    all_seatrades = seatrade_preferences["seatrade"].tolist()  # type: ignore[index]
-
-    cabins = sample(list(ALL_CABIN_DICT.keys()), k=camper_simulation_config.num_cabins)
-
-    camper_prefs = {}
-    name_faker = Faker(locale=["en", "es", "it_IT", "fr_FR", "fr_QC"])
-    for cabin in cabins:
-        cabin_info = {}
-        cabin_gender = ALL_CABIN_DICT[cabin]
-        for _camper in range(
-            np.random.randint(
-                camper_simulation_config.camper_per_cabin_min,
-                camper_simulation_config.camper_per_cabin_max,
-            )
-        ):
-            camper_name = name_faker.name_male() if cabin_gender == "male" else name_faker.name_female()
-            seatrade_prefs = sample(
-                all_seatrades,
-                camper_simulation_config.num_preferences,
-            )
-            cabin_info[camper_name] = seatrade_prefs
-        camper_prefs[cabin] = cabin_info
-
-    cabin_camper_prefs = (
-        pd.DataFrame(camper_prefs)
-        .reset_index(names="camper")
-        .melt(id_vars=["camper"], var_name="cabin", value_name="seatrade")
-        .dropna(subset="seatrade")
-        .reset_index(drop=True)
-    )
-    cabin_camper_prefs.loc[:, "gender"] = cabin_camper_prefs["cabin"].map(ALL_CABIN_DICT)
-
-    cabin_camper_prefs = cabin_camper_prefs.drop(columns="seatrade").join(
-        pd.DataFrame(
-            cabin_camper_prefs["seatrade"].to_list(),
-            columns=[f"seatrade_{i + 1}" for i in range(camper_simulation_config.num_preferences)],
-        )
-    )
-    return preferences.CamperSeatradePreferences.validate(cabin_camper_prefs)  # type: ignore[return-value]

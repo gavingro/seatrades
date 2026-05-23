@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 status_queue: queue.Queue[int] = queue.Queue()
 log_counter = 1
 _TIMEOUT_LOG_PATTERN = re.compile(r"Result - Stopped on time limit")
-_GAP_PATTERN = re.compile(r"(?<=Gap:                            )(\d+\.?\d*)")
 
 
 class AssignmentsTab:
@@ -215,9 +214,8 @@ def _assign_seatrades(
         timeout_kwd_match = _TIMEOUT_LOG_PATTERN.search(log_text)
         timeout = bool(timeout or timeout_kwd_match)
         timeout_status = " - Timeout Reached" if timeout else ""
-        actual_gap_kwd = _GAP_PATTERN.search(log_text)
-        actual_gap = float(actual_gap_kwd.group()) if actual_gap_kwd else 1.0
-        actual_optimality = 1.0 - actual_gap
+        actual_gap = result_container["solution"].status.gap if "solution" in result_container else None
+        actual_optimality = (1.0 - actual_gap) if actual_gap is not None else 1.0
         optimality_status = f" - {actual_optimality:.0%} Optimal Solution found"
         progress_bar.progress(
             1.0,

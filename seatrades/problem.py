@@ -1,12 +1,15 @@
 """SchedulingProblem — builds PuLP model from domain data."""
 
-from typing import Any
+from typing import Hashable
 
 import pandas as pd
 import pulp
 
 from seatrades.config import OptimizationConfig
 from seatrades.preferences import add_index_to_campername
+
+BLOCKS = ["1a", "1b", "2a", "2b"]
+FLEET_BLOCKS = [["1a", "1b"], ["2a", "2b"]]
 
 
 class SchedulingProblem:
@@ -17,7 +20,7 @@ class SchedulingProblem:
     optimization configuration.
     """
 
-    VarDict = dict[Any, dict[Any, pulp.LpVariable]]
+    VarDict = dict[Hashable, dict[str, pulp.LpVariable]]
     _CABIN_MAX_PER_SEATRADE = 4
 
     def __init__(self, joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame):
@@ -38,7 +41,7 @@ class SchedulingProblem:
         self.seatrades2a = [f"2a_{seatrade}" for seatrade in self.seatrades]
         self.seatrades2b = [f"2b_{seatrade}" for seatrade in self.seatrades]
         self.seatrades_full = self.seatrades1a + self.seatrades1b + self.seatrades2a + self.seatrades2b
-        self.fleets = ["1a", "1b", "2a", "2b"]
+        self.fleets = BLOCKS
 
     def build(self, config: OptimizationConfig) -> pulp.LpProblem:
         """Build an unsolved LpProblem from domain data and optimization config.
@@ -194,7 +197,7 @@ class SchedulingProblem:
 
     def _add_fleet_assignment_constraints(self, problem: pulp.LpProblem, fleet_assignment: VarDict):
         """Each cabin is assigned to exactly one fleet per block pair."""
-        for fleet_blocks in [["1a", "1b"], ["2a", "2b"]]:
+        for fleet_blocks in FLEET_BLOCKS:
             for cabin in self.cabins:
                 problem += (
                     pulp.lpSum([fleet_assignment[cabin][f] for f in fleet_blocks]) == 1,
@@ -243,17 +246,17 @@ class SchedulingProblem:
         config: OptimizationConfig,
     ):
         """Minimize preference penalty, with optional cabin-distribution and sparsity terms."""
-        obj = 0
+        objective = 0
         for c, preferences in self.camper_prefs.items():
             for block in self.fleets:
-                obj += config.preference_weight * pulp.lpSum(
+                objective += config.preference_weight * pulp.lpSum(
                     [camper_assignments[c][f"{block}_{s}"] * (preferences.index(s)) for s in preferences]
                 )
         if config.cabins_weight:
             for s in self.seatrades_full:
-                obj += config.cabins_weight * pulp.lpSum([cabin_assignments[cabin][s] for cabin in self.cabins])
+                objective += config.cabins_weight * pulp.lpSum([cabin_assignments[cabin][s] for cabin in self.cabins])
         if config.sparsity_weight:
             for fleet in self.fleets:
                 for s in self.seatrades:
-                    obj += config.sparsity_weight * seatrade_assignment[fleet][s]
-        problem += obj
+                    objective += config.sparsity_weight * seatrade_assignment[fleet][s]
+        problem += objective

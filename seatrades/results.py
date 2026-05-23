@@ -6,6 +6,10 @@ from typing import Optional
 
 import pandas as pd
 
+SEATRADE_BLOCK_COLUMNS = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
+
+UNMATCHED_PREFERENCE = 999
+
 
 class SolverState(Enum):
     OPTIMAL = "OPTIMAL"
@@ -61,7 +65,7 @@ def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFram
             seatrade_name = row.seatrade.split("_", 1)[1]
             if seatrade_name in row_camper_prefs:
                 return row_camper_prefs.index(seatrade_name) + 1
-            return 999
+            return UNMATCHED_PREFERENCE
         return 0
 
     df["preference"] = df.apply(lookup_preference, axis=1)
@@ -104,7 +108,7 @@ def wrangle_assignments_to_wideform(
         fill_value="",
     )
 
-    seatrade_block_columns = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
+    seatrade_block_columns = SEATRADE_BLOCK_COLUMNS
     for column in seatrade_block_columns:
         if column not in assigned_by_camper.columns:
             assigned_by_camper[column] = "Fleet Time"

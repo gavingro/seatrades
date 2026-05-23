@@ -8,6 +8,7 @@ import pytest
 from seatrades.config import CamperIdentity, CamperPreferences, SeatradesConfig
 from seatrades.preferences import (
     ValidationError,
+    add_index_to_campername,
     join_and_validate,
     read_csv_for_schema,
     validate_schema,
@@ -501,3 +502,20 @@ class TestReadCsvForSchema:
         csv = StringIO("gender,camper,cabin\nF,Alice,Puffin\nM,Bob,Tillikum")
         result = read_csv_for_schema(csv, CamperIdentity)
         assert list(result.columns) == ["cabin", "camper", "gender"]
+
+
+class TestAddIndexToCampername:
+    """add_index_to_campername should not mutate the input DataFrame."""
+
+    def test_does_not_mutate_input(self):
+        original = pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Puffin", "Tillikum"],
+                "camper": ["Alice", "Bob", "Carlos"],
+                "gender": ["female", "female", "male"],
+            }
+        )
+        original_copy = original.copy()
+        result = add_index_to_campername(original)
+        pd.testing.assert_frame_equal(original, original_copy)
+        assert result["camper"].tolist() == ["Alice.0", "Bob.1", "Carlos.2"]

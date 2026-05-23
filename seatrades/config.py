@@ -1,6 +1,6 @@
 """Configuration classes for the SeaTrades application."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -17,7 +17,9 @@ class OptimizationConfig:
     cabins_weight: int = 2
     sparsity_weight: int = 1
     max_seatrades_per_fleet: Optional[int] = None
-    solver: pulp.apis.LpSolver = pulp.apis.PULP_CBC_CMD(timeLimit=60, gapRel=0.10, logPath=SEATRADES_LOG_PATH)
+    solver: pulp.apis.LpSolver = field(
+        default_factory=lambda: pulp.apis.PULP_CBC_CMD(timeLimit=60, gapRel=0.10, logPath=SEATRADES_LOG_PATH)
+    )
 
 
 @dataclass
@@ -60,31 +62,6 @@ class CamperPreferences(DataFrameModel):
     """Camper seatrade preferences — ranked choices."""
 
     camper: str = Field(ignore_na=False)
-    seatrade_1: str = Field(ignore_na=False)
-    seatrade_2: str = Field(ignore_na=False)
-    seatrade_3: str = Field(ignore_na=False)
-    seatrade_4: str = Field(ignore_na=False)
-
-    @dataframe_check
-    def campers_must_choose_4_unique_seatrades(cls, df: pd.DataFrame):  # type: ignore[misc]
-        """Each camper must choose 4 unique seatrades."""
-        return (
-            (df["seatrade_1"] != df["seatrade_2"])
-            & (df["seatrade_1"] != df["seatrade_3"])
-            & (df["seatrade_1"] != df["seatrade_4"])
-            & (df["seatrade_2"] != df["seatrade_3"])
-            & (df["seatrade_2"] != df["seatrade_4"])
-            & (df["seatrade_3"] != df["seatrade_4"])
-        )
-
-
-# Kept for backward compatibility during migration — will be removed.
-class CamperSeatradePreferences(DataFrameModel):
-    """Camper preferences for which seatrade they want to be assigned."""
-
-    cabin: str = Field(ignore_na=False)
-    camper: str = Field(ignore_na=False)
-    gender: str = Field(ignore_na=False)
     seatrade_1: str = Field(ignore_na=False)
     seatrade_2: str = Field(ignore_na=False)
     seatrade_3: str = Field(ignore_na=False)

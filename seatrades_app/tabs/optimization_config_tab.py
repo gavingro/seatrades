@@ -2,6 +2,7 @@ import pulp
 import streamlit as st
 
 from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
+from seatrades_app.components import clear_optimization_results
 
 
 class OptimizationConfigForm:
@@ -72,16 +73,9 @@ class OptimizationConfigForm:
             )
 
 
-def _clear_optimization_results():
-    if st.session_state.get("assigned_solution") is not None:
-        st.toast("Clearing Previous Optimization Results.")
-    st.session_state["optimization_success"] = None
-    st.session_state["assigned_solution"] = None
-
-
 def _update_optimization_config(optimization_config: OptimizationConfig):
     """Update config for the optimization parameters."""
     if st.session_state.get("optimization_config") is not None:
         st.toast(f"Updating Optimization Configuration.\n\n{optimization_config}")
     st.session_state["optimization_config"] = optimization_config
-    _clear_optimization_results()
+    clear_optimization_results()

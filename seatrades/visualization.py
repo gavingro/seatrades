@@ -16,9 +16,9 @@ def display_assignments(solution: AssignmentSolution) -> alt.Chart:
             "the problem was not successfully solved. Refusing to render untrustworthy results."
         )
 
-    df = wrangle_assignments_to_longform(solution)
+    longform_df = wrangle_assignments_to_longform(solution)
 
-    assignment_base = alt.Chart(df).encode(
+    assignment_base = alt.Chart(longform_df).encode(
         x=alt.X("seatrade", sort=solution.seatrades_full, title=None),
         y=alt.Y("camper", sort=solution.campers, title=None),
     )
