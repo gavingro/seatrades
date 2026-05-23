@@ -14,12 +14,12 @@ from seatrades.problem import SchedulingProblem
 from seatrades.results import (
     AssignmentSolution,
     SolverState,
-    display_assignments,
     prepare_seatrade_leaders,
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
 from seatrades.solver import run as solver_run
+from seatrades.visualization import display_assignments
 
 logger = logging.getLogger(__name__)
 
