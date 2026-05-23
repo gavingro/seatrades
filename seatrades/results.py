@@ -4,13 +4,10 @@ This file contains tools to display the results of seatrades assignment.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 import altair as alt
 import pandas as pd
-
-if TYPE_CHECKING:
-    from seatrades.seatrades import Seatrades
 
 
 class SolverState(Enum):
@@ -50,19 +47,6 @@ class AssignmentSolution:
     seatrades_full: list[str]
     cabin_camper_prefs: pd.DataFrame
     camper_prefs: pd.Series
-
-    @classmethod
-    def from_seatrades(cls, seatrades: "Seatrades") -> "AssignmentSolution":
-        """Construct an AssignmentSolution from a solved Seatrades instance."""
-        return cls(
-            assignments=seatrades.assignments,
-            status=SolverStatus.from_pulp(seatrades.status),
-            cabins=seatrades.cabins,
-            campers=seatrades.campers,
-            seatrades_full=seatrades.seatrades_full,
-            cabin_camper_prefs=seatrades.cabin_camper_prefs,
-            camper_prefs=seatrades.camper_prefs,
-        )
 
 
 alt.data_transformers.disable_max_rows()

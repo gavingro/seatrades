@@ -3,7 +3,6 @@ import queue
 import re
 import threading
 import time
-from copy import deepcopy
 from typing import List, Literal, Optional
 
 import pandas as pd
@@ -11,14 +10,16 @@ import streamlit as st
 
 from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
 from seatrades.preferences import ValidationError, join_and_validate
+from seatrades.problem import SchedulingProblem
 from seatrades.results import (
     AssignmentSolution,
+    SolverState,
     display_assignments,
     prepare_seatrade_leaders,
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
-from seatrades.seatrades import Seatrades
+from seatrades.solver import run as solver_run
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +42,13 @@ class AssignmentsTab:
                 "optimization_config": st.session_state["optimization_config"],
             },
         )
-        if st.session_state.get("assigned_seatrades"):
+        if st.session_state.get("assigned_solution"):
             # Display results
             if not st.session_state["optimization_success"]:
                 st.write("Optimization not successful.")
             else:
                 st.write("Optimization Success. Seatrades assigned for each camper.")
-                seatrades_obj = st.session_state["assigned_seatrades"]
-                solution = AssignmentSolution.from_seatrades(seatrades_obj)
+                solution = st.session_state["assigned_solution"]
                 results_chart = display_assignments(solution)
                 st.altair_chart(results_chart)
 
@@ -139,7 +139,8 @@ def _assign_seatrades(
 
     st.session_state["cabin_camper_prefs"] = joined_campers
     st.toast("Beginning Seatrade Optimization.")
-    seatrades = Seatrades(joined_campers, seatrade_setup)  # type: ignore[arg-type]
+    problem = SchedulingProblem(joined_campers, seatrade_setup)
+    result_container: dict[str, AssignmentSolution] = {}
     with st.status("Step 1/3: Setting Up Optimization Problem") as status:
         # CAUTION: Does not actually stop the solver subthread which will keep running.
         # This will be a problem later if a user starts a ton of solver threads behind the scenes.
@@ -163,7 +164,7 @@ def _assign_seatrades(
         solver_thread = threading.Thread(
             target=_run_assignment_and_capture_logs,
             daemon=True,
-            args=(seatrades, optimization_config),
+            args=(problem, optimization_config, result_container),
         )
         solver_thread.start()
         while solver_thread.is_alive():
@@ -233,24 +234,26 @@ def _assign_seatrades(
                 label=("Seatrades assigned successfully" + timeout_status + optimality_status + "."),
                 expanded=False,
             )
-            seatrades.status = 1
         else:
             st.session_state["optimization_success"] = False
             st.toast("Failed to solve optimization problem.", icon="🚨")
             status.update(state="error", label="Seatrades failed to be assigned.")
-            seatrades.status = -1
-    st.session_state["assigned_seatrades"] = deepcopy(seatrades)
+    if "solution" in result_container:
+        st.session_state["assigned_solution"] = result_container["solution"]
     stop_button.empty()
 
 
-def _run_assignment_and_capture_logs(seatrades: Seatrades, optimization_config: OptimizationConfig) -> None:
-    """Run seatrades assignment and capture status to status_queue, intended to be run in a separate thread."""
+def _run_assignment_and_capture_logs(
+    problem: SchedulingProblem, optimization_config: OptimizationConfig, result_container: dict[str, AssignmentSolution]
+) -> None:
+    """Run solver and capture status to status_queue, intended to be run in a separate thread."""
     try:
-        seatrades.assign(optimization_config)
-        if seatrades.status:
-            status_queue.put(seatrades.status)
+        solution = solver_run(problem, optimization_config)
+        result_container["solution"] = solution
+        if solution.status.state == SolverState.OPTIMAL:
+            status_queue.put(1)
         else:
-            status_queue.put(0)
+            status_queue.put(-1)
 
     except Exception as e:
         logger.error("Solver thread failed: %s", e)

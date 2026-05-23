@@ -4,7 +4,6 @@ import pandas as pd
 import pulp
 
 from seatrades.config import OptimizationConfig
-from seatrades.problem import SchedulingProblem
 
 
 class TestSchedulingProblemInit:
@@ -289,35 +288,3 @@ class TestSchedulingProblemConstraintGroups:
         )
 
         assert problem.objective is not None
-
-
-class TestSeatradesDelegation:
-    """Seatrades delegates domain parsing and model building to SchedulingProblem."""
-
-    def test_seatrades_delegates_to_scheduling_problem(self, joined_campers_df, seatrade_setup_df):
-        from seatrades.preferences import CamperSeatradePreferences, SeatradesConfig
-        from seatrades.seatrades import Seatrades
-
-        seatrades = Seatrades(
-            CamperSeatradePreferences(joined_campers_df.copy()),
-            SeatradesConfig(seatrade_setup_df.copy()),
-        )
-
-        assert isinstance(seatrades._problem, SchedulingProblem)
-        assert seatrades.cabins == seatrades._problem.cabins
-        assert seatrades.campers == seatrades._problem.campers
-        assert seatrades.seatrades_full == seatrades._problem.seatrades_full
-
-    def test_seatrades_assign_uses_scheduling_problem(self, joined_campers_df, seatrade_setup_df):
-        from seatrades.preferences import CamperSeatradePreferences, SeatradesConfig
-        from seatrades.seatrades import Seatrades
-
-        seatrades = Seatrades(
-            CamperSeatradePreferences(joined_campers_df.copy()),
-            SeatradesConfig(seatrade_setup_df.copy()),
-        )
-        config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
-        problem = seatrades.assign(config)
-
-        assert isinstance(problem, pulp.LpProblem)
-        assert seatrades.status == 1  # Optimal

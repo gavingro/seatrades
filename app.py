@@ -72,7 +72,7 @@ def _initial_page_setup():
         st.session_state["camper_preferences"] = simulate_camper_preferences(
             identity_df, st.session_state["seatrade_preferences"]
         )
-    # cabin_camper_prefs is the joined result used by Seatrides
+    # cabin_camper_prefs is the joined result used by Seatrades
     if "cabin_camper_prefs" not in st.session_state:
         joined_campers, _seatrade_setup = join_and_validate(
             st.session_state["camper_identity"],

@@ -73,10 +73,10 @@ class OptimizationConfigForm:
 
 
 def _clear_optimization_results():
-    if st.session_state.get("assigned_seatrades") is not None:
+    if st.session_state.get("assigned_solution") is not None:
         st.toast("Clearing Previous Optimization Results.")
     st.session_state["optimization_success"] = None
-    st.session_state["assigned_seatrades"] = None
+    st.session_state["assigned_solution"] = None
 
 
 def _update_optimization_config(optimization_config: OptimizationConfig):

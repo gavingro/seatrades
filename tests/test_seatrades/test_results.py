@@ -6,7 +6,6 @@ import pandas as pd
 import pytest
 
 from seatrades.results import (
-    AssignmentSolution,
     SolverState,
     SolverStatus,
     display_assignments,
@@ -168,49 +167,3 @@ class TestDisplayAssignmentsFailureGuard:
         """display_assignments returns a chart when optimization succeeded."""
         result = display_assignments(sample_assignment_solution)
         assert result is not None
-
-
-class TestAssignmentSolutionFromSeatrades:
-    def test_constructs_from_seatrades_object(self):
-        """from_seatrades() extracts domain data from a Seatrades instance."""
-        from unittest.mock import MagicMock
-
-        seatrades = MagicMock()
-        seatrades.status = 1
-        seatrades.assignments = pd.DataFrame(
-            {"1a_Archery": [1, 0], "1b_Climbing": [0, 1]},
-            index=pd.Index(["Alice_0", "Bob_0"], name="camper"),
-        )
-        seatrades.cabins = ["Cabin1", "Cabin2"]
-        seatrades.campers = ["Alice_0", "Bob_0"]
-        seatrades.seatrades_full = ["1a_Archery", "1b_Climbing"]
-        seatrades.cabin_camper_prefs = pd.DataFrame(
-            {"cabin": ["Cabin1", "Cabin2"]},
-            index=pd.Index(["Alice_0", "Bob_0"], name="camper"),
-        )
-        seatrades.camper_prefs = pd.Series(
-            [["Archery", "Climbing", "Sailing", "Kayaking"], ["Climbing", "Archery", "Sailing", "Kayaking"]],
-            index=pd.Index(["Alice_0", "Bob_0"], name="camper"),
-        )
-
-        solution = AssignmentSolution.from_seatrades(seatrades)
-        assert solution.status.state == SolverState.OPTIMAL
-        assert solution.cabins == ["Cabin1", "Cabin2"]
-        assert solution.campers == ["Alice_0", "Bob_0"]
-        assert isinstance(solution.assignments, pd.DataFrame)
-
-    def test_maps_infeasible_status(self):
-        """from_seatrades() maps PuLP -1 to INFEASIBLE."""
-        from unittest.mock import MagicMock
-
-        seatrades = MagicMock()
-        seatrades.status = -1
-        seatrades.assignments = pd.DataFrame()
-        seatrades.cabins = []
-        seatrades.campers = []
-        seatrades.seatrades_full = []
-        seatrades.cabin_camper_prefs = pd.DataFrame()
-        seatrades.camper_prefs = pd.Series(dtype=object)
-
-        solution = AssignmentSolution.from_seatrades(seatrades)
-        assert solution.status.state == SolverState.INFEASIBLE
