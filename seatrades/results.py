@@ -58,8 +58,9 @@ def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFram
     def lookup_preference(row) -> int:
         if row.assignment:
             row_camper_prefs = solution.camper_prefs[row.camper]
-            if row.seatrade[3:] in row_camper_prefs:
-                return row_camper_prefs.index(row.seatrade[3:]) + 1
+            seatrade_name = row.seatrade.split("_", 1)[1]
+            if seatrade_name in row_camper_prefs:
+                return row_camper_prefs.index(seatrade_name) + 1
             return 999
         return 0
 

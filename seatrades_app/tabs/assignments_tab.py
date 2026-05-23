@@ -3,7 +3,7 @@ import queue
 import re
 import threading
 import time
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 import pandas as pd
 import streamlit as st
@@ -176,20 +176,18 @@ def _assign_seatrades(
                 min(elapsed_pct_of_time_limit, 1.0),
                 ("Optimization Progress" if not timeout else "Stopping Optimization."),
             )
-            old_log_text = ""
             try:
                 if SEATRADES_LOG_PATH.exists():
                     with open(SEATRADES_LOG_PATH, "r") as log_file:
                         log_text = "".join(log_file.readlines()[::-1])
-                    if log_text != old_log_text:
+                    if log_text:
                         log_container.text_area(
                             "Solver Logs.",
                             value=log_text,
                             height=300,
                             key=str(log_counter) + log_text,
                         )
-                        old_log_text = log_text
-                        if _TIMEOUT_LOG_PATTERN.search(old_log_text):
+                        if _TIMEOUT_LOG_PATTERN.search(log_text):
                             timeout = True
 
                         if not timeout:
@@ -263,7 +261,7 @@ def _run_assignment_and_capture_logs(
 def render_view(
     longform_df: pd.DataFrame,
     view_name: Literal["By Camper", "By Seatrade"],
-    camper_order: Optional[List[str]] = None,
+    camper_order: Optional[list[str]] = None,
 ) -> pd.DataFrame:
     """Render the selected assignment view.
 
@@ -273,7 +271,7 @@ def render_view(
         Longform assignments dataframe.
     view_name : Literal["By Camper", "By Seatrade"]
         Which assignment view to render.
-    camper_order : Optional[List[str]]
+    camper_order : Optional[list[str]]
         Ordered camper names for "By Camper" sort. Passed through to
         wrangle_assignments_to_wideform. Ignored for "By Seatrade".
 
