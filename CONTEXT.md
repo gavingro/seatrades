@@ -56,12 +56,14 @@ A specific seatrade within a specific fleet and block. E.g., "Sailing in 1a". Se
 
 ### Fleet
 
-A group within each of 2 halves of the week (identifies morning session or afternoon session):
+A time-of-day grouping within a half of the week:
 
 - **Fleet 1** - Morning Session
 - **Fleet 2** - Afternoon Session
 
-Each cabin is assigned to one fleet for the week.
+A cabin's fleet is chosen **per half, independently** — a cabin can be morning in the first half and afternoon in the second (and vice versa).
+
+**Operating reality vs. intended model.** Today, schedules in practice keep a cabin in one fleet all week (a simplification to reduce assignment complexity). The model is moving toward independent per-half fleets, with "same fleet all week" becoming an *optional* hard constraint a user can switch on to keep the legacy behavior. Do not write user-facing copy that asserts a cabin is in one fleet for the whole week.
 
 ### Camper Relationship
 
@@ -139,6 +141,11 @@ flowchart LR
 ```
 
 ## Optimization Problem
+
+The scheduler balances two user-facing categories of settings:
+
+- **Hard constraint** - A rule the schedule *must* satisfy, or the solver reports infeasibility (e.g. capacity limits, cabin cap, top-2 guarantee). Non-negotiable.
+- **Soft weight** - A scored *preference* the solver trades off against others to find the best overall schedule (e.g. the three Objective Goals above). Higher weight = stronger pull, but never absolute.
 
 The scheduler solves a mixed-integer linear programming problem with these constraints:
 

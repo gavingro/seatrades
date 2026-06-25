@@ -29,6 +29,10 @@ Run tests directly from the venv — no need to activate it first.
 .venv/bin/pytest -k "test_bar"      # single test
 ```
 
+## Seeing the app
+
+Behavior is tested headlessly with Streamlit `AppTest`; visual checks use a real browser via the Playwright MCP server (`.mcp.json`). To launch and view the running app, see "Viewing the running app" in `docs/CONTRIBUTING.md`. Rationale: `docs/adr/0007-agent-visual-verification.md`.
+
 ## Documentation updates
 
 Doc updates (`CONTEXT.md`, `docs/adr/`, etc.) are welcome in any PR. Don't skip them.
