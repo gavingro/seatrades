@@ -5,11 +5,16 @@ from typing import Hashable
 import pandas as pd
 import pulp
 
-from seatrades.config import OptimizationConfig
+from seatrades.config import PREF_COLS, OptimizationConfig
 from seatrades.preferences import add_index_to_campername
 
 BLOCKS = ["1a", "1b", "2a", "2b"]
 FLEET_BLOCKS = [["1a", "1b"], ["2a", "2b"]]
+
+
+def seatrade_name(seatrade_full: str) -> str:
+    """Strip the block prefix from a full seatrade name (``1a_Archery`` → ``Archery``)."""
+    return seatrade_full.split("_", 1)[1]
 
 
 class SchedulingProblem:
@@ -28,20 +33,14 @@ class SchedulingProblem:
         self.cabin_camper_prefs = joined_campers.set_index("camper")
         self.cabins = joined_campers["cabin"].unique().tolist()
         self.campers_by_cabin = joined_campers.groupby("cabin")["camper"].apply(list).to_dict()
-        self.camper_prefs = joined_campers.set_index("camper")[
-            ["seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]
-        ].apply(list, axis="columns")
+        self.camper_prefs = joined_campers.set_index("camper")[PREF_COLS].apply(list, axis="columns")
         self.campers = joined_campers["camper"].tolist()
         self.cabin_genders = self.cabin_camper_prefs.groupby("cabin")["gender"].agg(lambda grp: pd.Series.mode(grp)[0])
 
         self.seatrades_prefs = seatrade_setup.set_index("seatrade")
         self.seatrades = seatrade_setup["seatrade"]
-        self.seatrades1a = [f"1a_{seatrade}" for seatrade in self.seatrades]
-        self.seatrades1b = [f"1b_{seatrade}" for seatrade in self.seatrades]
-        self.seatrades2a = [f"2a_{seatrade}" for seatrade in self.seatrades]
-        self.seatrades2b = [f"2b_{seatrade}" for seatrade in self.seatrades]
-        self.seatrades_full = self.seatrades1a + self.seatrades1b + self.seatrades2a + self.seatrades2b
         self.fleets = BLOCKS
+        self.seatrades_full = [f"{block}_{seatrade}" for block in self.fleets for seatrade in self.seatrades]
 
     def build(self, config: OptimizationConfig) -> pulp.LpProblem:
         """Build an unsolved LpProblem from domain data and optimization config.
@@ -126,12 +125,11 @@ class SchedulingProblem:
 
     def _add_assignment_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
         """Each camper is assigned exactly one seatrade per block pair."""
-        for block_index, seatrades in enumerate(
-            [self.seatrades1a + self.seatrades1b, self.seatrades2a + self.seatrades2b],
-        ):
+        for block_index, fleet_blocks in enumerate(FLEET_BLOCKS):
+            block_seatrades = [f"{block}_{seatrade}" for block in fleet_blocks for seatrade in self.seatrades]
             for c in self.campers:
                 problem += (
-                    pulp.lpSum([camper_assignments[c][s] for s in seatrades]) == 1,
+                    pulp.lpSum([camper_assignments[c][s] for s in block_seatrades]) == 1,
                     f"{c}_in_only_1_seatrade_block_{block_index}",
                 )
 
@@ -147,7 +145,7 @@ class SchedulingProblem:
     def _add_capacity_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict):
         """Seatrade camper counts stay within min/max capacity bounds."""
         for s in self.seatrades_full:
-            seatrade = s.split("_", 1)[1]
+            seatrade = seatrade_name(s)
             seatrade_campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
             problem += (
                 pulp.lpSum([camper_assignments[c][s] for c in self.campers]) >= seatrade_campers_min,
@@ -164,7 +162,7 @@ class SchedulingProblem:
         for c, seatrade_prefs in self.camper_prefs.items():
             problem += (
                 pulp.lpSum(
-                    [camper_assignments[c][s] for s in self.seatrades_full if s.split("_", 1)[1] not in seatrade_prefs]
+                    [camper_assignments[c][s] for s in self.seatrades_full if seatrade_name(s) not in seatrade_prefs]
                 )
                 == 0,
                 f"{c}_prefers_not_these_seatrades",
@@ -176,10 +174,9 @@ class SchedulingProblem:
             # sum(pref_index) <= 4 guarantees at least one choice from top-2 (rank 0 or 1)
             problem += (
                 pulp.lpSum(
-                    [camper_assignments[c][f"1a_{s}"] * (preferences.index(s)) for s in preferences]
-                    + [camper_assignments[c][f"1b_{s}"] * (preferences.index(s)) for s in preferences]
-                    + [camper_assignments[c][f"2a_{s}"] * (preferences.index(s)) for s in preferences]
-                    + [camper_assignments[c][f"2b_{s}"] * (preferences.index(s)) for s in preferences]
+                    camper_assignments[c][f"{block}_{s}"] * (preferences.index(s))
+                    for block in self.fleets
+                    for s in preferences
                 )
                 <= 4,
                 f"{c}_guaranteed_one_of_first_two_seatrades",

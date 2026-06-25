@@ -7,9 +7,9 @@ from typing import Optional
 import pandas as pd
 import pulp
 
-from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
+from seatrades.config import OptimizationConfig
 from seatrades.problem import SchedulingProblem
-from seatrades.results import AssignmentSolution, SolverState, SolverStatus
+from seatrades.results import AssignmentSolution, SolverStatus
 
 _GAP_PATTERN = re.compile(r"(?<=Gap:                            )(\d+\.?\d*)")
 
@@ -24,16 +24,16 @@ def _mangle(name: str) -> str:
 
 
 def _extract_camper_assignments(
-    problem: pulp.LpProblem,
+    variables: list[pulp.LpVariable],
     campers: list[str],
     seatrades_full: list[str],
 ) -> pd.DataFrame:
-    """Extract camper assignment values from a solved LpProblem.
+    """Extract camper assignment values from solved LpProblem variables.
 
     Looks up each (camper, seatrade_full) variable by its PuLP-mangled name
     rather than parsing variable names, avoiding breakage on spaces/dots.
     """
-    var_lookup = {v.name: pulp.value(v) for v in problem.variables()}
+    var_lookup = {v.name: pulp.value(v) for v in variables}
     camper_vars: dict[str, dict[str, float]] = {}
     expected = len(campers) * len(seatrades_full)
     found = 0
@@ -80,11 +80,11 @@ def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSol
     lp_problem = problem.build(config)
     status_code = lp_problem.solve(config.solver)
 
-    assignments = _extract_camper_assignments(lp_problem, problem.campers, problem.seatrades_full)
+    assignments = _extract_camper_assignments(lp_problem.variables(), problem.campers, problem.seatrades_full)
 
     solver_status = SolverStatus.from_pulp(status_code)
-    if solver_status.state == SolverState.OPTIMAL:
-        solver_status.gap = _extract_gap_from_log(SEATRADES_LOG_PATH)
+    if solver_status.is_optimal:
+        solver_status.gap = _extract_gap_from_log(config.log_path)
 
     return AssignmentSolution(
         assignments=assignments,

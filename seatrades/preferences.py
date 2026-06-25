@@ -15,7 +15,7 @@ import pandas as pd
 from pandera import DataFrameModel
 from pandera.errors import SchemaError, SchemaErrors
 
-from seatrades.config import CamperIdentity, CamperPreferences, SeatradesConfig
+from seatrades.config import PREF_COLS, CamperIdentity, CamperPreferences, SeatradesConfig
 
 
 class ValidationError(Exception):
@@ -162,9 +162,8 @@ def join_and_validate(
             errors.append(f"Campers in preferences but not in identity: {names}")
 
         available_seatrades = set(seatrade_validated["seatrade"])
-        pref_cols = ["seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]
         all_pref_seatrades: set[str] = set()
-        for col in pref_cols:
+        for col in PREF_COLS:
             all_pref_seatrades.update(preferences_validated[col])
         invalid_seatrades = all_pref_seatrades - available_seatrades
         if invalid_seatrades:

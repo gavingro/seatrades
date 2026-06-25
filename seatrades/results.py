@@ -28,6 +28,11 @@ class SolverStatus:
     gap: Optional[float] = None
     message: str = ""
 
+    @property
+    def is_optimal(self) -> bool:
+        """Whether the solver reached an optimal solution."""
+        return self.state == SolverState.OPTIMAL
+
     @classmethod
     def from_pulp(cls, status_code: int) -> "SolverStatus":
         state = SolverState.from_pulp(status_code)
@@ -60,7 +65,7 @@ def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFram
     )
 
     def lookup_preference(row) -> int:
-        if row.assignment:
+        if row.assignment == 1.0:
             row_camper_prefs = solution.camper_prefs[row.camper]
             seatrade_name = row.seatrade.split("_", 1)[1]
             if seatrade_name in row_camper_prefs:

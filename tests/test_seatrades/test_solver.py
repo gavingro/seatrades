@@ -128,7 +128,7 @@ class TestExtractCamperAssignments:
 
         # Request variables that don't exist in the problem
         with pytest.raises(ValueError, match="Expected.*variables.*found"):
-            _extract_camper_assignments(prob, ["Alice"], ["1a_Archery"])
+            _extract_camper_assignments(prob.variables(), ["Alice"], ["1a_Archery"])
 
 
 class TestStatusCodeMapping:
