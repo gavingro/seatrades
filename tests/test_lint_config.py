@@ -161,7 +161,6 @@ class TestPreCommitConfig:
         "mypy",
         "trailing-whitespace",
         "end-of-file-fixer",
-        "no-commit-to-branch",
     }
 
     @pytest.fixture()
@@ -175,8 +174,8 @@ class TestPreCommitConfig:
         """.pre-commit-config.yaml exists and parses as valid YAML."""
         assert pre_commit_config is not None
 
-    def test_pre_commit_config_has_six_hooks(self, pre_commit_config):
-        """Config contains exactly the six expected hooks."""
+    def test_pre_commit_config_has_five_hooks(self, pre_commit_config):
+        """Config contains exactly the five expected hooks."""
         hook_ids = {hook["id"] for repo in pre_commit_config["repos"] for hook in repo["hooks"]}
         assert self.EXPECTED_HOOK_IDS == hook_ids
 
@@ -198,15 +197,10 @@ class TestPreCommitConfig:
                         f"Hook {hook['id']} rev {repo['rev']} doesn't match ruff {installed_version}"
                     )
 
-    def test_no_commit_to_main_hook_configured(self, pre_commit_config):
-        """no-commit-to-branch hook prevents commits to main."""
+    def test_no_commit_to_branch_hook_absent(self, pre_commit_config):
+        """no-commit-to-branch hook removed — branch protection via GitHub instead."""
         hook_ids = [hook["id"] for repo in pre_commit_config["repos"] for hook in repo["hooks"]]
-        assert "no-commit-to-branch" in hook_ids
-        # Verify it's configured to protect main
-        for repo in pre_commit_config["repos"]:
-            for hook in repo["hooks"]:
-                if hook["id"] == "no-commit-to-branch":
-                    assert "--branch" in hook.get("args", []) and "main" in hook["args"]
+        assert "no-commit-to-branch" not in hook_ids
 
     def test_pre_commit_run_all_files(self):
         """pre-commit run --all-files passes for all configured hooks."""

@@ -1,60 +1,12 @@
-"""Camper preferences tab — upload, validate, or simulate camper-seatrade preference data.
+"""Camper setup tab — upload or simulate camper identity and preference data."""
 
-Pandera mypy suppressions:
-- type: ignore[index] on SeatradesConfig bracket indexing (line ~164): pandera
-  DataFrameModel subclasses are indexable DataFrames at runtime but mypy can't verify this.
-- type: ignore[return-value] on CamperSeatradePreferences.validate (line ~209): pandera
-  validate() returns DataFrame[X] but the function signature declares X. The runtime
-  behavior is correct since validate() returns the validated DataFrame.
-
-Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
-"""
-
-from dataclasses import dataclass
-from random import sample
-
-import numpy as np
 import pandas as pd
 import streamlit as st
-from faker import Faker
-from pandera import Field
 
-from seatrades import preferences
-from seatrades_app.tabs.optimization_config_tab import _clear_optimization_results
-
-
-@dataclass
-class CamperSimulationConfig:
-    num_cabins: int = 8
-    num_preferences: int = 4
-    camper_per_cabin_min: int = 8
-    camper_per_cabin_max: int = 12
-
-
-GIRL_CABIN_EXAMPLES = [
-    "Puffin",
-    "Pelican",
-    "Merganser",
-    "Kingfisher",
-    "Cormorant",
-    "Britannia",
-    "Acadia",
-    "Sovereign",
-    "Bounty",
-    "Santa Maria",
-]
-BOY_CABIN_EXAMPLES = [
-    "Tillikum",
-    "Caledonia",
-    "Girona",
-    "Grafton",
-    "Spindrift",
-    "Amherst",
-    "Buonaventure",
-    "Columbia",
-    "Terra Nova",
-]
-ALL_CABIN_DICT = {cabin: "female" for cabin in GIRL_CABIN_EXAMPLES} | {cabin: "male" for cabin in BOY_CABIN_EXAMPLES}
+from seatrades.config import CamperIdentity, CamperPreferences, CamperSimulationConfig
+from seatrades.preferences import ValidationError, join_and_validate, read_csv_for_schema, validate_schema
+from seatrades.simulation import ALL_CABIN_DICT, simulate_camper_identity, simulate_camper_preferences
+from seatrades_app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 
 
 def _update_camper_simulation_config(camper_simulation_config: CamperSimulationConfig):
@@ -71,37 +23,56 @@ def _update_camper_simulation_config(camper_simulation_config: CamperSimulationC
     if st.session_state.get("camper_simulation_config") is not None:
         st.toast(f"Updating Camper Simulation Configuration.\n\n{camper_simulation_config}")
     st.session_state["camper_simulation_config"] = camper_simulation_config
-    _clear_optimization_results()
-    if "cabin_camper_prefs" in st.session_state:
-        del st.session_state["cabin_camper_prefs"]
+    clear_optimization_results()
+    for key in ("camper_identity", "camper_preferences"):
+        if key in st.session_state:
+            del st.session_state[key]
 
 
 class CamperSimulationConfigTab:
     """Component: Simulation Config Form"""
 
     def generate(self):
-        st.subheader("Camper Preferences")
-        uploaded_camper_prefs = st.file_uploader(
-            label="Upload your seatrade preferences for each camper.",
-            type="csv",
-            help="""Upload preferences as a .csv file.
-            Uploaded data **must** have the same columns as seen below, and an example form
-            can be downloaded by interacting with the displayed data below.
-            Current camper preferences include their name, cabin, gender, as well as the top
-            4 seatrades each camper wants to attend, in order.
-            Seatrades must match the seatrades listed in the Seatrade Preferences tab, which
-            are assumed to contain all seatrades for the week.
-            """,
-        )
-        if uploaded_camper_prefs:
-            camper_prefs_data = pd.read_csv(uploaded_camper_prefs, index_col=None)
-            _validate_and_update_camper_preferences(camper_prefs_data)
+        st.subheader("Camper Setup")
 
-        st.data_editor(st.session_state["cabin_camper_prefs"], disabled=True)
+        # --- Identity uploader ---
+        uploaded_identity = st.file_uploader(
+            label="Upload camper identity (cabin, camper, gender).",
+            type="csv",
+            help="""Upload a .csv with columns: cabin, camper, gender.
+            Each row is one camper.""",
+            key="identity_uploader",
+        )
+        if uploaded_identity:
+            try:
+                identity_data = read_csv_for_schema(uploaded_identity, CamperIdentity)
+            except ValidationError as e:
+                show_validation_error("Camper Identity", e)
+            else:
+                _validate_and_update_identity(identity_data)
+        if "camper_identity" in st.session_state:
+            st.data_editor(st.session_state["camper_identity"], disabled=True)
+
+        uploaded_prefs = st.file_uploader(
+            label="Upload camper preferences (camper, seatrade_1..4).",
+            type="csv",
+            help="""Upload a .csv with columns: camper, seatrade_1, seatrade_2, seatrade_3, seatrade_4.
+            Seatrade names must match those in the Seatrade Setup tab.""",
+            key="prefs_uploader",
+        )
+        if uploaded_prefs:
+            try:
+                prefs_data = read_csv_for_schema(uploaded_prefs, CamperPreferences)
+            except ValidationError as e:
+                show_validation_error("Camper Preferences", e)
+            else:
+                _validate_and_update_preferences(prefs_data)
+        if "camper_preferences" in st.session_state:
+            st.data_editor(st.session_state["camper_preferences"], disabled=True)
 
         st.write("")
         st.write("---")
-        with st.expander("No Camper Data? Simulate Cabins Here."):
+        with st.expander("No Camper Data? Simulate Here."):
             with st.form("Camper Simulation Config", border=False):
                 st.subheader("Camper Simulation Config")
                 num_cabins = st.slider(
@@ -122,100 +93,64 @@ class CamperSimulationConfigTab:
                     max_value=30,
                     value=CamperSimulationConfig().camper_per_cabin_max,
                 )
-                num_preferences = st.slider(
-                    "num_seatrade_preferences_per_camper",
-                    min_value=1,
-                    max_value=30,
-                    value=CamperSimulationConfig().num_preferences,
-                )
 
                 camper_simulation_config = CamperSimulationConfig(
                     num_cabins=num_cabins,
-                    num_preferences=num_preferences,
                     camper_per_cabin_min=camper_per_cabin_min,
                     camper_per_cabin_max=camper_per_cabin_max,
                 )
                 st.form_submit_button(
-                    "Update Camper Simulation Settings",
-                    on_click=_update_camper_simulation_config,
+                    "Simulate Campers",
+                    on_click=_simulate_campers,
                     kwargs={"camper_simulation_config": camper_simulation_config},
                 )
 
 
-def _validate_and_update_camper_preferences(camper_preferences: pd.DataFrame):
+def _validate_and_update_identity(identity_data: pd.DataFrame):
+    """Validate camper identity CSV and store in session state."""
     try:
-        available_seatrades = st.session_state["seatrade_preferences"]["seatrade"].tolist()
+        validate_schema(CamperIdentity, identity_data, "Camper Identity")
+        st.session_state["camper_identity"] = identity_data
+        try_join_and_validate()
+        st.toast("Updating Camper Identity.")
+    except ValidationError as e:
+        show_validation_error("Camper Identity", e)
 
-        class UpdatedCamperPrefs(preferences.CamperSeatradePreferences):
-            seatrade_1: str = Field(ignore_na=False, isin=available_seatrades)
-            seatrade_2: str = Field(ignore_na=False, isin=available_seatrades)
-            seatrade_3: str = Field(ignore_na=False, isin=available_seatrades)
-            seatrade_4: str = Field(ignore_na=False, isin=available_seatrades)
 
-        UpdatedCamperPrefs.validate(camper_preferences)
-        st.session_state["cabin_camper_prefs"] = camper_preferences
+def _validate_and_update_preferences(prefs_data: pd.DataFrame):
+    """Validate camper preferences CSV and store in session state."""
+    try:
+        validate_schema(CamperPreferences, prefs_data, "Camper Preferences")
+        st.session_state["camper_preferences"] = prefs_data
+        try_join_and_validate()
         st.toast("Updating Camper Preferences.")
-    except Exception as e:
-        with st.popover(
-            "Continuing without updating Camper Config. Click to see Error.",
+    except ValidationError as e:
+        show_validation_error("Camper Preferences", e)
+
+
+def _simulate_campers(camper_simulation_config: CamperSimulationConfig):
+    """Simulate camper identity and preferences, then cross-validate."""
+    if camper_simulation_config.camper_per_cabin_min >= camper_simulation_config.camper_per_cabin_max:
+        st.toast(
+            "Error simulating campers: min must be less than max.",
             icon="🚨",
-        ):
-            st.write("Uploaded file does not meet expected schema. Error is as follows:")
-            st.write(e)
-            st.toast(
-                "Continuing without updating Camper Config.",
-                icon="🚨",
-            )
-
-
-def _simulate_cabin_camper_preferences(
-    camper_simulation_config: CamperSimulationConfig,
-    seatrade_preferences: preferences.SeatradesConfig,
-) -> preferences.CamperSeatradePreferences:
-    """Get our cabin-camper preferences for our optimization problem."""
-    all_seatrades = seatrade_preferences["seatrade"].tolist()  # type: ignore[index]
-
-    # Mock Cabins -- Assume bigender for now.
-    cabins = sample(list(ALL_CABIN_DICT.keys()), k=camper_simulation_config.num_cabins)
-    # cabins = [f"Cabin{i:0>2}" for i in range(camper_simulation_config.num_cabins)]
-
-    # Mock Campers and Preferences
-    camper_prefs = {}
-    num_campers = 0
-    name_faker = Faker(locale=["en", "es", "it_IT", "fr_FR", "fr_QC"])
-    for cabin in cabins:
-        cabin_info = {}
-        cabin_gender = ALL_CABIN_DICT[cabin]
-        for _camper in range(
-            np.random.randint(
-                camper_simulation_config.camper_per_cabin_min,
-                camper_simulation_config.camper_per_cabin_max,
-            )
-        ):
-            # camper_name = f"Camper{num_campers:0>3}"
-            camper_name = name_faker.name_male() if cabin_gender == "male" else name_faker.name_female()
-            seatrade_prefs = sample(
-                all_seatrades,
-                camper_simulation_config.num_preferences,
-            )
-            cabin_info[camper_name] = seatrade_prefs
-            num_campers += 1
-        camper_prefs[cabin] = cabin_info
-
-    cabin_camper_prefs = (
-        pd.DataFrame(camper_prefs)
-        .reset_index(names="camper")
-        .melt(id_vars=["camper"], var_name="cabin", value_name="seatrade")
-        .dropna(subset="seatrade")
-        .reset_index(drop=True)
-    )
-    cabin_camper_prefs.loc[:, "gender"] = cabin_camper_prefs["cabin"].map(ALL_CABIN_DICT)
-
-    # This is inefficient from a wrangling point of view but it's okay it's just to start.
-    cabin_camper_prefs = cabin_camper_prefs.drop(columns="seatrade").join(
-        pd.DataFrame(
-            cabin_camper_prefs["seatrade"].to_list(),
-            columns=[f"seatrade_{i + 1}" for i in range(camper_simulation_config.num_preferences)],
         )
-    )
-    return preferences.CamperSeatradePreferences.validate(cabin_camper_prefs)  # type: ignore[return-value]
+        return
+
+    seatrade_prefs = st.session_state.get("seatrade_preferences")
+    if seatrade_prefs is None:
+        st.toast("Simulate or upload seatrade preferences first.", icon="🚨")
+        return
+
+    identity_df = simulate_camper_identity(camper_simulation_config)
+    preferences_df = simulate_camper_preferences(identity_df, seatrade_prefs)
+
+    st.session_state["camper_identity"] = identity_df
+    st.session_state["camper_preferences"] = preferences_df
+    clear_optimization_results()
+
+    try:
+        joined_campers, seatrade_setup = join_and_validate(identity_df, preferences_df, seatrade_prefs)
+        st.session_state["cabin_camper_prefs"] = joined_campers
+    except ValidationError as e:
+        show_validation_error("Cross-reference Validation", e)

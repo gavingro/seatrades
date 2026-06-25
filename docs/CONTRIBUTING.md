@@ -2,37 +2,37 @@
 
 ## Branching Strategy
 
-SeaTrades uses a tiered branching strategy. See [ADR 0005](docs/adr/0005-git-branching-strategy.md) for the full rationale.
+SeaTrades uses a three-pattern branching strategy. See [ADR 0005](docs/adr/0005-git-branching-strategy.md) for the full rationale.
 
 ### Branch types
 
 | Type | Prefix | Source | Merges into | Has PRD doc? | Purpose |
 |---|---|---|---|---|---|
 | Large feature (PRD) | `feature/13-csv-import` | `main` | `main` | Yes | Long-lived: stages QA for a full PRD |
-| Dev (part of PRD) | `dev/42-csv-upload` | Parent `feature/` | Parent `feature/` | No (links to parent issue) | Short-lived: one issue, one PR |
 | Dev (standalone) | `dev/55-small-fix` | `main` | `main` | No | Short-lived: independent small work |
 | Bug fix | `fix/56-header-crash` | `main` | `main` | No | Short-lived: bug fix |
 
+Sub-issues of a PRD are **commits on the feature branch**, not separate branches. The `dev/` prefix is only for standalone work unrelated to any PRD.
+
 ### Merge rules
 
-- **All merges use squash merge** — one clean commit per unit of work.
+- **All merges use squash merge** — one clean commit per PRD or standalone unit of work.
 - **All merges require a PR** — for traceability and auto-closing issues.
-- `dev/` → `feature/`: self-merge (no approval needed on PRD branches).
+- `feature/` → `main`: requires approval (branch protection). One formal review at the end; informal mid-feature reviews are optional.
 - `dev/` → `main`: requires approval (branch protection).
-- `feature/` → `main`: requires approval (branch protection).
 - `fix/` → `main`: requires approval (branch protection).
+
+### Commit messages for sub-issues
+
+Each sub-issue on a feature branch references its issue number in the commit message for GitHub auto-close (loose convention, e.g. `Implement CSV upload (#42)`). The final PR body can also close multiple issues at once using GitHub keywords.
 
 ### Branch naming
 
 All branches follow `{prefix}/{issue}-{name}`. This is convention, not programmatically enforced.
 
-### PRD branches as landing zones
-
-Create a `feature/` branch when the PRD issue is opened, before any dev work starts. This gives incoming `dev/` branches a target. If a PRD is abandoned, clean up manually.
-
 ### Syncing long-lived branches
 
-When `main` moves ahead of a `feature/` branch, merge `main` into the `feature/` branch (do not rebase). This preserves history for any `dev/` branches based on it.
+When `main` moves ahead of a `feature/` branch, merge `main` into the `feature/` branch (do not rebase). This preserves history for in-progress work.
 
 ### Branch cleanup
 
@@ -44,9 +44,9 @@ When `main` moves ahead of a `feature/` branch, merge `main` into the `feature/`
 ```
 main
  ├── feature/13-csv-import          ← PRD branch (created when issue opens, long-lived)
- │     ├── dev/42-csv-upload         ← issue branch, sources from feature/13, PR → feature/13
- │     ├── dev/43-csv-validation     ← issue branch, sources from feature/13, PR → feature/13
- │     └── dev/51-csv-error-handling ← added during QA, PR → feature/13
+ │     commit: "Implement CSV upload (#42)"
+ │     commit: "Add CSV validation (#43)"
+ │     commit: "Handle CSV errors (#51)"
  │     (QA complete)
  ├── feature/13-csv-import PR → main (squash merge, approval required)
  │
@@ -93,9 +93,9 @@ Since credentials are shared, Gavin must manually review and merge in GitHub UI:
 
 ## Testing
 
-Run tests with:
+Run tests directly from the venv — no need to activate it first:
 ```bash
-pytest
+.venv/bin/pytest
 ```
 
 ## Development Setup
@@ -120,11 +120,11 @@ pre-commit install
 Run these before pushing. CI enforces all of them:
 
 ```bash
-ruff check .          # lint
-ruff format .         # auto-format
-mypy .                # type check
-pytest                # tests
-pre-commit run --all-files  # all of the above via hooks
+.venv/bin/ruff check .          # lint
+.venv/bin/ruff format .         # auto-format
+.venv/bin/mypy .                # type check
+.venv/bin/pytest                # tests
+.venv/bin/pre-commit run --all-files  # all of the above via hooks
 ```
 
 CI runs two parallel jobs: **lint** (ruff + mypy) and **test** (pytest). Both must pass.

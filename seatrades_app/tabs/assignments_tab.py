@@ -1,54 +1,57 @@
+import logging
 import queue
 import re
 import threading
 import time
-from copy import deepcopy
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 import pandas as pd
 import streamlit as st
 
-from seatrades import preferences, results
-from seatrades.seatrades import (
-    Seatrades,
+from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
+from seatrades.preferences import ValidationError, join_and_validate
+from seatrades.problem import SchedulingProblem
+from seatrades.results import (
+    AssignmentSolution,
+    SolverState,
     prepare_seatrade_leaders,
+    wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
-from seatrades_app.tabs.optimization_config_tab import (
-    SEATRADES_LOG_PATH,
-    OptimizationConfig,
-)
+from seatrades.solver import run as solver_run
+from seatrades.visualization import display_assignments
+
+logger = logging.getLogger(__name__)
 
 status_queue: queue.Queue[int] = queue.Queue()
 log_counter = 1
+_TIMEOUT_LOG_PATTERN = re.compile(r"Result - Stopped on time limit")
 
 
 class AssignmentsTab:
     """Tab Content for Assigning Seatrades"""
 
-    def generate(self):
+    def generate(self) -> None:
         if "introduced" not in st.session_state or not st.session_state["introduced"]:
             _generate_intro_dialogue()
         st.button(
             "Assign Seatrades.",
             on_click=_assign_seatrades,
             kwargs={
-                "cabin_camper_preferences": st.session_state["cabin_camper_prefs"],
-                "seatrade_preferences": st.session_state["seatrade_preferences"],
                 "optimization_config": st.session_state["optimization_config"],
             },
         )
-        if st.session_state.get("assigned_seatrades"):
+        if st.session_state.get("assigned_solution"):
             # Display results
             if not st.session_state["optimization_success"]:
                 st.write("Optimization not successful.")
             else:
                 st.write("Optimization Success. Seatrades assigned for each camper.")
-                results_chart = results.display_assignments(st.session_state["assigned_seatrades"])
+                solution = st.session_state["assigned_solution"]
+                results_chart = display_assignments(solution)
                 st.altair_chart(results_chart)
 
-                seatrades_obj = st.session_state["assigned_seatrades"]
-                longform_df = seatrades_obj.wrangle_assignments_to_longform(seatrades_obj.assignments)
+                longform_df = wrangle_assignments_to_longform(solution)
 
                 st.divider()
                 st.subheader("Assignment Data")
@@ -62,11 +65,11 @@ class AssignmentsTab:
                 )
                 assert selected_view in view_options
 
-                st.dataframe(render_view(longform_df, selected_view, camper_order=seatrades_obj.campers))
+                st.dataframe(render_view(longform_df, selected_view, camper_order=solution.campers))
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
-def _generate_intro_dialogue():
+def _generate_intro_dialogue() -> None:
     """
     Generate intro dialog if not seen already.
     """
@@ -114,12 +117,29 @@ def _generate_intro_dialogue():
 
 
 def _assign_seatrades(
-    seatrade_preferences: preferences.SeatradesConfig,
-    cabin_camper_preferences: preferences.CamperSeatradePreferences,
     optimization_config: OptimizationConfig,
 ) -> None:
+    identity = st.session_state.get("camper_identity")
+    camper_prefs = st.session_state.get("camper_preferences")
+    seatrade_prefs = st.session_state.get("seatrade_preferences")
+
+    if identity is None or camper_prefs is None or seatrade_prefs is None:
+        st.toast("Missing camper or seatrade data. Upload or simulate first.", icon="🚨")
+        return
+
+    try:
+        joined_campers, seatrade_setup = join_and_validate(identity, camper_prefs, seatrade_prefs)
+    except ValidationError as e:
+        st.toast("Cross-reference validation failed.", icon="🚨")
+        with st.popover("Validation errors. Click for details.", icon="🚨"):
+            for error in e.errors:
+                st.write(error)
+        return
+
+    st.session_state["cabin_camper_prefs"] = joined_campers
     st.toast("Beginning Seatrade Optimization.")
-    seatrades = Seatrades(cabin_camper_preferences, seatrade_preferences)
+    problem = SchedulingProblem(joined_campers, seatrade_setup)
+    result_container: dict[str, AssignmentSolution] = {}
     with st.status("Step 1/3: Setting Up Optimization Problem") as status:
         # CAUTION: Does not actually stop the solver subthread which will keep running.
         # This will be a problem later if a user starts a ton of solver threads behind the scenes.
@@ -143,7 +163,7 @@ def _assign_seatrades(
         solver_thread = threading.Thread(
             target=_run_assignment_and_capture_logs,
             daemon=True,
-            args=(seatrades, optimization_config),
+            args=(problem, optimization_config, result_container),
         )
         solver_thread.start()
         while solver_thread.is_alive():
@@ -155,25 +175,23 @@ def _assign_seatrades(
                 min(elapsed_pct_of_time_limit, 1.0),
                 ("Optimization Progress" if not timeout else "Stopping Optimization."),
             )
-            old_log_text = ""
             try:
                 if SEATRADES_LOG_PATH.exists():
                     with open(SEATRADES_LOG_PATH, "r") as log_file:
-                        log_text = "".join([line for line in log_file.readlines()][::-1])
-                    if log_text != old_log_text:
+                        log_text = "".join(log_file.readlines()[::-1])
+                    if log_text:
                         log_container.text_area(
                             "Solver Logs.",
                             value=log_text,
                             height=300,
                             key=str(log_counter) + log_text,
                         )
-                        old_log_text = log_text
-                        if re.compile("Result - Stopped on time limit").search(old_log_text):
+                        if _TIMEOUT_LOG_PATTERN.search(log_text):
                             timeout = True
 
                         if not timeout:
                             status.update(label="Step 2/3: Optimizing Seatrade Assignments.")
-                        elif timeout:
+                        else:
                             status.update(label="Step 3/3: Stopping Optimization based on timeout duration.")
 
             except Exception as e:
@@ -193,15 +211,11 @@ def _assign_seatrades(
             height=300,
             key="logs",
         )
-        timeout_kwd_match = re.search(r"(Result - Stopped on time limit)", string=log_text)
+        timeout_kwd_match = _TIMEOUT_LOG_PATTERN.search(log_text)
         timeout = bool(timeout or timeout_kwd_match)
         timeout_status = " - Timeout Reached" if timeout else ""
-        actual_gap_kwd = re.search(
-            r"(?<=Gap:                            )(\d+\.?\d*)",
-            string=log_text,
-        )
-        actual_gap = float(actual_gap_kwd.group()) if actual_gap_kwd else 1.0
-        actual_optimality = 1.0 - actual_gap
+        actual_gap = result_container["solution"].status.gap if "solution" in result_container else None
+        actual_optimality = (1.0 - actual_gap) if actual_gap is not None else 1.0
         optimality_status = f" - {actual_optimality:.0%} Optimal Solution found"
         progress_bar.progress(
             1.0,
@@ -216,40 +230,36 @@ def _assign_seatrades(
                 label=("Seatrades assigned successfully" + timeout_status + optimality_status + "."),
                 expanded=False,
             )
-            seatrades.status = 1
         else:
             st.session_state["optimization_success"] = False
             st.toast("Failed to solve optimization problem.", icon="🚨")
             status.update(state="error", label="Seatrades failed to be assigned.")
-            seatrades.status = -1
-    st.session_state["assigned_seatrades"] = deepcopy(seatrades)
+    if "solution" in result_container:
+        st.session_state["assigned_solution"] = result_container["solution"]
     stop_button.empty()
 
 
-def _run_assignment_and_capture_logs(seatrades: Seatrades, optimization_config: OptimizationConfig):
-    """Run seatrades assignment and capture status to status_queue, intended to be run in a separate thread."""
+def _run_assignment_and_capture_logs(
+    problem: SchedulingProblem, optimization_config: OptimizationConfig, result_container: dict[str, AssignmentSolution]
+) -> None:
+    """Run solver and capture status to status_queue, intended to be run in a separate thread."""
     try:
-        seatrades.assign(
-            preference_weight=optimization_config.preference_weight,
-            cabins_weight=optimization_config.cabins_weight,
-            sparsity_weight=optimization_config.sparsity_weight,
-            max_seatrades_per_fleet=optimization_config.max_seatrades_per_fleet,
-            solver=optimization_config.solver,
-        )
-        if seatrades.status:
-            status_queue.put(seatrades.status)
+        solution = solver_run(problem, optimization_config)
+        result_container["solution"] = solution
+        if solution.status.state == SolverState.OPTIMAL:
+            status_queue.put(1)
         else:
-            status_queue.put(0)
+            status_queue.put(-1)
 
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error("Solver thread failed: %s", e)
         status_queue.put(-1)
 
 
 def render_view(
     longform_df: pd.DataFrame,
     view_name: Literal["By Camper", "By Seatrade"],
-    camper_order: Optional[List[str]] = None,
+    camper_order: Optional[list[str]] = None,
 ) -> pd.DataFrame:
     """Render the selected assignment view.
 
@@ -257,11 +267,11 @@ def render_view(
     ----------
     longform_df : pd.DataFrame
         Longform assignments dataframe.
-    view_name : Literal["Captain's Book", "Seatrade Leaders"]
+    view_name : Literal["By Camper", "By Seatrade"]
         Which assignment view to render.
-    camper_order : Optional[List[str]]
-        Ordered camper names for Captain's Book sort. Passed through to
-        wrangle_assignments_to_wideform. Ignored for Seatrade Leaders.
+    camper_order : Optional[list[str]]
+        Ordered camper names for "By Camper" sort. Passed through to
+        wrangle_assignments_to_wideform. Ignored for "By Seatrade".
 
     Returns
     -------

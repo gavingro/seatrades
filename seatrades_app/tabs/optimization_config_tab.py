@@ -1,20 +1,8 @@
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
-
 import pulp
 import streamlit as st
 
-SEATRADES_LOG_PATH = Path("seatrades_assignment.log")
-
-
-@dataclass
-class OptimizationConfig:
-    preference_weight: int = 3
-    cabins_weight: int = 2
-    sparsity_weight: int = 1
-    max_seatrades_per_fleet: Optional[int] = None
-    solver: pulp.apis.LpSolver = pulp.apis.PULP_CBC_CMD(timeLimit=60, gapRel=0.10, logPath=SEATRADES_LOG_PATH)
+from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
+from seatrades_app.components import clear_optimization_results
 
 
 class OptimizationConfigForm:
@@ -85,16 +73,9 @@ class OptimizationConfigForm:
             )
 
 
-def _clear_optimization_results():
-    if st.session_state.get("assigned_seatrades") is not None:
-        st.toast("Clearing Previous Optimization Results.")
-    st.session_state["optimization_success"] = None
-    st.session_state["assigned_seatrades"] = None
-
-
 def _update_optimization_config(optimization_config: OptimizationConfig):
     """Update config for the optimization parameters."""
     if st.session_state.get("optimization_config") is not None:
         st.toast(f"Updating Optimization Configuration.\n\n{optimization_config}")
     st.session_state["optimization_config"] = optimization_config
-    _clear_optimization_results()
+    clear_optimization_results()
