@@ -1,6 +1,7 @@
 """Verify ruff and mypy configs in pyproject.toml are valid and functional."""
 
 import subprocess
+import sys
 
 import pytest
 import tomli
@@ -14,6 +15,13 @@ PROJECT_ROOT = subprocess.run(
 ).stdout.strip()
 
 PYPROJECT = PROJECT_ROOT + "/pyproject.toml"
+
+# Invoke tools through the active interpreter so they resolve from the venv
+# regardless of PATH — bare "ruff"/"mypy"/"pre-commit" only work with the venv
+# activated, but the suite is usually run via .venv/bin/pytest (no activation).
+RUFF = [sys.executable, "-m", "ruff"]
+MYPY = [sys.executable, "-m", "mypy"]
+PRE_COMMIT = [sys.executable, "-m", "pre_commit"]
 
 
 @pytest.fixture()
@@ -46,7 +54,7 @@ class TestRuffConfig:
     def test_ruff_check_no_config_errors(self, fixture_file):
         """ruff check --config pyproject.toml exits without config-parse errors."""
         result = subprocess.run(
-            ["ruff", "check", "--config", PYPROJECT, str(fixture_file)],
+            [*RUFF, "check", "--config", PYPROJECT, str(fixture_file)],
             capture_output=True,
             text=True,
         )
@@ -59,7 +67,7 @@ class TestRuffConfig:
     def test_ruff_check_flags_unused_import(self, fixture_file):
         """Configured rule set catches ARG (unused argument) violations."""
         result = subprocess.run(
-            ["ruff", "check", "--config", PYPROJECT, str(fixture_file)],
+            [*RUFF, "check", "--config", PYPROJECT, str(fixture_file)],
             capture_output=True,
             text=True,
         )
@@ -82,7 +90,7 @@ class TestMypyConfig:
     def test_mypy_config_no_parse_errors(self, fixture_file):
         """mypy --config-file pyproject.toml runs without config errors."""
         result = subprocess.run(
-            ["mypy", "--config-file", PYPROJECT, str(fixture_file)],
+            [*MYPY, "--config-file", PYPROJECT, str(fixture_file)],
             capture_output=True,
             text=True,
         )
@@ -104,7 +112,7 @@ class TestMypyClean:
     def test_mypy_check_no_errors(self):
         """mypy . exits 0 (no type errors in the codebase)."""
         result = subprocess.run(
-            ["mypy", "."],
+            [*MYPY, "."],
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,
@@ -118,7 +126,7 @@ class TestFormattingBaseline:
     def test_ruff_format_check_passes(self):
         """All .py files pass ruff format --check (no reformats needed)."""
         result = subprocess.run(
-            ["ruff", "format", "--check", "."],
+            [*RUFF, "format", "--check", "."],
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,
@@ -128,7 +136,7 @@ class TestFormattingBaseline:
     def test_ruff_check_no_errors(self):
         """ruff check . exits 0 (no violations)."""
         result = subprocess.run(
-            ["ruff", "check", "."],
+            [*RUFF, "check", "."],
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,
@@ -182,7 +190,7 @@ class TestPreCommitConfig:
     def test_ruff_hooks_reference_installed_version(self, pre_commit_config):
         """Ruff hooks reference the currently installed ruff version."""
         result = subprocess.run(
-            ["ruff", "version"],
+            [*RUFF, "version"],
             capture_output=True,
             text=True,
             check=True,
@@ -205,7 +213,7 @@ class TestPreCommitConfig:
     def test_pre_commit_run_all_files(self):
         """pre-commit run --all-files passes for all configured hooks."""
         result = subprocess.run(
-            ["pre-commit", "run", "--all-files"],
+            [*PRE_COMMIT, "run", "--all-files"],
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,
