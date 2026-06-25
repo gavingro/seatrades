@@ -167,8 +167,8 @@ def join_and_validate(
             all_pref_seatrades.update(preferences_validated[col])
         invalid_seatrades = all_pref_seatrades - available_seatrades
         if invalid_seatrades:
-            names = ", ".join(sorted(invalid_seatrades))
-            errors.append(f"Seatrades in preferences but not in seatrade config: {names}")
+            invalid = ", ".join(sorted(invalid_seatrades))
+            errors.append(f"Seatrades in preferences but not in seatrade config: {invalid}")
 
     if errors:
         raise ValidationError(errors)

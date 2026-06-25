@@ -51,7 +51,7 @@ class SeatradesConfig(DataFrameModel):
     campers_max: int = Field(ge=0, coerce=True, ignore_na=False)
 
     @dataframe_check
-    def min_campers_less_than_max_campers(cls, df: pd.DataFrame):  # type: ignore[misc]
+    def min_campers_less_than_max_campers(cls, df: pd.DataFrame) -> pd.Series:  # type: ignore[misc]
         """The minimum campers should be less than or equal to the maximum campers for a seatrade."""
         return df["campers_min"] <= df["campers_max"]
 
@@ -74,6 +74,6 @@ class CamperPreferences(DataFrameModel):
     seatrade_4: str = Field(ignore_na=False)
 
     @dataframe_check
-    def campers_must_choose_unique_seatrades(cls, df: pd.DataFrame):  # type: ignore[misc]
+    def campers_must_choose_unique_seatrades(cls, df: pd.DataFrame) -> pd.Series:  # type: ignore[misc]
         """Each camper must choose NUM_PREFERENCES unique seatrades."""
         return df[PREF_COLS].nunique(axis="columns") == NUM_PREFERENCES

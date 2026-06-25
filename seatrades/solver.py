@@ -63,20 +63,7 @@ def _extract_gap_from_log(log_path: Path) -> Optional[float]:
 
 
 def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSolution:
-    """Build and solve a scheduling problem, returning an AssignmentSolution.
-
-    Parameters
-    ----------
-    problem : SchedulingProblem
-        The scheduling problem containing domain data.
-    config : OptimizationConfig
-        Optimization weights and solver configuration.
-
-    Returns
-    -------
-    AssignmentSolution
-        The solved assignment with status and domain data.
-    """
+    """Build and solve a scheduling problem, returning an AssignmentSolution."""
     lp_problem = problem.build(config)
     status_code = lp_problem.solve(config.solver)
 

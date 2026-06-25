@@ -67,7 +67,7 @@ def simulate_seatrade_preferences(
     seatrade_name_sample = random.sample(SEATRADE_EXAMPLES, k=config.num_seatrades)
 
     seatrades_prefs_dict = {
-        f"{seatrade}": {
+        seatrade: {
             "campers_min": (base_min := np.random.randint(0, 2)),
             "campers_max": base_min
             + (

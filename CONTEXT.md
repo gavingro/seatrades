@@ -37,6 +37,8 @@ An activity offered at camp. Properties:
 - **Capacity** - Min/max campers per session
 - **Blocks available** - All 4 blocks always (hardcoded domain knowledge, not a parameter).
 
+**Canonical user-facing term.** UI copy always says "seatrade", never "activity". "Activity" is only the glossary definition for newcomers; it never appears as a label.
+
 ### Block
 
 A time slot within a fleet. There are 4 blocks per week:
@@ -149,6 +151,20 @@ The scheduler solves a mixed-integer linear programming problem with these const
 7. **Fleet balance** - Cabins split evenly between fleets
 8. **Gender balance** - Boys/girls cabins split evenly between fleets
 9. **Camper relationships** - Friends (share ≥1 session), besties (identical schedule), frenemies (share zero sessions). Hard constraints, optional input.
+
+### Objective Goals (user-facing)
+
+The three objective weights are competing goals the Scheduling Captain balances. Each has a plain-language name and a real-world meaning the UI must convey:
+
+| Weight (`config`) | User-facing goal | What raising it does | Real-world meaning |
+|---|---|---|---|
+| `preference_weight` | **Camper top choices** | More campers get their #1–2 ranked seatrades | Camper happiness |
+| `cabins_weight` | **Cabin togetherness** | Cabinmates share more of their seatrades | Cabin cohesion / supervision |
+| `sparsity_weight` | **Fewer seatrades to staff** | Run fewer distinct seatrades | Staffing load — fewer seatrades = fewer staff needed to operate |
+
+These are presented as "importance" sliders with a one-line tradeoff description each, not as raw weights. `sparsity_weight`'s real driver is **staffing**, not session fullness — frame it that way.
+
+Note the tension: `cabins_weight` (soft, encourages cabinmates together) pushes opposite to the hard cabin cap (max k campers from one cabin per seatrade). The UI must not present these as the same idea.
 
 ## Module Boundaries
 

@@ -6,7 +6,7 @@ from seatrades.results import AssignmentSolution, SolverState, wrangle_assignmen
 
 
 def display_assignments(solution: AssignmentSolution) -> alt.Chart:
-    """Display the assignments of the seatrades visually for inference."""
+    """Render the seatrade assignments as a faceted Altair heatmap chart."""
     alt.data_transformers.disable_max_rows()
     if solution.status.state == SolverState.ERROR:
         raise ValueError(f"No solution found. {solution.status.message}")
