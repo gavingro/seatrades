@@ -98,6 +98,43 @@ Run tests directly from the venv — no need to activate it first:
 .venv/bin/pytest
 ```
 
+### Behavior vs. visual verification
+
+Two layers, two tools — see [ADR 0007](adr/0007-agent-visual-verification.md) for the why.
+
+- **Behavior** is verified headlessly with Streamlit's `AppTest` (`streamlit.testing.v1`) and runs in CI. Automate as much point-and-click as possible here — it's fast and cannot render, so it covers logic and state, not pixels.
+- **Visual / exploratory** checks (does the Altair chart actually draw, is the layout intact) need a real browser. An agent does this live via the **Playwright MCP** server wired in `.mcp.json` — there is no scripted browser suite and CI runs no browser tests.
+
+### Viewing the running app (Playwright MCP)
+
+One-time prerequisite — install the browser the MCP server drives. `.mcp.json` pins `--browser chromium`, which playwright-mcp resolves to its **chrome-for-testing** build; install it with the MCP's *own* installer (no `sudo`). Note: a plain `npx playwright install chromium` is *not* enough — it fetches a headless-shell the MCP won't use.
+
+```bash
+npx @playwright/mcp@latest install-browser chrome-for-testing
+```
+
+Launch the app for the browser to hit (headless flag stops Streamlit opening its own browser tab):
+
+```bash
+.venv/bin/streamlit run app.py --server.headless true --server.port 8501
+```
+
+Then point the Playwright MCP browser at `http://localhost:8501`. Notes for whoever (or whatever) is looking:
+
+- On first load a **welcome modal** ("Welcome to the Keats Seatrade Scheduler") overlays the app. Dismiss it (click "Don't show this again." or the ✕) before the tabs are reachable.
+- On load the app **auto-seeds mock data** (`_initial_page_setup` in `app.py`), so the setup tabs are populated immediately (underneath the modal).
+- The **Assignments** tab is empty until you trigger the solve — click through and run it before expecting assignments to show.
+- Prefer the **accessibility snapshot** (`browser_snapshot`) over screenshots — it's more informative and is the only thing you can act on. Use a screenshot only to confirm something genuinely visual.
+
+#### Gotchas
+
+Each of these was found by actually driving the browser — none would surface in an `AppTest`:
+
+- **Wrong browser binary.** playwright-mcp defaults to the system-Chrome channel (`npx playwright install chrome`), which needs `sudo`. We pin `--browser chromium` in `.mcp.json` instead — but that resolves to a **chrome-for-testing** build installed by the MCP's *own* `install-browser` command. A plain `npx playwright install chromium` installs a headless-shell the MCP won't use, so navigation still fails. Use the command above.
+- **Welcome modal blocks everything.** First load shows a "Welcome to the Keats Seatrade Scheduler" dialog over the whole app. `browser_navigate` succeeds but every tab/button is unclickable until you dismiss it ("Don't show this again." or ✕).
+- **Config changes need a session restart.** Editing `.mcp.json` (e.g. the `--browser` flag) has no effect until Claude Code restarts — the MCP server is spawned once at session start. A mid-session edit looks applied but isn't.
+- **Browser output is git-noise.** The MCP writes snapshots/screenshots to `.playwright-mcp/` (and screenshots may land at repo root). Both are gitignored; don't commit them.
+
 ## Development Setup
 
 Activate the virtual environment and install dev dependencies:

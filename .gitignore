@@ -131,3 +131,6 @@ dmypy.json
 # vscode
 .vscode/
 temp.ipynb
+
+# playwright-mcp browser output (snapshots, screenshots)
+.playwright-mcp/
