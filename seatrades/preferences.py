@@ -176,10 +176,3 @@ def join_and_validate(
     # At this point all validated DataFrames are non-None (guaranteed by the raise above).
     joined = identity_validated.merge(preferences_validated, on="camper")  # type: ignore[union-attr, arg-type]
     return joined, seatrade_validated  # type: ignore[return-value]
-
-
-def add_index_to_campername(camper_prefs: pd.DataFrame) -> pd.DataFrame:
-    """Append .{index} to camper names to avoid collisions."""
-    camper_prefs = camper_prefs.copy()
-    camper_prefs.loc[:, "camper"] += "." + camper_prefs.index.astype(str)
-    return camper_prefs

@@ -13,9 +13,9 @@ class TestSchedulingProblemInit:
         problem = scheduling_problem
 
         assert problem.cabins == ["Cabin1", "Cabin2"]
-        # Campers get .{index} suffix from add_index_to_campername
-        assert len(problem.campers) == 4
-        assert all("." in c for c in problem.campers)
+        # Campers are zero-indexed integer IDs; names are tracked separately.
+        assert problem.campers == [0, 1, 2, 3]
+        assert problem.camper_names == ["Alice", "Bob", "Carol", "Dave"]
 
         assert problem.seatrades.tolist() == ["Archery", "Sailing", "Climbing", "Kayaking"]
         assert problem.fleets == ["1a", "1b", "2a", "2b"]
@@ -25,8 +25,8 @@ class TestSchedulingProblemInit:
         assert "2b_Kayaking" in problem.seatrades_full
         assert len(problem.seatrades_full) == 4 * 4  # 4 fleets × 4 seatrades
 
-        # cabin_camper_prefs indexed by camper with suffix, has cabin column
-        assert problem.cabin_camper_prefs.index.name == "camper"
+        # cabin_camper_prefs indexed by integer camper_id, has cabin column
+        assert problem.cabin_camper_prefs.index.name == "camper_id"
         assert "cabin" in problem.cabin_camper_prefs.columns
 
         # camper_prefs is a Series of preference lists

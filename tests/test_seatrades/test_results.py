@@ -93,18 +93,18 @@ class TestAssignmentSolution:
         assert isinstance(sol.status, SolverStatus)
         assert sol.status.state == SolverState.OPTIMAL
         assert sol.cabins == ["Cabin1", "Cabin2"]
-        assert sol.campers == ["Alice_0", "Bob_0", "Carol_0", "Dave_0"]
+        assert sol.campers == ["Alice", "Bob", "Carol", "Dave"]
         assert "1a_Archery" in sol.seatrades_full
 
     def test_assignments_has_campers_as_index(self, sample_assignment_solution):
         sol = sample_assignment_solution
-        assert sol.assignments.index.name == "camper"
+        assert sol.assignments.index.name == "camper_id"
         assert len(sol.assignments) == 4
 
     def test_cabin_camper_prefs_has_cabin_column(self, sample_assignment_solution):
         sol = sample_assignment_solution
         assert "cabin" in sol.cabin_camper_prefs.columns
-        assert sol.cabin_camper_prefs.index.name == "camper"
+        assert sol.cabin_camper_prefs.index.name == "camper_id"
 
 
 class TestWrangleAssignmentsToLongform:
@@ -125,7 +125,7 @@ class TestWrangleAssignmentsToLongform:
 
     def test_cabin_lookup(self, sample_assignment_solution):
         result = wrangle_assignments_to_longform(sample_assignment_solution)
-        alice_rows = result[result["camper"] == "Alice_0"]
+        alice_rows = result[result["camper"] == "Alice"]
         assert (alice_rows["cabin"] == "Cabin1").all()
 
     def test_block_split(self, sample_assignment_solution):

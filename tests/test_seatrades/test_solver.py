@@ -1,11 +1,17 @@
 """Tests for seatrades.solver — the solver.run() entry point."""
 
 import pandas as pd
+import pulp
 import pytest
 
 from seatrades.config import OptimizationConfig
 from seatrades.problem import SchedulingProblem
-from seatrades.results import AssignmentSolution, SolverState
+from seatrades.results import (
+    AssignmentSolution,
+    SolverState,
+    wrangle_assignments_to_longform,
+    wrangle_assignments_to_wideform,
+)
 from seatrades.solver import run
 
 
@@ -28,7 +34,8 @@ class TestSolverRun:
     def test_domain_data_comes_from_problem(self, scheduling_problem, default_config):
         solution = run(scheduling_problem, default_config)
         assert solution.cabins == scheduling_problem.cabins
-        assert solution.campers == scheduling_problem.campers
+        # solution exposes camper NAMES; the problem's campers are internal integer IDs.
+        assert solution.campers == scheduling_problem.camper_names
         assert solution.seatrades_full == scheduling_problem.seatrades_full
         assert solution.cabin_camper_prefs.equals(scheduling_problem.cabin_camper_prefs)
         assert solution.camper_prefs.equals(scheduling_problem.camper_prefs)
@@ -73,6 +80,71 @@ class TestSolverRun:
         assert list(solution.assignments.columns) == problem.seatrades_full
         # Verify column names contain spaces (not mangled to underscores)
         assert "1a_Canoeing and Kayaking" in solution.assignments.columns
+
+    def test_resolve_produces_clean_names_no_suffix(self):
+        """Re-solving the same data yields clean camper names — no .N index suffix leaks."""
+        joined = pd.DataFrame(
+            {
+                "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+                "camper": ["Alice", "Bob", "Carol", "Dave"],
+                "gender": ["F", "M", "F", "M"],
+                "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
+                "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
+                "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
+                "seatrade_4": ["Kayaking", "Kayaking", "Kayaking", "Kayaking"],
+            }
+        )
+        setup = pd.DataFrame(
+            {
+                "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+                "campers_min": [0, 0, 0, 0],
+                "campers_max": [10, 10, 10, 10],
+            }
+        )
+        config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+        # Build and solve twice from the same source data — the old suffix hack
+        # mutated names and leaked compounding suffixes on repeated construction.
+        run(SchedulingProblem(joined, setup), config)
+        solution = run(SchedulingProblem(joined, setup), config)
+
+        names = wrangle_assignments_to_longform(solution)["camper"].unique().tolist()
+        assert set(names) == {"Alice", "Bob", "Carol", "Dave"}
+        assert all("." not in name for name in names)
+        assert solution.campers == ["Alice", "Bob", "Carol", "Dave"]
+
+    def test_same_name_different_cabin(self):
+        """Two campers sharing a name stay distinct via the (cabin, camper_name) key."""
+        joined = pd.DataFrame(
+            {
+                "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+                "camper": ["Alex", "Bob", "Alex", "Dave"],
+                "gender": ["F", "M", "F", "M"],
+                "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
+                "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
+                "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
+                "seatrade_4": ["Kayaking", "Kayaking", "Kayaking", "Kayaking"],
+            }
+        )
+        setup = pd.DataFrame(
+            {
+                "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+                "campers_min": [0, 0, 0, 0],
+                "campers_max": [10, 10, 10, 10],
+            }
+        )
+        config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+        solution = run(SchedulingProblem(joined, setup), config)
+        longform = wrangle_assignments_to_longform(solution)
+
+        alex_rows = longform[longform["camper"] == "Alex"]
+        assert set(alex_rows["cabin"].unique()) == {"Cabin1", "Cabin2"}
+
+        wideform = wrangle_assignments_to_wideform(longform)
+        alex_wide = wideform[wideform["camper"] == "Alex"]
+        assert len(alex_wide) == 2
+        assert set(alex_wide["cabin"]) == {"Cabin1", "Cabin2"}
 
 
 class TestMangle:
@@ -126,9 +198,9 @@ class TestExtractCamperAssignments:
         prob += x
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
 
-        # Request variables that don't exist in the problem
+        # Request a camper id whose variables don't exist in the problem
         with pytest.raises(ValueError, match="Expected.*variables.*found"):
-            _extract_camper_assignments(prob.variables(), ["Alice"], ["1a_Archery"])
+            _extract_camper_assignments(prob.variables(), [0], ["1a_Archery"])
 
 
 class TestStatusCodeMapping:

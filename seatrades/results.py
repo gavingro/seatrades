@@ -53,20 +53,25 @@ class AssignmentSolution:
     seatrades_full: list[str]
     cabin_camper_prefs: pd.DataFrame
     camper_prefs: pd.Series
+    # camper_id -> camper_name. Internal: assignments/prefs are keyed by integer
+    # camper_id; this translates them to names at the user-facing edge. No public
+    # method exposes camper_id itself.
+    camper_names: pd.Series
 
 
 def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFrame:
-    """Melt wide-form sparse DataFrame into long-form with preference and cabin lookup."""
+    """Melt wide-form sparse DataFrame into long-form with preference and cabin lookup.
+
+    Assignments are keyed by integer camper_id internally; this translates each
+    row to its camper_name (looked up by id, which is collision-free) and emits a
+    user-facing ``camper`` name column. The camper_id never appears in the output.
+    """
     assignments = solution.assignments
-    df = (
-        assignments.melt(var_name="seatrade", ignore_index=False, value_name="assignment")
-        .reset_index()
-        .rename(columns={"index": "camper"})
-    )
+    df = assignments.melt(var_name="seatrade", ignore_index=False, value_name="assignment").reset_index()
 
     def lookup_preference(row) -> int:
         if row.assignment == 1.0:
-            row_camper_prefs = solution.camper_prefs[row.camper]
+            row_camper_prefs = solution.camper_prefs[row.camper_id]
             seatrade_name = row.seatrade.split("_", 1)[1]
             if seatrade_name in row_camper_prefs:
                 return row_camper_prefs.index(seatrade_name) + 1
@@ -76,11 +81,13 @@ def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFram
     df["preference"] = df.apply(lookup_preference, axis=1)
 
     def lookup_cabin(row) -> Optional[str]:
-        if row.camper in solution.cabin_camper_prefs.index:
-            return solution.cabin_camper_prefs.loc[row.camper, "cabin"]
+        if row.camper_id in solution.cabin_camper_prefs.index:
+            return solution.cabin_camper_prefs.loc[row.camper_id, "cabin"]
         return None
 
     df["cabin"] = df.apply(lookup_cabin, axis=1)  # type: ignore[call-overload]
+    df["camper"] = df["camper_id"].map(solution.camper_names)
+    df = df.drop(columns="camper_id")
     df[["block", "seatrade"]] = df["seatrade"].str.split("_", expand=True)
 
     return df
