@@ -37,6 +37,8 @@ An activity offered at camp. Properties:
 - **Capacity** - Min/max campers per session
 - **Blocks available** - All 4 blocks always (hardcoded domain knowledge, not a parameter).
 
+**Canonical user-facing term.** UI copy always says "seatrade", never "activity". "Activity" is only the glossary definition for newcomers; it never appears as a label.
+
 ### Block
 
 A time slot within a fleet. There are 4 blocks per week:
@@ -54,12 +56,14 @@ A specific seatrade within a specific fleet and block. E.g., "Sailing in 1a". Se
 
 ### Fleet
 
-A group within each of 2 halves of the week (identifies morning session or afternoon session):
+A time-of-day grouping within a half of the week:
 
 - **Fleet 1** - Morning Session
 - **Fleet 2** - Afternoon Session
 
-Each cabin is assigned to one fleet for the week.
+A cabin's fleet is chosen **per half, independently** — a cabin can be morning in the first half and afternoon in the second (and vice versa).
+
+**Operating reality vs. intended model.** Today, schedules in practice keep a cabin in one fleet all week (a simplification to reduce assignment complexity). The model is moving toward independent per-half fleets, with "same fleet all week" becoming an *optional* hard constraint a user can switch on to keep the legacy behavior. Do not write user-facing copy that asserts a cabin is in one fleet for the whole week.
 
 ### Camper Relationship
 
@@ -138,6 +142,11 @@ flowchart LR
 
 ## Optimization Problem
 
+The scheduler balances two user-facing categories of settings:
+
+- **Hard constraint** - A rule the schedule *must* satisfy, or the solver reports infeasibility (e.g. capacity limits, cabin cap, top-2 guarantee). Non-negotiable.
+- **Soft weight** - A scored *preference* the solver trades off against others to find the best overall schedule (e.g. the three Objective Goals above). Higher weight = stronger pull, but never absolute.
+
 The scheduler solves a mixed-integer linear programming problem with these constraints:
 
 1. **One seatrade per block** - Each camper assigned to exactly 1 seatrade in each block
@@ -149,6 +158,20 @@ The scheduler solves a mixed-integer linear programming problem with these const
 7. **Fleet balance** - Cabins split evenly between fleets
 8. **Gender balance** - Boys/girls cabins split evenly between fleets
 9. **Camper relationships** - Friends (share ≥1 session), besties (identical schedule), frenemies (share zero sessions). Hard constraints, optional input.
+
+### Objective Goals (user-facing)
+
+The three objective weights are competing goals the Scheduling Captain balances. Each has a plain-language name and a real-world meaning the UI must convey:
+
+| Weight (`config`) | User-facing goal | What raising it does | Real-world meaning |
+|---|---|---|---|
+| `preference_weight` | **Camper top choices** | More campers get their #1–2 ranked seatrades | Camper happiness |
+| `cabins_weight` | **Cabin togetherness** | Cabinmates share more of their seatrades | Cabin cohesion / supervision |
+| `sparsity_weight` | **Fewer seatrades to staff** | Run fewer distinct seatrades | Staffing load — fewer seatrades = fewer staff needed to operate |
+
+These are presented as "importance" sliders with a one-line tradeoff description each, not as raw weights. `sparsity_weight`'s real driver is **staffing**, not session fullness — frame it that way.
+
+Note the tension: `cabins_weight` (soft, encourages cabinmates together) pushes opposite to the hard cabin cap (max k campers from one cabin per seatrade). The UI must not present these as the same idea.
 
 ## Module Boundaries
 

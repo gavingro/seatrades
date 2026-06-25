@@ -28,6 +28,11 @@ class SolverStatus:
     gap: Optional[float] = None
     message: str = ""
 
+    @property
+    def is_optimal(self) -> bool:
+        """Whether the solver reached an optimal solution."""
+        return self.state == SolverState.OPTIMAL
+
     @classmethod
     def from_pulp(cls, status_code: int) -> "SolverStatus":
         state = SolverState.from_pulp(status_code)
@@ -60,7 +65,7 @@ def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFram
     )
 
     def lookup_preference(row) -> int:
-        if row.assignment:
+        if row.assignment == 1.0:
             row_camper_prefs = solution.camper_prefs[row.camper]
             seatrade_name = row.seatrade.split("_", 1)[1]
             if seatrade_name in row_camper_prefs:
@@ -71,9 +76,8 @@ def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFram
     df["preference"] = df.apply(lookup_preference, axis=1)
 
     def lookup_cabin(row) -> Optional[str]:
-        camper = row.camper
-        if camper in solution.cabin_camper_prefs.index:
-            return solution.cabin_camper_prefs.loc[camper, "cabin"]
+        if row.camper in solution.cabin_camper_prefs.index:
+            return solution.cabin_camper_prefs.loc[row.camper, "cabin"]
         return None
 
     df["cabin"] = df.apply(lookup_cabin, axis=1)  # type: ignore[call-overload]
@@ -108,11 +112,10 @@ def wrangle_assignments_to_wideform(
         fill_value="",
     )
 
-    seatrade_block_columns = SEATRADE_BLOCK_COLUMNS
-    for column in seatrade_block_columns:
+    for column in SEATRADE_BLOCK_COLUMNS:
         if column not in assigned_by_camper.columns:
             assigned_by_camper[column] = "Fleet Time"
-    assigned_by_camper = assigned_by_camper[seatrade_block_columns]
+    assigned_by_camper = assigned_by_camper[SEATRADE_BLOCK_COLUMNS]
 
     if camper_order is not None:
         wideform_campers = assigned_by_camper.index.get_level_values("camper").tolist()
@@ -131,9 +134,9 @@ def wrangle_assignments_to_wideform(
     else:
         assigned_by_camper = assigned_by_camper.sort_values(by=["cabin", "camper"], kind="stable")
 
-    assigned_by_camper = assigned_by_camper[["cabin", "camper"] + seatrade_block_columns]
-    assigned_by_camper.loc[:, seatrade_block_columns] = (
-        assigned_by_camper.loc[:, seatrade_block_columns].replace("", pd.NA).fillna("Fleet Time")
+    assigned_by_camper = assigned_by_camper[["cabin", "camper"] + SEATRADE_BLOCK_COLUMNS]
+    assigned_by_camper.loc[:, SEATRADE_BLOCK_COLUMNS] = (
+        assigned_by_camper.loc[:, SEATRADE_BLOCK_COLUMNS].replace("", pd.NA).fillna("Fleet Time")
     )
 
     return assigned_by_camper

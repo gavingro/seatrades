@@ -11,7 +11,7 @@ import pandas as pd
 from faker import Faker
 
 from seatrades import preferences
-from seatrades.config import CamperSimulationConfig, SeatradeSimulationConfig
+from seatrades.config import NUM_PREFERENCES, PREF_COLS, CamperSimulationConfig, SeatradeSimulationConfig
 
 # Real cabin names from Keats Camp
 GIRL_CABIN_EXAMPLES = [
@@ -67,7 +67,7 @@ def simulate_seatrade_preferences(
     seatrade_name_sample = random.sample(SEATRADE_EXAMPLES, k=config.num_seatrades)
 
     seatrades_prefs_dict = {
-        f"{seatrade}": {
+        seatrade: {
             "campers_min": (base_min := np.random.randint(0, 2)),
             "campers_max": base_min
             + (
@@ -122,16 +122,8 @@ def simulate_camper_preferences(
 
     rows = []
     for name in identity_df["camper"]:
-        prefs = random.sample(all_seatrades, 4)
-        rows.append(
-            {
-                "camper": name,
-                "seatrade_1": prefs[0],
-                "seatrade_2": prefs[1],
-                "seatrade_3": prefs[2],
-                "seatrade_4": prefs[3],
-            }
-        )
+        prefs = random.sample(all_seatrades, NUM_PREFERENCES)
+        rows.append({"camper": name} | {col: prefs[i] for i, col in enumerate(PREF_COLS)})
 
     result = pd.DataFrame(rows)
     return preferences.CamperPreferences.validate(result)  # type: ignore[return-value]
