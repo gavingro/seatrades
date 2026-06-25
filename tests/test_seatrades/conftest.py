@@ -13,7 +13,7 @@ def joined_campers_df():
     """DataFrame matching output of join_and_validate().
 
     4 campers across 2 cabins, 4 seatrade preferences each.
-    Camper names do NOT have .{index} suffix — SchedulingProblem adds it.
+    Plain camper names; SchedulingProblem assigns each an integer camper_id.
     """
     return pd.DataFrame(
         {

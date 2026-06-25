@@ -114,7 +114,7 @@ class TestSolverRun:
         assert solution.campers == ["Alice", "Bob", "Carol", "Dave"]
 
     def test_same_name_different_cabin(self):
-        """Two campers sharing a name stay distinct via the (cabin, camper_name) key."""
+        """Two campers sharing a name stay distinct: internally by camper_id, in output by the (cabin, camper) key."""
         joined = pd.DataFrame(
             {
                 "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
