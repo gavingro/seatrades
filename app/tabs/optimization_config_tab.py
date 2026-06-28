@@ -1,58 +1,101 @@
 import pulp
 import streamlit as st
-from seatrades_app.components import clear_optimization_results
 
+from app.components import clear_optimization_results
 from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
+
+# Default "minimum solution quality" — the how-optimal framing of the solver gap.
+# 90% quality == a 10% optimality gap (gapRel=0.10), matching the previous default.
+DEFAULT_MIN_QUALITY_PCT = 90
 
 
 class OptimizationConfigForm:
-    """Component: Optimization Config Form"""
+    """Component: Optimization Setup Form"""
 
     def generate(self):
-        with st.form("Optimization Config"):
-            st.header("Optimization Config")
+        with st.form("Optimization Setup"):
+            st.markdown(
+                "Tell the optimizer **what matters most** for this week. The goals below are "
+                "_soft preferences_ — the optimizer balances them against each other to find the "
+                "best overall schedule. Higher importance = stronger pull, never an absolute rule."
+            )
+
+            # --- Basic: the three competing goals ---
             preference_weight = st.slider(
-                "preference_weight",
+                "Camper top choices",
                 min_value=0,
                 max_value=5,
                 value=OptimizationConfig().preference_weight,
+                help=(
+                    "How hard to push for campers' #1–2 ranked seatrades (camper happiness). "
+                    "Raising it may pull cabinmates apart or need more distinct seatrades."
+                ),
             )
             cabins_weight = st.slider(
-                "cabins_weight",
+                "Cabin togetherness",
                 min_value=0,
                 max_value=5,
                 value=OptimizationConfig().cabins_weight,
+                help=(
+                    "How hard to keep cabinmates in the same seatrades (cohesion / easier "
+                    "supervision). Raising it may cost some campers their top picks."
+                ),
             )
             sparsity_weight = st.slider(
-                "sparsity_weight",
+                "Fewer seatrades to staff",
                 min_value=0,
                 max_value=5,
                 value=OptimizationConfig().sparsity_weight,
-            )
-            max_seatrades_per_fleet = st.slider(
-                "max_seatrades_per_fleet",
-                min_value=0,
-                max_value=(
-                    st.session_state["num_seatrades"] if st.session_state.get("num_seatrades") is not None else 10
+                help=(
+                    "How hard to run fewer distinct seatrades, so fewer staff are needed to operate "
+                    "them. Raising it eases staffing but may cost top picks or cabin togetherness."
                 ),
-                disabled=st.session_state.get("num_seatrades") is not None,
-                value=OptimizationConfig().max_seatrades_per_fleet,
             )
-            timeout_limit_minutes = st.slider(
-                "timeout_limit_minutes",
-                min_value=1,
-                max_value=10,
-                value=OptimizationConfig().solver.timeLimit // 60,
-                format="%d minutes",
-            )
-            optimality_gap = st.slider(
-                "optimization_gap_pct",
+
+            # --- Basic: solution quality, framed as "how optimal" (higher = better, slower) ---
+            min_quality_pct = st.slider(
+                "Minimum solution quality",
                 min_value=0,
                 max_value=100,
                 step=1,
-                value=10,
+                value=DEFAULT_MIN_QUALITY_PCT,
                 format="%d%%",
+                help=(
+                    "Stop once the schedule is at least this good compared to the best possible "
+                    "(e.g. 90% = within 10% of optimal). Higher = better schedule, but slower."
+                ),
             )
+
+            # --- Advanced: hard limits and power-user knobs ---
+            with st.expander("Advanced settings (hard limits & solver controls)"):
+                st.caption(
+                    "These are **hard limits** — absolute rules the schedule must obey — plus "
+                    "solver controls. Most weeks you can leave them alone."
+                )
+                max_seatrades_per_fleet = st.slider(
+                    "Max seatrades per fleet (hard limit)",
+                    min_value=0,
+                    max_value=(
+                        st.session_state["num_seatrades"] if st.session_state.get("num_seatrades") is not None else 10
+                    ),
+                    disabled=st.session_state.get("num_seatrades") is not None,
+                    value=OptimizationConfig().max_seatrades_per_fleet,
+                    help=(
+                        "Hard cap on how many distinct seatrades can run in one fleet. This is an "
+                        "absolute rule, not a preference — unlike the 'Fewer seatrades to staff' goal."
+                    ),
+                )
+                timeout_limit_minutes = st.slider(
+                    "Solver time limit",
+                    min_value=1,
+                    max_value=10,
+                    value=OptimizationConfig().solver.timeLimit // 60,
+                    format="%d minutes",
+                    help="Give up after this long and return the best schedule found so far.",
+                )
+
+            # "How optimal" → solver gap: 90% quality == 0.10 gap.
+            optimality_gap = (100 - min_quality_pct) / 100
 
             optimization_config = OptimizationConfig(
                 preference_weight=preference_weight,
@@ -61,7 +104,7 @@ class OptimizationConfigForm:
                 max_seatrades_per_fleet=max_seatrades_per_fleet,
                 solver=pulp.apis.PULP_CBC_CMD(
                     timeLimit=timeout_limit_minutes * 60,
-                    gapRel=optimality_gap / 100,
+                    gapRel=optimality_gap,
                     logPath=SEATRADES_LOG_PATH,
                 ),
             )

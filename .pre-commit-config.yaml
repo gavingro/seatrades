@@ -9,6 +9,10 @@ repos:
     rev: v1.19.1
     hooks:
       - id: mypy
+        # app.py (Streamlit entry script) and the app/ package are both top-level
+        # module "app"; mypy errors on the duplicate. Exclude the thin entry script.
+        # Type-checking only — no effect on `streamlit run app.py` at deploy time.
+        exclude: ^app\.py$
         additional_dependencies:
           - pandera[mypy]
           - pandas-stubs
