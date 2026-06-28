@@ -6,7 +6,6 @@ import pandas as pd
 import pulp
 
 from seatrades.config import PREF_COLS, OptimizationConfig
-from seatrades.preferences import add_index_to_campername
 
 BLOCKS = ["1a", "1b", "2a", "2b"]
 FLEET_BLOCKS = [["1a", "1b"], ["2a", "2b"]]
@@ -29,12 +28,20 @@ class SchedulingProblem:
     _CABIN_MAX_PER_SEATRADE = 4
 
     def __init__(self, joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame):
-        joined_campers = add_index_to_campername(joined_campers)
-        self.cabin_camper_prefs = joined_campers.set_index("camper")
+        # Campers are identified internally by zero-indexed integer IDs (row
+        # position), never by name. IDs are unique by construction, so they key
+        # PuLP variables without the name-collision hack and never leak to output.
+        joined_campers = joined_campers.reset_index(drop=True).copy()
+        joined_campers["camper_id"] = range(len(joined_campers))
+
+        self.camper_ids = joined_campers["camper_id"].tolist()
+        self.camper_names = joined_campers["camper"].tolist()
+        self.campers = self.camper_ids  # MILP identifier — integer IDs
+
+        self.cabin_camper_prefs = joined_campers.set_index("camper_id")
         self.cabins = joined_campers["cabin"].unique().tolist()
-        self.campers_by_cabin = joined_campers.groupby("cabin")["camper"].apply(list).to_dict()
-        self.camper_prefs = joined_campers.set_index("camper")[PREF_COLS].apply(list, axis="columns")
-        self.campers = joined_campers["camper"].tolist()
+        self.campers_by_cabin = joined_campers.groupby("cabin")["camper_id"].apply(list).to_dict()
+        self.camper_prefs = joined_campers.set_index("camper_id")[PREF_COLS].apply(list, axis="columns")
         self.cabin_genders = self.cabin_camper_prefs.groupby("cabin")["gender"].agg(lambda grp: pd.Series.mode(grp)[0])
 
         self.seatrades_prefs = seatrade_setup.set_index("seatrade")

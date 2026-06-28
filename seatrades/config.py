@@ -21,7 +21,9 @@ class OptimizationConfig:
     sparsity_weight: int = 1
     max_seatrades_per_fleet: Optional[int] = None
     log_path: Path = SEATRADES_LOG_PATH
-    solver: Optional[pulp.apis.LpSolver] = None
+    # Accepts None as input, but __post_init__ guarantees a solver afterward —
+    # typed non-Optional so callers (and mypy) can treat it as always present.
+    solver: pulp.apis.LpSolver = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.solver is None:

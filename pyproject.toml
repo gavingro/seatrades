@@ -26,8 +26,13 @@ license = {file = "LICENSE.txt"}
 
 [project.optional-dependencies]
 dev = [
-  "ruff",
-  "mypy",
+  # Pinned to match the ruff-pre-commit rev in .pre-commit-config.yaml.
+  # test_lint_config.py asserts installed ruff == that rev; an unpinned ruff
+  # lets a fresh CI install drift to a newer release and fail. Bump both together.
+  "ruff==0.15.14",
+  # Pinned to match the mirrors-mypy rev in .pre-commit-config.yaml, same as
+  # ruff above — keeps a fresh CI install from drifting to a newer release.
+  "mypy==1.19.1",
   "pandas-stubs",
   "types-PyYAML",
   "pandera[mypy]",

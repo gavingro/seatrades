@@ -13,7 +13,7 @@ def joined_campers_df():
     """DataFrame matching output of join_and_validate().
 
     4 campers across 2 cabins, 4 seatrade preferences each.
-    Camper names do NOT have .{index} suffix — SchedulingProblem adds it.
+    Plain camper names; SchedulingProblem assigns each an integer camper_id.
     """
     return pd.DataFrame(
         {
@@ -91,7 +91,9 @@ def sample_assignment_solution():
     """Minimal AssignmentSolution matching PuLP output format.
 
     4 campers across 2 cabins, 2 blocks (1a, 2b), 3 seatrades.
+    Campers are keyed by integer camper_id internally; camper_names maps id->name.
     """
+    camper_ids = pd.Index([0, 1, 2, 3], name="camper_id")
     assignments_df = pd.DataFrame(
         {
             "1a_Archery": [1.0, 0.0, 0.0, 1.0],
@@ -101,18 +103,18 @@ def sample_assignment_solution():
             "2b_Sailing": [1.0, 0.0, 0.0, 0.0],
             "2b_Climbing": [0.0, 1.0, 0.0, 1.0],
         },
-        index=pd.Index(["Alice_0", "Bob_0", "Carol_0", "Dave_0"], name="camper"),
+        index=camper_ids,
     )
     status = SolverStatus(state=SolverState.OPTIMAL)
     return AssignmentSolution(
         assignments=assignments_df,
         status=status,
         cabins=["Cabin1", "Cabin2"],
-        campers=["Alice_0", "Bob_0", "Carol_0", "Dave_0"],
+        campers=["Alice", "Bob", "Carol", "Dave"],
         seatrades_full=["1a_Archery", "1a_Sailing", "1a_Climbing", "2b_Archery", "2b_Sailing", "2b_Climbing"],
         cabin_camper_prefs=pd.DataFrame(
             {"cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"]},
-            index=pd.Index(["Alice_0", "Bob_0", "Carol_0", "Dave_0"], name="camper"),
+            index=camper_ids,
         ),
         camper_prefs=pd.Series(
             [
@@ -121,6 +123,7 @@ def sample_assignment_solution():
                 ["Sailing", "Archery", "Climbing", "Kayaking"],
                 ["Archery", "Climbing", "Sailing", "Kayaking"],
             ],
-            index=pd.Index(["Alice_0", "Bob_0", "Carol_0", "Dave_0"], name="camper"),
+            index=camper_ids,
         ),
+        camper_names=pd.Series(["Alice", "Bob", "Carol", "Dave"], index=camper_ids),
     )

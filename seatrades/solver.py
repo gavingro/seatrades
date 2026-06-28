@@ -25,22 +25,23 @@ def _mangle(name: str) -> str:
 
 def _extract_camper_assignments(
     variables: list[pulp.LpVariable],
-    campers: list[str],
+    campers: list[int],
     seatrades_full: list[str],
 ) -> pd.DataFrame:
     """Extract camper assignment values from solved LpProblem variables.
 
     Looks up each (camper, seatrade_full) variable by its PuLP-mangled name
     rather than parsing variable names, avoiding breakage on spaces/dots.
+    Campers are integer IDs; they are stringified to build the variable name.
     """
     var_lookup = {v.name: pulp.value(v) for v in variables}
-    camper_vars: dict[str, dict[str, float]] = {}
+    camper_vars: dict[int, dict[str, float]] = {}
     expected = len(campers) * len(seatrades_full)
     found = 0
     for camper in campers:
         camper_vars[camper] = {}
         for seatrade_name in seatrades_full:
-            var_name = f"Camper_Assignments_{_mangle(camper)}_{_mangle(seatrade_name)}"
+            var_name = f"Camper_Assignments_{_mangle(str(camper))}_{_mangle(seatrade_name)}"
             if var_name in var_lookup:
                 found += 1
             camper_vars[camper][seatrade_name] = var_lookup.get(var_name, 0.0)
@@ -68,17 +69,22 @@ def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSol
     status_code = lp_problem.solve(config.solver)
 
     assignments = _extract_camper_assignments(lp_problem.variables(), problem.campers, problem.seatrades_full)
+    assignments.index.name = "camper_id"
 
     solver_status = SolverStatus.from_pulp(status_code)
     if solver_status.is_optimal:
         solver_status.gap = _extract_gap_from_log(config.log_path)
 
+    # camper_id -> camper_name translation map; ids stay internal, names go out.
+    camper_names = pd.Series(problem.camper_names, index=pd.Index(problem.camper_ids, name="camper_id"))
+
     return AssignmentSolution(
         assignments=assignments,
         status=solver_status,
         cabins=problem.cabins,
-        campers=problem.campers,
+        campers=problem.camper_names,
         seatrades_full=problem.seatrades_full,
         cabin_camper_prefs=problem.cabin_camper_prefs,
         camper_prefs=problem.camper_prefs,
+        camper_names=camper_names,
     )
