@@ -85,6 +85,14 @@ class TestSolverStatus:
         assert status.state == SolverState.ERROR
         assert "99" in status.message
 
+    def test_optimality_inverts_gap(self):
+        status = SolverStatus(state=SolverState.OPTIMAL, gap=0.10)
+        assert status.optimality == 0.90
+
+    def test_optimality_is_one_when_gap_missing(self):
+        status = SolverStatus(state=SolverState.OPTIMAL, gap=None)
+        assert status.optimality == 1.0
+
 
 class TestAssignmentSolution:
     def test_construction(self, sample_assignment_solution):

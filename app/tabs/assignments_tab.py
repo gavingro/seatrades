@@ -52,15 +52,15 @@ class AssignmentsTab:
                 )
             else:
                 solution = st.session_state["assigned_solution"]
-                gap = solution.status.gap
-                optimality = (1.0 - gap) if gap is not None else 1.0
+                optimality = solution.status.optimality
                 st.success(f"Schedule ready — every camper is assigned, and it's {optimality:.0%} optimal.")
                 results_chart = display_assignments(solution)
                 st.altair_chart(results_chart)
                 st.caption(f"Blocks: {BLOCK_DECODER_CAPTION}")
                 st.caption(
                     "Color = camper satisfaction (green = top pick → red = low or unranked). "
-                    "Numbers show the camper's choice rank; gray cells are seatrades they weren't assigned."
+                    "Numbers show the camper's choice rank; a colored cell with no number means they "
+                    "were assigned a seatrade they didn't rank. Blue cells are seatrades they weren't assigned."
                 )
 
                 longform_df = wrangle_assignments_to_longform(solution)
@@ -226,8 +226,7 @@ def _assign_seatrades(
         timeout_kwd_match = _TIMEOUT_LOG_PATTERN.search(log_text)
         timeout = bool(timeout or timeout_kwd_match)
         timeout_status = " - Timeout Reached" if timeout else ""
-        actual_gap = result_container["solution"].status.gap if "solution" in result_container else None
-        actual_optimality = (1.0 - actual_gap) if actual_gap is not None else 1.0
+        actual_optimality = result_container["solution"].status.optimality if "solution" in result_container else 1.0
         optimality_status = f" - {actual_optimality:.0%} Optimal Solution found"
         progress_bar.progress(
             1.0,

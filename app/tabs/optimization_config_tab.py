@@ -52,20 +52,6 @@ class OptimizationConfigForm:
                 ),
             )
 
-            # --- Basic: solution quality, framed as "how optimal" (higher = better, slower) ---
-            min_quality_pct = st.slider(
-                "Minimum solution quality",
-                min_value=0,
-                max_value=100,
-                step=1,
-                value=DEFAULT_MIN_QUALITY_PCT,
-                format="%d%%",
-                help=(
-                    "Stop once the schedule is at least this good compared to the best possible "
-                    "(e.g. 90% = within 10% of optimal). Higher = better schedule, but slower."
-                ),
-            )
-
             # --- Advanced: hard limits and power-user knobs ---
             with st.expander("Advanced settings (hard limits & solver controls)"):
                 st.caption(
@@ -83,6 +69,19 @@ class OptimizationConfigForm:
                     help=(
                         "Hard cap on how many distinct seatrades can run in one fleet. This is an "
                         "absolute rule, not a preference — unlike the 'Fewer seatrades to staff' goal."
+                    ),
+                )
+                # Solution quality, framed as "how optimal" (higher = better, slower).
+                min_quality_pct = st.slider(
+                    "Minimum solution quality",
+                    min_value=0,
+                    max_value=100,
+                    step=1,
+                    value=DEFAULT_MIN_QUALITY_PCT,
+                    format="%d%%",
+                    help=(
+                        "Stop once the schedule is at least this good compared to the best possible "
+                        "(e.g. 90% = within 10% of optimal). Higher = better schedule, but slower."
                     ),
                 )
                 timeout_limit_minutes = st.slider(
