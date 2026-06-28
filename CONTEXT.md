@@ -178,7 +178,7 @@ Note the tension: `cabins_weight` (soft, encourages cabinmates together) pushes 
 | Package | Responsibility |
 |---------|---------------|
 | `seatrades/` | Service layer — domain logic, optimization, simulation, results |
-| `app/` | Presentation layer — Streamlit UI only, no business logic (currently `seatrades_app/` [planned rename → app/]) |
+| `app/` | Presentation layer — Streamlit UI only, no business logic |
 
 ### app/ modules
 
@@ -222,15 +222,13 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 
 9. **Session state keys: centralize in `app/state.py`** (low priority). Replaces scattered string literals for IDE support and typo protection.
 
-10. **Rename `seatrades_app/` → `app/`**. Follows Streamlit convention, avoids naming confusion with `seatrades/` service package.
+10. **Altair chart → separate `seatrades/visualization.py` module.** Chart is neither presentation layer nor data model — it's a visualization spec that consumes `AssignmentSolution`. Stays in service layer (no Streamlit dep) so it's reusable outside the app (API, notebooks, other frontends). `results.py` stays clean: data model + export only. `app/` renders via `st.altair_chart()`.
 
-11. **Altair chart → separate `seatrades/visualization.py` module.** Chart is neither presentation layer nor data model — it's a visualization spec that consumes `AssignmentSolution`. Stays in service layer (no Streamlit dep) so it's reusable outside the app (API, notebooks, other frontends). `results.py` stays clean: data model + export only. `app/` renders via `st.altair_chart()`.
+11. **Fleets and blocks are hardcoded domain knowledge.** Keats Camp always has 2 fleets with 2 blocks each (1a, 1b, 2a, 2b). Not parameters to `SchedulingProblem` — derived from the domain. Block availability for seatrades is always "all blocks."
 
-12. **Fleets and blocks are hardcoded domain knowledge.** Keats Camp always has 2 fleets with 2 blocks each (1a, 1b, 2a, 2b). Not parameters to `SchedulingProblem` — derived from the domain. Block availability for seatrades is always "all blocks."
+12. **SchedulingProblem receives 2 DataFrames, not 6 params.** After `preferences.py` joins the 3 source DataFrames, the problem builder gets `joined_campers` (identity + preferences merged) and `seatrade_setup` (name, min, max).
 
-13. **SchedulingProblem receives 2 DataFrames, not 6 params.** After `preferences.py` joins the 3 source DataFrames, the problem builder gets `joined_campers` (identity + preferences merged) and `seatrade_setup` (name, min, max).
-
-14. **Camper relationships are hard MILP constraints with a dedicated input DataFrame.** Schema: `(cabin_1, camper_1, cabin_2, camper_2, relationship)` with values `friends`, `besties`, `frenemies`. Uses composite keys matching existing domain model. Session = seatrade + fleet + block; all relationship constraints operate on sessions. Validation rejects self-pairs and duplicate pairs (regardless of order). Relationships are optional — no constraints by default. Diagnosing contradictory constraint chains causing infeasibility is future work. PRD: `docs/prd/camper-relationships.md`.
+13. **Camper relationships are hard MILP constraints with a dedicated input DataFrame.** Schema: `(cabin_1, camper_1, cabin_2, camper_2, relationship)` with values `friends`, `besties`, `frenemies`. Uses composite keys matching existing domain model. Session = seatrade + fleet + block; all relationship constraints operate on sessions. Validation rejects self-pairs and duplicate pairs (regardless of order). Relationships are optional — no constraints by default. Diagnosing contradictory constraint chains causing infeasibility is future work. PRD: `docs/prd/camper-relationships.md`.
 
 ## Tech Stack
 
@@ -238,7 +236,7 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 - **Optimizer:** PuLP (mixed-integer linear programming)
 - **Validation:** Pandera (DataFrame schemas)
 - **Deployment:** Streamlit Community Cloud
-- **App URL:** https://keats-seatrades.streamlit.app/
+- **App URL:** <https://keats-seatrades.streamlit.app/>
 - **Entry point:** app.py
 
 ## Git Workflow

@@ -2,11 +2,11 @@
 
 import pandas as pd
 import streamlit as st
+from seatrades_app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 
 from seatrades.config import SeatradesConfig, SeatradeSimulationConfig
 from seatrades.preferences import ValidationError, read_csv_for_schema, validate_schema
 from seatrades.simulation import SEATRADE_EXAMPLES
-from seatrades_app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 
 
 class SeatradeSimulationConfigTab:

@@ -2,11 +2,11 @@
 
 import pandas as pd
 import streamlit as st
+from seatrades_app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 
 from seatrades.config import CamperIdentity, CamperPreferences, CamperSimulationConfig
 from seatrades.preferences import ValidationError, join_and_validate, read_csv_for_schema, validate_schema
 from seatrades.simulation import ALL_CABIN_DICT, simulate_camper_identity, simulate_camper_preferences
-from seatrades_app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 
 
 def _update_camper_simulation_config(camper_simulation_config: CamperSimulationConfig):

@@ -1,8 +1,8 @@
 import pulp
 import streamlit as st
+from seatrades_app.components import clear_optimization_results
 
 from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
-from seatrades_app.components import clear_optimization_results
 
 
 class OptimizationConfigForm:

@@ -12,7 +12,7 @@ We need to translate pandera errors into human-readable messages. The question i
 
 1. **Service layer** (`seatrades/preferences.py`) — A `validate_schema` function wraps pandera validation with `lazy=True`, inspects the `SchemaErrors.failure_cases` DataFrame, and translates each check type into a plain-language message. Raises the existing `ValidationError`. Both UI tabs and `join_and_validate()` call this function.
 
-2. **UI layer** (`seatrades_app/tabs/`) — Each tab catches `SchemaError`/`SchemaErrors` and translates inline. `join_and_validate()` stays unchanged.
+2. **UI layer** (`app/tabs/`) — Each tab catches `SchemaError`/`SchemaErrors` and translates inline. `join_and_validate()` stays unchanged.
 
 3. **Separate module** (`seatrades/errors.py`) — Error translation in a dedicated module, imported by both `preferences.py` and the tabs.
 
@@ -21,6 +21,7 @@ We need to translate pandera errors into human-readable messages. The question i
 **Option 1: Service layer.**
 
 Rationale:
+
 - Error translation understands schema semantics (what `not_nullable` means, what `campers_must_choose_4_unique_seatrades` checks). That's domain knowledge, not presentation logic.
 - `join_and_validate()` already owns validation — it validates 3 schemas, then runs cross-reference checks. Translating schema errors into the same `ValidationError` format lets it collect all errors (schema + cross-reference) and raise once.
 - UI tabs already handle `ValidationError` uniformly. Adding a second error type or duplicating translation logic across tabs would be inconsistent.

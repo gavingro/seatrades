@@ -27,7 +27,7 @@ The sub-block notation encodes fleet assignment: "a" means the cabin does their 
 
 ## Implementation Decisions
 
-- **Module modified**: `seatrades_app/tabs/assignments_tab.py`
+- **Module modified**: `app/tabs/assignments_tab.py`
 - **Keep existing**: Altair chart visualization (first in the tab)
 - **Add new**: Two `st.dataframe` views after the chart (selectbox to switch between them)
 - **Data source**: New wide-form wrangling method for Captain's Book; existing long-form method for Seatrade Leaders

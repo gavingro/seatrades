@@ -15,7 +15,7 @@ Tests mirror code directory structure — one test file per Python module, with 
 
 - `seatrades/seatrades.py` → `tests/test_seatrades/test_seatrades.py`
 - `seatrades/results.py` → `tests/test_seatrades/test_results.py`
-- `seatrades_app/tabs/campers_tab.py` → `tests/test_seatrades_app/test_campers_tab.py`
+- `app/tabs/campers_tab.py` → `tests/test_app/test_campers_tab.py`
 - Use Classes for stict unit tests within a function. my_function() is unit tested in a TestMyFuncion class.
 
 ### Fixtures and conftest.py

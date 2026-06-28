@@ -1,6 +1,6 @@
 """Tests for the assignments_tab module."""
 
-from seatrades_app.tabs.assignments_tab import render_view
+from app.tabs.assignments_tab import render_view
 
 
 class TestRenderView:
