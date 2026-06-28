@@ -226,8 +226,8 @@ def _assign_seatrades(
         timeout_kwd_match = _TIMEOUT_LOG_PATTERN.search(log_text)
         timeout = bool(timeout or timeout_kwd_match)
         timeout_status = " - Timeout Reached" if timeout else ""
-        actual_optimality = result_container["solution"].status.optimality if "solution" in result_container else 1.0
-        optimality_status = f" - {actual_optimality:.0%} Optimal Solution found"
+        solution_optimality = result_container["solution"].status.optimality if "solution" in result_container else 1.0
+        optimality_status = f" - {solution_optimality:.0%} Optimal Solution found"
         progress_bar.progress(
             1.0,
             ("Optimization Concluded."),
