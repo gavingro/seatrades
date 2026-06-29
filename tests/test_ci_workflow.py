@@ -1,6 +1,7 @@
 """Verify CI workflow has lint and test jobs with correct configuration."""
 
 import subprocess
+import sys
 
 import yaml
 
@@ -66,3 +67,20 @@ class TestCITestJob:
     def test_pytest_step_exists(self):
         step = _find_step(_load_workflow(), "pytest", "test")
         assert step is not None
+
+
+class TestDoctestCollection:
+    """CI runs `pytest --doctest-modules`. The app.py entry script and the app/
+    package both claim module name 'app', so doctest collection imports one and
+    mismatches the other unless the entry script is excluded from collection."""
+
+    def test_doctest_modules_collection_succeeds(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", ".", "--doctest-modules", "--collect-only", "-q"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        output = result.stdout + result.stderr
+        assert "import file mismatch" not in output, output
+        assert result.returncode == 0, output
