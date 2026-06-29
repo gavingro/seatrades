@@ -33,6 +33,11 @@ class SolverStatus:
         """Whether the solver reached an optimal solution."""
         return self.state == SolverState.OPTIMAL
 
+    @property
+    def optimality(self) -> float:
+        """Fraction optimal (1.0 = provably optimal). Inverse of the optimality gap."""
+        return 1.0 - self.gap if self.gap is not None else 1.0
+
     @classmethod
     def from_pulp(cls, status_code: int) -> "SolverStatus":
         state = SolverState.from_pulp(status_code)

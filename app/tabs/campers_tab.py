@@ -2,8 +2,8 @@
 
 import pandas as pd
 import streamlit as st
-from seatrades_app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 
+from app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 from seatrades.config import CamperIdentity, CamperPreferences, CamperSimulationConfig
 from seatrades.preferences import ValidationError, join_and_validate, read_csv_for_schema, validate_schema
 from seatrades.simulation import ALL_CABIN_DICT, simulate_camper_identity, simulate_camper_preferences
@@ -76,22 +76,25 @@ class CamperSimulationConfigTab:
             with st.form("Camper Simulation Config", border=False):
                 st.subheader("Camper Simulation Config")
                 num_cabins = st.slider(
-                    "num_cabins",
+                    "Number of cabins",
                     min_value=1,
                     max_value=len(ALL_CABIN_DICT),
                     value=CamperSimulationConfig().num_cabins,
+                    help="How many cabins of campers to generate for this example week.",
                 )
                 camper_per_cabin_min = st.slider(
-                    "camper_per_cabin_min",
+                    "Campers per cabin (min)",
                     min_value=1,
                     max_value=30,
                     value=CamperSimulationConfig().camper_per_cabin_min,
+                    help="Fewest campers a generated cabin can have. Must be below the max.",
                 )
                 camper_per_cabin_max = st.slider(
-                    "camper_per_cabin_max",
+                    "Campers per cabin (max)",
                     min_value=1,
                     max_value=30,
                     value=CamperSimulationConfig().camper_per_cabin_max,
+                    help="Most campers a generated cabin can have. Must be above the min.",
                 )
 
                 camper_simulation_config = CamperSimulationConfig(

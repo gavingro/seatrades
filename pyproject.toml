@@ -49,7 +49,13 @@ packages = ["seatrades"]
 
 [tool.pytest.ini_options]
 testpaths = "tests"
-addopts = "-v -ra --cov src"
+# app.py (Streamlit entry script) and the app/ package share the module name
+# "app"; --doctest-modules collection imports one and mismatches the other.
+# Ignore the thin entry script (it has no doctests) to resolve the clash.
+addopts = "-v -ra --cov src -m 'not slow' --ignore=app.py"
+markers = [
+    "slow: slow tests (e.g. full solver runs); deselected by default, run with -m slow",
+]
 log_format = "%(asctime)s %(levelname)s %(message)s"
 log_date_format = "%Y-%m-%d %H:%M:%S"
 

@@ -2,8 +2,8 @@
 
 import pandas as pd
 import streamlit as st
-from seatrades_app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 
+from app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 from seatrades.config import SeatradesConfig, SeatradeSimulationConfig
 from seatrades.preferences import ValidationError, read_csv_for_schema, validate_schema
 from seatrades.simulation import SEATRADE_EXAMPLES
@@ -41,22 +41,25 @@ class SeatradeSimulationConfigTab:
             with st.form("Simulation Config", border=False):
                 st.subheader("Seatrade Simulation Config")
                 num_seatrades = st.slider(
-                    "num_seatrades",
+                    "Number of seatrades",
                     min_value=1,
                     max_value=len(SEATRADE_EXAMPLES),
                     value=SeatradeSimulationConfig().num_seatrades,
+                    help="How many different seatrades are offered this example week.",
                 )
                 camper_per_seatrade_min = st.slider(
-                    "camper_capacity_per_seatrade_min",
+                    "Camper capacity per seatrade (min)",
                     min_value=1,
                     max_value=30,
                     value=SeatradeSimulationConfig().camper_capacity_min,
+                    help="Fewest campers a seatrade session needs to run. Must be below the max.",
                 )
                 camper_per_seatrade_max = st.slider(
-                    "camper_capacity_per_seatrade_max",
+                    "Camper capacity per seatrade (max)",
                     min_value=1,
                     max_value=30,
                     value=SeatradeSimulationConfig().camper_capacity_max,
+                    help="Most campers a seatrade session can hold. Must be above the min.",
                 )
 
                 seatrade_simulation_config = SeatradeSimulationConfig(

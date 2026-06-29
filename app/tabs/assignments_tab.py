@@ -8,6 +8,7 @@ from typing import Literal, Optional
 import pandas as pd
 import streamlit as st
 
+from seatrades.blocks import BLOCK_DECODER_CAPTION
 from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
 from seatrades.preferences import ValidationError, join_and_validate
 from seatrades.problem import SchedulingProblem
@@ -44,12 +45,23 @@ class AssignmentsTab:
         if st.session_state.get("assigned_solution"):
             # Display results
             if not st.session_state["optimization_success"]:
-                st.write("Optimization not successful.")
+                st.warning(
+                    "No schedule could satisfy all the rules this time. Try relaxing a hard limit "
+                    "under **Advanced settings** in Optimization Setup (e.g. raise *Max seatrades "
+                    "per fleet*), or lower the *Minimum solution quality*, then assign again."
+                )
             else:
-                st.write("Optimization Success. Seatrades assigned for each camper.")
                 solution = st.session_state["assigned_solution"]
+                optimality = solution.status.optimality
+                st.success(f"Schedule ready — every camper is assigned, and it's {optimality:.0%} optimal.")
                 results_chart = display_assignments(solution)
                 st.altair_chart(results_chart)
+                st.caption(f"Blocks: {BLOCK_DECODER_CAPTION}")
+                st.caption(
+                    "Color = camper satisfaction (green = top pick → red = low or unranked). "
+                    "Numbers show the camper's choice rank; a colored cell with no number means they "
+                    "were assigned a seatrade they didn't rank. Blue cells are seatrades they weren't assigned."
+                )
 
                 longform_df = wrangle_assignments_to_longform(solution)
 
@@ -76,7 +88,7 @@ def _generate_intro_dialogue() -> None:
     st.markdown(
         """
     This web application is designed to help the **Scheduling Captain** to optimally assign
-    campers to seatrades, balancing cabin cohesion, camper preferences, and activity
+    campers to seatrades, balancing cabin cohesion, camper preferences, and seatrade
     availability.
 
     Each week, Keats Camps hosts ~250 campers across ~22 cabins, and on the first day of
@@ -87,9 +99,8 @@ def _generate_intro_dialogue() -> None:
     This app streamlines the process, optimizing assignments to create the best experience
     for campers while saving you time and effort.
 
-    Some example mock data has already been preloaded for example, so you can see what it
-    looks like to assign seatrades. There are 3 steps to repeat this process with your own
-    data for a week at camp:
+    **Example mock data is already loaded** so you can try assigning seatrades right away — it's
+    only a sample, and you can replace it with your own week any time. There are 3 steps to do that:
     """
     )
     cols = st.columns(3)
@@ -106,8 +117,7 @@ def _generate_intro_dialogue() -> None:
         )
     with cols[2]:
         st.warning(
-            "Adjust your **constraints and preferences** to describe this week's goals"
-            " in the **Optimization Config** tab.",
+            "Adjust your **goals and limits** to describe this week's priorities in the **Optimization Setup** tab.",
             icon=":material/tune:",
         )
     st.markdown("Happy scheduling!")
@@ -140,7 +150,7 @@ def _assign_seatrades(
     st.toast("Beginning Seatrade Optimization.")
     problem = SchedulingProblem(joined_campers, seatrade_setup)
     result_container: dict[str, AssignmentSolution] = {}
-    with st.status("Step 1/3: Setting Up Optimization Problem") as status:
+    with st.status("Setting up the optimization…") as status:
         # CAUTION: Does not actually stop the solver subthread which will keep running.
         # This will be a problem later if a user starts a ton of solver threads behind the scenes.
         stop_button = st.empty()
@@ -150,11 +160,13 @@ def _assign_seatrades(
 
         stop_button.button("Stop Optimizing", on_click=_stop_optimizing)
 
-        progress_bar = st.progress(0, "Setting up Optimization Problem.")
+        progress_bar = st.progress(0, "Setting up the optimization…")
 
         # Start the solver in a background thread, read logs in real time.
+        # Raw solver logs are tucked into a collapsed expander so the default view stays friendly.
         global log_counter
-        log_container = st.empty()
+        with st.expander("Show technical details (solver logs)"):
+            log_container = st.empty()
         log_text = ""
         if SEATRADES_LOG_PATH.exists():
             SEATRADES_LOG_PATH.unlink(missing_ok=True)
@@ -173,7 +185,7 @@ def _assign_seatrades(
                 timeout = True
             progress_bar.progress(
                 min(elapsed_pct_of_time_limit, 1.0),
-                ("Optimization Progress" if not timeout else "Stopping Optimization."),
+                ("Optimizing seatrade assignments…" if not timeout else "Finishing up — time limit reached…"),
             )
             try:
                 if SEATRADES_LOG_PATH.exists():
@@ -190,9 +202,9 @@ def _assign_seatrades(
                             timeout = True
 
                         if not timeout:
-                            status.update(label="Step 2/3: Optimizing Seatrade Assignments.")
+                            status.update(label="Optimizing seatrade assignments…")
                         else:
-                            status.update(label="Step 3/3: Stopping Optimization based on timeout duration.")
+                            status.update(label="Finishing up — time limit reached…")
 
             except Exception as e:
                 log_container.text_area(
@@ -214,9 +226,8 @@ def _assign_seatrades(
         timeout_kwd_match = _TIMEOUT_LOG_PATTERN.search(log_text)
         timeout = bool(timeout or timeout_kwd_match)
         timeout_status = " - Timeout Reached" if timeout else ""
-        actual_gap = result_container["solution"].status.gap if "solution" in result_container else None
-        actual_optimality = (1.0 - actual_gap) if actual_gap is not None else 1.0
-        optimality_status = f" - {actual_optimality:.0%} Optimal Solution found"
+        solution_optimality = result_container["solution"].status.optimality if "solution" in result_container else 1.0
+        optimality_status = f" - {solution_optimality:.0%} Optimal Solution found"
         progress_bar.progress(
             1.0,
             ("Optimization Concluded."),
