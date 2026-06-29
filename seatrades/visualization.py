@@ -73,6 +73,7 @@ def display_assignments(solution: AssignmentSolution) -> alt.Chart:
             title={
                 "text": "Camper Seatrade Assignments",
                 "subtitle": "Colored by how happy each camper is with their assignment (1 = top pick).",
+                "subtitleColor": "white",
                 "fontSize": 20,
                 "anchor": "start",
             }

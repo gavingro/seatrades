@@ -44,6 +44,11 @@ class TestDisplayAssignmentsLegibility:
         spec = display_assignments(sample_assignment_solution).to_dict()
         assert spec["title"]["text"] == "Camper Seatrade Assignments"
 
+    def test_subtitle_is_white(self, sample_assignment_solution):
+        """Subtitle is white so it reads on the dark app theme."""
+        spec = display_assignments(sample_assignment_solution).to_dict()
+        assert spec["title"]["subtitleColor"] == "white"
+
     def test_color_encodes_camper_satisfaction(self, sample_assignment_solution):
         """Cells are colored by a satisfaction field (top choice → low/unranked), not raw preference."""
         spec = display_assignments(sample_assignment_solution).to_dict()
