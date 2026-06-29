@@ -7,6 +7,7 @@ import pytest
 
 from seatrades.config import (
     BESTIES_MIN_SHARED_SEATRADES,
+    FRIENDS_MIN_SHARED_SEATRADES,
     CamperIdentity,
     CamperPreferences,
     CamperRelationships,
@@ -674,6 +675,9 @@ class TestValidateRelationships:
 
         assert any("Alice" in e and "Carlos" in e for e in exc_info.value.errors)
         assert any("no shared session" in e for e in exc_info.value.errors)
+        # Message references the threshold constant, like the besties branch, so it
+        # stays correct if FRIENDS_MIN_SHARED_SEATRADES is ever raised.
+        assert any(f"fewer than {FRIENDS_MIN_SHARED_SEATRADES}" in e for e in exc_info.value.errors)
 
     def test_frenemies_with_no_shared_preference_passes(self):
         # Frenemies has no preference precondition — disjoint prefs are fine.

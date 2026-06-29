@@ -186,8 +186,8 @@ def validate_relationships(
                 shared = prefs_by_camper[camper_1] & prefs_by_camper[camper_2]
                 if len(shared) < FRIENDS_MIN_SHARED_SEATRADES:
                     errors.append(
-                        f"Row {row.Index}: friends pair {camper_1} & {camper_2} share no preferred "
-                        f"seatrades — no shared session is possible."
+                        f"Row {row.Index}: friends pair {camper_1} & {camper_2} share fewer than "
+                        f"{FRIENDS_MIN_SHARED_SEATRADES} preferred seatrades — no shared session is possible."
                     )
 
     if errors:

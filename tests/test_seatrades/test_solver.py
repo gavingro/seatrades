@@ -13,6 +13,7 @@ from seatrades.results import (
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
+from seatrades.simulation import simulate_camper_relationships
 from seatrades.solver import run
 
 
@@ -289,6 +290,49 @@ class TestFriendsFrenemiesConstraints:
         solution = run(problem, self._config)
 
         assert solution.status.state == SolverState.INFEASIBLE
+
+
+class TestSeededRosterSolves:
+    """The mock generator's seeded relationships must solve end-to-end (CONTEXT.md:86)."""
+
+    _identity = pd.DataFrame(
+        {
+            "cabin": ["Puffin", "Puffin", "Tillikum", "Tillikum", "Orca", "Narwhal"],
+            "camper": ["Alice", "Bob", "Carlos", "Dana", "Eve", "Frank"],
+            "gender": ["female", "female", "male", "male", "female", "male"],
+        }
+    )
+    # Alice&Bob (same cabin) share ≥2 → besties; Carlos&Dana (same cabin) share ≥1 →
+    # friends; the remaining cross-cabin pair → frenemies.
+    _preferences = pd.DataFrame(
+        {
+            "camper": ["Alice", "Bob", "Carlos", "Dana", "Eve", "Frank"],
+            "seatrade_1": ["Sailing", "Climbing", "Archery", "Sailing", "Climbing", "Kayaking"],
+            "seatrade_2": ["Climbing", "Sailing", "Sailing", "Archery", "Kayaking", "Tubing"],
+            "seatrade_3": ["Archery", "Archery", "Kayaking", "Crafts", "Tubing", "Wibit"],
+            "seatrade_4": ["Crafts", "Swimming", "Tubing", "Wibit", "Wibit", "Swimming"],
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["Sailing", "Climbing", "Archery", "Crafts", "Kayaking", "Tubing", "Wibit", "Swimming"],
+            "campers_min": [0] * 8,
+            "campers_max": [10] * 8,
+        }
+    )
+    _config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+    def test_all_three_seeded_relationships_solve(self):
+        relationships = simulate_camper_relationships(self._identity, self._preferences)
+        # Guard the premise: the generator must actually seed all three types.
+        assert set(relationships["relationship"]) == {"besties", "friends", "frenemies"}
+
+        joined = self._identity.merge(self._preferences, on="camper")
+        problem = SchedulingProblem(joined, self._setup, relationships=relationships)
+
+        solution = run(problem, self._config)
+
+        assert solution.status.state == SolverState.OPTIMAL
 
 
 class TestMangle:
