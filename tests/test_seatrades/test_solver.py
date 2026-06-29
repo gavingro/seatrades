@@ -268,3 +268,51 @@ class TestStatusCodeMapping:
         solution = run(problem, config)
         # Infeasible should map to INFEASIBLE, not be swallowed as ERROR
         assert solution.status.state == SolverState.INFEASIBLE
+
+
+class TestConditionalMinCapacity:
+    """`campers_min` is a viability threshold, not a forced quota (issue #48).
+
+    A session may have either 0 campers (it doesn't run) or a count within
+    [campers_min, campers_max] (it runs). A seatrade nobody ranked simply drops.
+    """
+
+    # Four campers rank only pick1-pick4 (enough to fill both block pairs for
+    # everyone). notpicked1 has campers_min > 0 but nobody ranks it.
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "camper": ["Alice", "Bob", "Carol", "Dave"],
+            "gender": ["F", "F", "M", "M"],
+            "seatrade_1": ["pick1", "pick2", "pick3", "pick4"],
+            "seatrade_2": ["pick2", "pick3", "pick4", "pick1"],
+            "seatrade_3": ["pick3", "pick4", "pick1", "pick2"],
+            "seatrade_4": ["pick4", "pick1", "pick2", "pick3"],
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["pick1", "pick2", "pick3", "pick4", "notpicked1"],
+            "campers_min": [0, 0, 0, 0, 2],
+            "campers_max": [10, 10, 10, 10, 10],
+        }
+    )
+
+    def test_unranked_session_drops_instead_of_infeasible(self):
+        """Default (conditional min): notpicked1's sessions drop to 0; solve is OPTIMAL."""
+        problem = SchedulingProblem(self._joined, self._setup)
+        config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+        solution = run(problem, config)
+
+        assert solution.status.state == SolverState.OPTIMAL
+        notpicked_cols = [c for c in solution.assignments.columns if c.endswith("_notpicked1")]
+        assert notpicked_cols  # the columns exist...
+        assert solution.assignments[notpicked_cols].to_numpy().sum() == 0  # ...but hold no campers
+
+    def test_legacy_force_fill_is_infeasible(self):
+        """allow_empty_sessions=False restores the hard floor: notpicked1 can't fill -> INFEASIBLE."""
+        problem = SchedulingProblem(self._joined, self._setup)
+        config = OptimizationConfig(allow_empty_sessions=False, solver=pulp.apis.PULP_CBC_CMD(msg=0))
+        solution = run(problem, config)
+
+        assert solution.status.state == SolverState.INFEASIBLE

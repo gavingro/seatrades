@@ -203,14 +203,28 @@ class TestSchedulingProblemConstraintGroups:
         assert len(problem.constraints) == len(sp.seatrades) * len(sp.campers)
         assert any("_cant_take_" in name and "_in_both_blocks" in name for name in problem.constraints)
 
-    def test_add_capacity_constraints(self, scheduling_problem):
+    def test_add_capacity_constraints(self, scheduling_problem, default_config):
         sp = scheduling_problem
         problem = pulp.LpProblem("test_capacity")
         vars_ = self._make_vars(sp)
 
-        sp._add_capacity_constraints(problem, vars_["camper_assignments"])
+        sp._add_capacity_constraints(problem, vars_["camper_assignments"], vars_["seatrade_assignment"], default_config)
 
-        # 2 constraints per seatrade_full entry (min + max)
+        # Conditional min (default): 2 constraints per seatrade_full entry, both gated on
+        # the per-session running indicator.
+        assert len(problem.constraints) == 2 * len(sp.seatrades_full)
+        assert any("Min_if_running" in name for name in problem.constraints)
+        assert any("Max_if_running" in name for name in problem.constraints)
+
+    def test_add_capacity_constraints_legacy_force_fill(self, scheduling_problem):
+        sp = scheduling_problem
+        problem = pulp.LpProblem("test_capacity_legacy")
+        vars_ = self._make_vars(sp)
+        legacy_config = OptimizationConfig(allow_empty_sessions=False)
+
+        sp._add_capacity_constraints(problem, vars_["camper_assignments"], vars_["seatrade_assignment"], legacy_config)
+
+        # Legacy hard floor: ungated min + max per seatrade_full entry.
         assert len(problem.constraints) == 2 * len(sp.seatrades_full)
         assert any("More_than" in name for name in problem.constraints)
         assert any("Less_than" in name for name in problem.constraints)

@@ -20,6 +20,10 @@ class OptimizationConfig:
     cabins_weight: int = 2
     sparsity_weight: int = 1
     max_seatrades_per_fleet: Optional[int] = None
+    # When True (default), campers_min is a conditional minimum: a session runs with a
+    # count in [min, max] or doesn't run (0 campers). When False, restores the legacy
+    # hard floor that force-fills campers_min into every session. Not exposed in the UI.
+    allow_empty_sessions: bool = True
     log_path: Path = SEATRADES_LOG_PATH
     # Accepts None as input, but __post_init__ guarantees a solver afterward —
     # typed non-Optional so callers (and mypy) can treat it as always present.
