@@ -11,6 +11,11 @@ BLOCKS = ["1a", "1b", "2a", "2b"]
 FLEET_BLOCKS = [["1a", "1b"], ["2a", "2b"]]
 
 
+def block_name(seatrade_full: str) -> str:
+    """Strip the seatrade suffix from a full seatrade name (``1a_Archery`` → ``1a``)."""
+    return seatrade_full.split("_", 1)[0]
+
+
 def seatrade_name(seatrade_full: str) -> str:
     """Strip the block prefix from a full seatrade name (``1a_Archery`` → ``Archery``)."""
     return seatrade_full.split("_", 1)[1]
@@ -164,7 +169,7 @@ class SchedulingProblem:
         legacy hard floor force-fills ``campers_min`` into every session.
         """
         for s in self.seatrades_full:
-            block = s.split("_", 1)[0]
+            block = block_name(s)
             seatrade = seatrade_name(s)
             campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
             campers_max = self.seatrades_prefs.loc[seatrade, "campers_max"]

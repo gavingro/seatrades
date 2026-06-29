@@ -309,6 +309,20 @@ class TestConditionalMinCapacity:
         assert notpicked_cols  # the columns exist...
         assert solution.assignments[notpicked_cols].to_numpy().sum() == 0  # ...but hold no campers
 
+    def test_dropped_session_absent_from_exports(self):
+        """A non-running session yields no assigned rows, so it never reaches the
+        wrangled exports/charts (user story 5)."""
+        problem = SchedulingProblem(self._joined, self._setup)
+        config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+        solution = run(problem, config)
+
+        longform = wrangle_assignments_to_longform(solution)
+        assigned = longform[longform["assignment"] == 1.0]
+        assert "notpicked1" not in assigned["seatrade"].to_numpy()
+
+        wideform = wrangle_assignments_to_wideform(longform)
+        assert "notpicked1" not in wideform.to_numpy()
+
     def test_legacy_force_fill_is_infeasible(self):
         """allow_empty_sessions=False restores the hard floor: notpicked1 can't fill -> INFEASIBLE."""
         problem = SchedulingProblem(self._joined, self._setup)

@@ -4,7 +4,23 @@ import pandas as pd
 import pulp
 
 from seatrades.config import OptimizationConfig
-from seatrades.problem import SchedulingProblem
+from seatrades.problem import SchedulingProblem, block_name, seatrade_name
+
+
+class TestNamingHelpers:
+    """``block_name`` and ``seatrade_name`` are complementary halves of the
+    ``block_seatrade`` full-name format."""
+
+    def test_block_name_strips_seatrade_suffix(self):
+        assert block_name("1a_Archery") == "1a"
+
+    def test_seatrade_name_strips_block_prefix(self):
+        assert seatrade_name("1a_Archery") == "Archery"
+
+    def test_helpers_split_on_first_underscore_only(self):
+        # Seatrade names may themselves contain underscores; only the first splits.
+        assert block_name("2b_Deep_Sea_Fishing") == "2b"
+        assert seatrade_name("2b_Deep_Sea_Fishing") == "Deep_Sea_Fishing"
 
 
 class TestSchedulingProblemInit:
