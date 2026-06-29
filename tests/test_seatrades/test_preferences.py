@@ -5,9 +5,16 @@ from io import StringIO
 import pandas as pd
 import pytest
 
-from seatrades.config import CamperIdentity, CamperPreferences, SeatradesConfig
+from seatrades.config import (
+    BESTIES_MIN_SHARED_SEATRADES,
+    CamperIdentity,
+    CamperPreferences,
+    CamperRelationships,
+    SeatradesConfig,
+)
 from seatrades.preferences import (
     ValidationError,
+    empty_relationships,
     join_and_validate,
     read_csv_for_schema,
     validate_relationships,
@@ -654,6 +661,43 @@ class TestValidateRelationships:
             validate_relationships(relationships, joined, "Camper Relationships")
 
         assert any("relationship" in e for e in exc_info.value.errors)
+
+    def test_duplicate_pair_does_not_cascade_other_errors(self):
+        # Two identical infeasible besties rows: the first row reports "share fewer";
+        # the duplicate row reports only "duplicate", not a second "share fewer".
+        joined = _two_cabin_joined()
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Puffin", "Puffin"],
+                "camper_1": ["Alice", "Alice"],
+                "cabin_2": ["Tillikum", "Tillikum"],
+                "camper_2": ["Carlos", "Carlos"],
+                "relationship": ["besties", "besties"],
+            }
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        errors = exc_info.value.errors
+        assert sum("duplicate" in e.lower() for e in errors) == 1
+        assert sum("share fewer" in e for e in errors) == 1
+
+
+class TestEmptyRelationships:
+    """empty_relationships builds a schema-valid, zero-row CamperRelationships frame."""
+
+    def test_has_schema_columns_and_is_empty(self):
+        result = empty_relationships()
+
+        assert list(result.columns) == ["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"]
+        assert len(result) == 0
+        CamperRelationships.validate(result)
+
+
+def test_besties_min_shared_seatrades_is_single_source():
+    """The feasibility threshold has one home in config, imported everywhere else."""
+    assert BESTIES_MIN_SHARED_SEATRADES == 2
 
 
 class TestReadCsvForSchema:

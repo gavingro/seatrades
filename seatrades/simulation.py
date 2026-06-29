@@ -12,18 +12,13 @@ from faker import Faker
 
 from seatrades import preferences
 from seatrades.config import (
+    BESTIES_MIN_SHARED_SEATRADES,
     NUM_PREFERENCES,
     PREF_COLS,
     CamperRelationships,
     CamperSimulationConfig,
     SeatradeSimulationConfig,
 )
-
-# A besties pair needs two identical sessions, so its members must share >= 2
-# preferred seatrades for the identical-schedule constraint to stay feasible.
-_BESTIES_MIN_SHARED_SEATRADES = 2
-
-_RELATIONSHIP_COLUMNS = ["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"]
 
 # Real cabin names from Keats Camp
 GIRL_CABIN_EXAMPLES = [
@@ -160,7 +155,7 @@ def simulate_camper_relationships(
             for j in range(i + 1, len(members)):
                 a, b = members[i], members[j]
                 shared = {getattr(a, col) for col in PREF_COLS} & {getattr(b, col) for col in PREF_COLS}
-                if len(shared) >= _BESTIES_MIN_SHARED_SEATRADES:
+                if len(shared) >= BESTIES_MIN_SHARED_SEATRADES:
                     row = pd.DataFrame(
                         [
                             {
@@ -174,5 +169,4 @@ def simulate_camper_relationships(
                     )
                     return CamperRelationships.validate(row)  # type: ignore[return-value]
 
-    empty = pd.DataFrame({col: pd.Series(dtype="object") for col in _RELATIONSHIP_COLUMNS})
-    return CamperRelationships.validate(empty)  # type: ignore[return-value]
+    return preferences.empty_relationships()

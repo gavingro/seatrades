@@ -18,6 +18,7 @@ from pandera import DataFrameModel
 from pandera.errors import SchemaError, SchemaErrors
 
 from seatrades.config import (
+    BESTIES_MIN_SHARED_SEATRADES,
     PREF_COLS,
     CamperIdentity,
     CamperPreferences,
@@ -25,7 +26,12 @@ from seatrades.config import (
     SeatradesConfig,
 )
 
-_BESTIES_MIN_SHARED_SEATRADES = 2
+
+def empty_relationships() -> pd.DataFrame:
+    """An empty, schema-valid CamperRelationships frame (columns derived from the schema)."""
+    columns = CamperRelationships.to_schema().columns.keys()
+    empty = pd.DataFrame({col: pd.Series(dtype="object") for col in columns})
+    return CamperRelationships.validate(empty)  # type: ignore[return-value]
 
 
 class ValidationError(Exception):
@@ -158,6 +164,7 @@ def validate_relationships(
             pair = frozenset({camper_1, camper_2})
             if pair in seen_pairs:
                 errors.append(f"Row {row.Index}: duplicate pair {camper_1} & {camper_2} (order does not matter).")
+                continue
             seen_pairs.add(pair)
 
             unknown = [c for c in (camper_1, camper_2) if c not in known_campers]
@@ -168,10 +175,10 @@ def validate_relationships(
 
             if row.relationship == "besties":
                 shared = prefs_by_camper[camper_1] & prefs_by_camper[camper_2]
-                if len(shared) < _BESTIES_MIN_SHARED_SEATRADES:
+                if len(shared) < BESTIES_MIN_SHARED_SEATRADES:
                     errors.append(
                         f"Row {row.Index}: besties pair {camper_1} & {camper_2} share fewer than "
-                        f"{_BESTIES_MIN_SHARED_SEATRADES} preferred seatrades — no identical schedule is possible."
+                        f"{BESTIES_MIN_SHARED_SEATRADES} preferred seatrades — no identical schedule is possible."
                     )
 
     if errors:

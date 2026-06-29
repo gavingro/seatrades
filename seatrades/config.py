@@ -72,6 +72,10 @@ class CamperIdentity(DataFrameModel):
 
 RELATIONSHIP_TYPES = ["friends", "besties", "frenemies"]
 
+# A besties pair needs two identical sessions, so its members must share at least
+# this many preferred seatrades for the identical-schedule constraint to stay feasible.
+BESTIES_MIN_SHARED_SEATRADES = 2
+
 
 class CamperRelationships(DataFrameModel):
     """Camper social relationships — pairs of campers with a relationship type.

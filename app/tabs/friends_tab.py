@@ -11,14 +11,12 @@ import streamlit as st
 
 from app.components import clear_optimization_results, show_validation_error
 from seatrades.config import RELATIONSHIP_TYPES, CamperRelationships
-from seatrades.preferences import ValidationError, read_csv_for_schema, validate_relationships
-
-_RELATIONSHIP_COLUMNS = ["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"]
-
-
-def empty_relationships() -> pd.DataFrame:
-    """An empty relationships grid with the right columns and dtypes."""
-    return pd.DataFrame({col: pd.Series(dtype="object") for col in _RELATIONSHIP_COLUMNS})
+from seatrades.preferences import (
+    ValidationError,
+    empty_relationships,
+    read_csv_for_schema,
+    validate_relationships,
+)
 
 
 class FriendsTab:
