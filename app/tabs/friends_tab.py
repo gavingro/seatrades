@@ -2,8 +2,8 @@
 
 Primary input is an editable grid: a captain types (cabin, camper, cabin, camper,
 relationship) rows directly. A CSV upload is an optional bulk-entry convenience that
-seeds the grid. Besties are enforced by the solver this slice; friends and frenemies
-are saved and validated but not yet enforced.
+seeds the grid. All three relationship types are enforced by the solver as hard
+constraints.
 """
 
 import pandas as pd
@@ -24,11 +24,27 @@ class FriendsTab:
 
     def generate(self) -> None:
         st.subheader("Friends")
-        st.caption(
-            "Pair up campers. **Besties** share an identical schedule (enforced now). "
-            "**Friends** and **frenemies** are saved for later. Type rows directly, or "
-            "upload a CSV to fill the grid."
+        st.markdown(
+            "Pair up campers whose social ties should shape the schedule. Each row links two "
+            "campers — a `(cabin, camper)` and another `(cabin, camper)` — plus a relationship "
+            "type. Type rows directly in the grid below, or upload a CSV to fill it. Every "
+            "relationship is a **hard rule**: the optimizer must satisfy all of them, or it "
+            "reports that no schedule is possible."
         )
+        with st.expander("What do friends, besties, and frenemies mean?"):
+            st.markdown(
+                "- **Friends** — the pair shares **at least one session**: the same seatrade, in "
+                "the same fleet and block (so they're together at least once during the week). "
+                "_Needs at least one preferred seatrade in common, or it can't be honoured._\n"
+                "- **Besties** — the pair gets an **identical schedule**: the same seatrades in "
+                "the same blocks for the whole week (this also puts them in the same fleet). "
+                "_Needs at least two preferred seatrades in common._\n"
+                "- **Frenemies** — the pair shares **no session**: they are never placed in the "
+                "same seatrade at the same time.\n\n"
+                "Order within a pair doesn't matter, and each pair may appear only once. Besties "
+                "or friends that don't share enough preferred seatrades are flagged here, before "
+                "you optimize, so you can fix typos instead of waiting on a failed solve."
+            )
 
         uploaded = st.file_uploader(
             label="Upload relationships (cabin_1, camper_1, cabin_2, camper_2, relationship).",
@@ -58,7 +74,9 @@ class FriendsTab:
                     "relationship",
                     options=RELATIONSHIP_TYPES,
                     required=True,
-                    help="One of friends, besties, frenemies.",
+                    help=(
+                        "friends = share ≥1 session · besties = identical schedule · frenemies = never share a session."
+                    ),
                 ),
             },
         )
