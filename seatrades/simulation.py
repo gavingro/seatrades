@@ -15,7 +15,6 @@ from seatrades.config import (
     BESTIES_MIN_SHARED_SEATRADES,
     NUM_PREFERENCES,
     PREF_COLS,
-    CamperRelationships,
     CamperSimulationConfig,
     SeatradeSimulationConfig,
 )
@@ -153,20 +152,20 @@ def simulate_camper_relationships(
         members = list(group.itertuples(index=False))
         for i in range(len(members)):
             for j in range(i + 1, len(members)):
-                a, b = members[i], members[j]
-                shared = {getattr(a, col) for col in PREF_COLS} & {getattr(b, col) for col in PREF_COLS}
+                camper_a, camper_b = members[i], members[j]
+                shared = {getattr(camper_a, col) for col in PREF_COLS} & {getattr(camper_b, col) for col in PREF_COLS}
                 if len(shared) >= BESTIES_MIN_SHARED_SEATRADES:
                     row = pd.DataFrame(
                         [
                             {
                                 "cabin_1": cabin,
-                                "camper_1": a.camper,
+                                "camper_1": camper_a.camper,
                                 "cabin_2": cabin,
-                                "camper_2": b.camper,
+                                "camper_2": camper_b.camper,
                                 "relationship": "besties",
                             }
                         ]
                     )
-                    return CamperRelationships.validate(row)  # type: ignore[return-value]
+                    return preferences.CamperRelationships.validate(row)  # type: ignore[return-value]
 
     return preferences.empty_relationships()

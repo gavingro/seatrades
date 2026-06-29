@@ -38,11 +38,11 @@ class FriendsTab:
         )
         if uploaded:
             try:
-                data = read_csv_for_schema(uploaded, CamperRelationships)
+                uploaded_relationships = read_csv_for_schema(uploaded, CamperRelationships)
             except ValidationError as e:
                 show_validation_error("Camper Relationships", e)
             else:
-                _update_relationships(data)
+                _update_relationships(uploaded_relationships)
 
         current = st.session_state.get("camper_relationships")
         if current is None or current.empty:
