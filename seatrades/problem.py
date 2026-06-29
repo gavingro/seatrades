@@ -11,6 +11,11 @@ BLOCKS = ["1a", "1b", "2a", "2b"]
 FLEET_BLOCKS = [["1a", "1b"], ["2a", "2b"]]
 
 
+def block_name(seatrade_full: str) -> str:
+    """Strip the seatrade suffix from a full seatrade name (``1a_Archery`` → ``1a``)."""
+    return seatrade_full.split("_", 1)[0]
+
+
 def seatrade_name(seatrade_full: str) -> str:
     """Strip the block prefix from a full seatrade name (``1a_Archery`` → ``Archery``)."""
     return seatrade_full.split("_", 1)[1]
@@ -91,7 +96,7 @@ class SchedulingProblem:
         )
         self._add_assignment_constraints(problem, camper_assignments)
         self._add_no_duplicate_seatrade_constraints(problem, camper_assignments)
-        self._add_capacity_constraints(problem, camper_assignments)
+        self._add_capacity_constraints(problem, camper_assignments, seatrade_assignment, config)
         self._add_preference_constraints(problem, camper_assignments)
         self._add_top2_guarantee_constraints(problem, camper_assignments)
         self._add_cabin_max_constraints(problem, camper_assignments)
@@ -149,20 +154,33 @@ class SchedulingProblem:
                     f"{c}_cant_take_{seatrade}_in_both_blocks",
                 )
 
-    def _add_capacity_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict) -> None:
-        """Seatrade camper counts stay within min/max capacity bounds."""
+    def _add_capacity_constraints(
+        self,
+        problem: pulp.LpProblem,
+        camper_assignments: VarDict,
+        seatrade_assignment: VarDict,
+        config: OptimizationConfig,
+    ) -> None:
+        """Bound each session's camper count by min/max capacity.
+
+        With ``allow_empty_sessions`` (default), the min/max bounds are gated on the
+        per-session ``running`` indicator: a session may have 0 campers (it doesn't run)
+        or a count in ``[campers_min, campers_max]`` (it runs). With the flag off, the
+        legacy hard floor force-fills ``campers_min`` into every session.
+        """
         for s in self.seatrades_full:
+            block = block_name(s)
             seatrade = seatrade_name(s)
-            seatrade_campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
-            problem += (
-                pulp.lpSum([camper_assignments[c][s] for c in self.campers]) >= seatrade_campers_min,
-                f"More_than_{seatrade_campers_min}_in_{s}",
-            )
-            seatrade_campers_max = self.seatrades_prefs.loc[seatrade, "campers_max"]
-            problem += (
-                pulp.lpSum([camper_assignments[c][s] for c in self.campers]) <= seatrade_campers_max,
-                f"Less_than_{seatrade_campers_max}_in_{s}",
-            )
+            campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
+            campers_max = self.seatrades_prefs.loc[seatrade, "campers_max"]
+            camper_count = pulp.lpSum([camper_assignments[c][s] for c in self.campers])
+            if config.allow_empty_sessions:
+                running = seatrade_assignment[block][seatrade]
+                problem += (camper_count >= campers_min * running, f"Min_if_running_{s}")
+                problem += (camper_count <= campers_max * running, f"Max_if_running_{s}")
+            else:
+                problem += (camper_count >= campers_min, f"More_than_{campers_min}_in_{s}")
+                problem += (camper_count <= campers_max, f"Less_than_{campers_max}_in_{s}")
 
     def _add_preference_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict) -> None:
         """Campers cannot be assigned to seatrades they didn't request."""

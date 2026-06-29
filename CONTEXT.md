@@ -151,7 +151,7 @@ The scheduler solves a mixed-integer linear programming problem with these const
 
 1. **One seatrade per block** - Each camper assigned to exactly 1 seatrade in each block
 2. **No duplicates** - Camper cannot take same seatrade in both blocks
-3. **Capacity limits** - Seatrade capacity enforced (min/max per session)
+3. **Capacity limits** - Conditional per session: a session either runs (camper count within `[campers_min, campers_max]`) or doesn't run (0 campers). The minimum is a viability threshold — enforced only when the session runs — not a forced quota. See Decisions-Log #14.
 4. **Preference only** - Campers only assigned seatrades they ranked
 5. **Top-2 guarantee** - Campers guaranteed one of their top 2 choices
 6. **Cabin max per seatrade** - Max k campers from same cabin in one seatrade (by default k=4)
@@ -230,6 +230,8 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 12. **SchedulingProblem receives 2 DataFrames, not 6 params.** After `preferences.py` joins the 3 source DataFrames, the problem builder gets `joined_campers` (identity + preferences merged) and `seatrade_setup` (name, min, max).
 
 13. **Camper relationships are hard MILP constraints with a dedicated input DataFrame.** Schema: `(cabin_1, camper_1, cabin_2, camper_2, relationship)` with values `friends`, `besties`, `frenemies`. Uses composite keys matching existing domain model. Session = seatrade + fleet + block; all relationship constraints operate on sessions. Validation rejects self-pairs and duplicate pairs (regardless of order). Relationships are optional — no constraints by default. Diagnosing contradictory constraint chains causing infeasibility is future work. PRD: `docs/prd/camper-relationships.md`.
+
+14. **`campers_min` is a conditional minimum per session (issue #48).** A session may have either 0 campers (it doesn't run) or a count within `[campers_min, campers_max]` (it runs) — nothing in between. This reframes `campers_min` as a *viability threshold* ("worth running only with N campers") rather than a forced quota, and removes a class of spurious infeasibility where an unranked seatrade's floor was force-filled. Constraints-only — no objective term or penalty; whether a session empties is still driven by the existing objective (notably `sparsity_weight`). Reuses the existing per-session `seatrade_assignment` indicator (the "session runs" binary) — no new variable. Both bounds are gated on that indicator in `_add_capacity_constraints`. Default-on via `OptimizationConfig.allow_empty_sessions` (not exposed in the UI); setting it `False` restores the legacy hard floor. Only *widens* the feasible region — never makes a feasible problem infeasible; with `campers_min = 0` it is a no-op.
 
 ## Tech Stack
 
