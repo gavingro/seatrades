@@ -130,13 +130,16 @@ def _assign_seatrades(
     identity = st.session_state.get("camper_identity")
     camper_prefs = st.session_state.get("camper_preferences")
     seatrade_prefs = st.session_state.get("seatrade_preferences")
+    relationships = st.session_state.get("camper_relationships")
 
     if identity is None or camper_prefs is None or seatrade_prefs is None:
         st.toast("Missing camper or seatrade data. Upload or simulate first.", icon="🚨")
         return
 
     try:
-        joined_campers, seatrade_setup = join_and_validate(identity, camper_prefs, seatrade_prefs)
+        joined_campers, seatrade_setup, validated_relationships = join_and_validate(
+            identity, camper_prefs, seatrade_prefs, relationships
+        )
     except ValidationError as e:
         st.toast("Cross-reference validation failed.", icon="🚨")
         with st.popover("Validation errors. Click for details.", icon="🚨"):
@@ -146,7 +149,7 @@ def _assign_seatrades(
 
     st.session_state["cabin_camper_prefs"] = joined_campers
     st.toast("Beginning Seatrade Optimization.")
-    problem = SchedulingProblem(joined_campers, seatrade_setup)
+    problem = SchedulingProblem(joined_campers, seatrade_setup, relationships=validated_relationships)
     result_container: dict[str, AssignmentSolution] = {}
     with st.status("Setting up the optimization…") as status:
         # CAUTION: Does not actually stop the solver subthread which will keep running.

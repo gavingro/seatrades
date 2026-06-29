@@ -32,12 +32,15 @@ def try_join_and_validate():
     identity = st.session_state.get("camper_identity")
     preferences = st.session_state.get("camper_preferences")
     seatrades = st.session_state.get("seatrade_preferences")
+    relationships = st.session_state.get("camper_relationships")
 
     if identity is None or preferences is None or seatrades is None:
         return
 
     try:
-        joined_campers, seatrade_setup = join_and_validate(identity, preferences, seatrades)
+        joined_campers, _seatrade_setup, _relationships = join_and_validate(
+            identity, preferences, seatrades, relationships
+        )
         st.session_state["cabin_camper_prefs"] = joined_campers
     except ValidationError as e:
         show_validation_error("Cross-reference Validation", e)

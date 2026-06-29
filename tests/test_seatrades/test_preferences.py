@@ -5,13 +5,53 @@ from io import StringIO
 import pandas as pd
 import pytest
 
-from seatrades.config import CamperIdentity, CamperPreferences, SeatradesConfig
+from seatrades.config import (
+    BESTIES_MIN_SHARED_SEATRADES,
+    FRIENDS_MIN_SHARED_SEATRADES,
+    CamperIdentity,
+    CamperPreferences,
+    CamperRelationships,
+    SeatradesConfig,
+)
 from seatrades.preferences import (
     ValidationError,
+    empty_relationships,
     join_and_validate,
     read_csv_for_schema,
+    validate_relationships,
     validate_schema,
 )
+
+
+def _two_cabin_joined() -> pd.DataFrame:
+    """Joined-campers df (post identity/preferences merge) for relationship tests.
+
+    Alice and Bob share Sailing+Climbing (≥2) so a besties pair between them is feasible.
+    Carlos shares only Archery with each, so a besties pair to Carlos is infeasible.
+    """
+    return pd.DataFrame(
+        {
+            "cabin": ["Puffin", "Puffin", "Tillikum"],
+            "camper": ["Alice", "Bob", "Carlos"],
+            "gender": ["female", "female", "male"],
+            "seatrade_1": ["Sailing", "Climbing", "Archery"],
+            "seatrade_2": ["Climbing", "Sailing", "Kayaking"],
+            "seatrade_3": ["Archery", "Archery", "Tubing"],
+            "seatrade_4": ["Crafts", "Swimming", "Wibit"],
+        }
+    )
+
+
+def _relationship_row(cabin_1, camper_1, cabin_2, camper_2, relationship) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "cabin_1": [cabin_1],
+            "camper_1": [camper_1],
+            "cabin_2": [cabin_2],
+            "camper_2": [camper_2],
+            "relationship": [relationship],
+        }
+    )
 
 
 class TestJoinAndValidateHappyPath:
@@ -42,8 +82,9 @@ class TestJoinAndValidateHappyPath:
             }
         )
 
-        joined_campers, seatrade_setup = join_and_validate(identity_df, preferences_df, seatrade_df)
+        joined_campers, seatrade_setup, relationships = join_and_validate(identity_df, preferences_df, seatrade_df)
 
+        assert relationships is None
         assert "cabin" in joined_campers.columns
         assert "camper" in joined_campers.columns
         assert "gender" in joined_campers.columns
@@ -75,7 +116,7 @@ class TestJoinAndValidateHappyPath:
             }
         )
 
-        _, seatrade_setup = join_and_validate(identity_df, preferences_df, seatrade_df)
+        _, seatrade_setup, _ = join_and_validate(identity_df, preferences_df, seatrade_df)
 
         assert len(seatrade_setup) == 4
         assert "seatrade" in seatrade_setup.columns
@@ -450,6 +491,258 @@ class TestValidateSchema:
         with pytest.raises(ValidationError) as exc_info:
             validate_schema(CamperIdentity, df, "Camper Identity")
         assert len(exc_info.value.errors) >= 2
+
+
+class TestJoinAndValidateRelationships:
+    """join_and_validate accepts optional relationships and returns them validated."""
+
+    def _consistent_inputs(self):
+        identity_df = pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Puffin"],
+                "camper": ["Alice", "Bob"],
+                "gender": ["female", "female"],
+            }
+        )
+        preferences_df = pd.DataFrame(
+            {
+                "camper": ["Alice", "Bob"],
+                "seatrade_1": ["Sailing", "Climbing"],
+                "seatrade_2": ["Climbing", "Sailing"],
+                "seatrade_3": ["Archery", "Archery"],
+                "seatrade_4": ["Crafts", "Swimming"],
+            }
+        )
+        seatrade_df = pd.DataFrame(
+            {
+                "seatrade": ["Sailing", "Climbing", "Archery", "Crafts", "Swimming"],
+                "campers_min": [0, 0, 0, 0, 0],
+                "campers_max": [10, 10, 10, 10, 10],
+            }
+        )
+        return identity_df, preferences_df, seatrade_df
+
+    def test_empty_relationships_returns_none(self):
+        identity_df, preferences_df, seatrade_df = self._consistent_inputs()
+        empty = _relationship_row("Puffin", "Alice", "Puffin", "Bob", "besties").iloc[0:0]
+
+        _, _, relationships = join_and_validate(identity_df, preferences_df, seatrade_df, empty)
+
+        assert relationships is None
+
+    def test_valid_relationships_returned(self):
+        identity_df, preferences_df, seatrade_df = self._consistent_inputs()
+        rel = _relationship_row("Puffin", "Alice", "Puffin", "Bob", "besties")
+
+        _, _, relationships = join_and_validate(identity_df, preferences_df, seatrade_df, rel)
+
+        assert relationships is not None
+        assert len(relationships) == 1
+
+    def test_infeasible_besties_relationship_raises(self):
+        identity_df, preferences_df, seatrade_df = self._consistent_inputs()
+        # Alice & Bob share Sailing+Climbing+Archery, so make Bob's prefs disjoint enough:
+        preferences_df.loc[
+            preferences_df["camper"] == "Bob", ["seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]
+        ] = [
+            "Climbing",
+            "Tubing",
+            "Kayaking",
+            "Wibit",
+        ]
+        seatrade_df = pd.DataFrame(
+            {
+                "seatrade": ["Sailing", "Climbing", "Archery", "Crafts", "Tubing", "Kayaking", "Wibit"],
+                "campers_min": [0] * 7,
+                "campers_max": [10] * 7,
+            }
+        )
+        rel = _relationship_row("Puffin", "Alice", "Puffin", "Bob", "besties")
+
+        with pytest.raises(ValidationError) as exc_info:
+            join_and_validate(identity_df, preferences_df, seatrade_df, rel)
+
+        assert any("share fewer" in e for e in exc_info.value.errors)
+
+
+class TestValidateRelationships:
+    """validate_relationships checks schema, self-pairs, duplicates, cross-refs, feasibility."""
+
+    def test_valid_besties_pair_passes(self):
+        joined = _two_cabin_joined()
+        relationships = _relationship_row("Puffin", "Alice", "Puffin", "Bob", "besties")
+
+        result = validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 1
+
+    def test_self_pair_rejected_naming_camper(self):
+        joined = _two_cabin_joined()
+        relationships = _relationship_row("Puffin", "Alice", "Puffin", "Alice", "besties")
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert any("Alice" in e and "Puffin" in e for e in exc_info.value.errors)
+        assert any("itself" in e.lower() or "self" in e.lower() for e in exc_info.value.errors)
+
+    def test_duplicate_pair_rejected_regardless_of_order(self):
+        joined = _two_cabin_joined()
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Puffin", "Puffin"],
+                "camper_1": ["Alice", "Bob"],
+                "cabin_2": ["Puffin", "Puffin"],
+                "camper_2": ["Bob", "Alice"],
+                "relationship": ["besties", "besties"],
+            }
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert any("duplicate" in e.lower() for e in exc_info.value.errors)
+        assert any("Alice" in e and "Bob" in e for e in exc_info.value.errors)
+
+    def test_unknown_camper_rejected_naming_offender(self):
+        joined = _two_cabin_joined()
+        relationships = _relationship_row("Puffin", "Alice", "Puffin", "Zelda", "besties")
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert any("Zelda" in e and "Puffin" in e for e in exc_info.value.errors)
+        assert any("not" in e.lower() and "camper" in e.lower() for e in exc_info.value.errors)
+
+    def test_unknown_camper_skips_feasibility_check(self):
+        """An unknown camper is reported once; the besties feasibility check is not run on it."""
+        joined = _two_cabin_joined()
+        relationships = _relationship_row("Nowhere", "Ghost", "Puffin", "Alice", "besties")
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert any("Ghost" in e for e in exc_info.value.errors)
+        assert not any("share fewer" in e for e in exc_info.value.errors)
+
+    def test_besties_with_too_few_shared_preferences_rejected(self):
+        # Alice and Carlos share only Archery (1 < 2) — no feasible identical schedule.
+        joined = _two_cabin_joined()
+        relationships = _relationship_row("Puffin", "Alice", "Tillikum", "Carlos", "besties")
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert any("share fewer" in e for e in exc_info.value.errors)
+        assert any("Alice" in e and "Carlos" in e for e in exc_info.value.errors)
+
+    def test_friends_and_frenemies_pass_with_one_shared_preference(self):
+        # Alice & Carlos share 1 seatrade (Archery): enough for friends (≥1), and
+        # frenemies has no preference precondition.
+        joined = _two_cabin_joined()
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Puffin", "Puffin"],
+                "camper_1": ["Alice", "Bob"],
+                "cabin_2": ["Tillikum", "Tillikum"],
+                "camper_2": ["Carlos", "Carlos"],
+                "relationship": ["friends", "frenemies"],
+            }
+        )
+
+        result = validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert len(result) == 2
+
+    def test_friends_with_no_shared_preference_rejected(self):
+        # Disjoint preferences — the pair can never co-occupy a session.
+        joined = pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Tillikum"],
+                "camper": ["Alice", "Carlos"],
+                "gender": ["female", "male"],
+                "seatrade_1": ["Sailing", "Archery"],
+                "seatrade_2": ["Climbing", "Kayaking"],
+                "seatrade_3": ["Crafts", "Tubing"],
+                "seatrade_4": ["Swimming", "Wibit"],
+            }
+        )
+        relationships = _relationship_row("Puffin", "Alice", "Tillikum", "Carlos", "friends")
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert any("Alice" in e and "Carlos" in e for e in exc_info.value.errors)
+        assert any("no shared session" in e for e in exc_info.value.errors)
+        # Message references the threshold constant, like the besties branch, so it
+        # stays correct if FRIENDS_MIN_SHARED_SEATRADES is ever raised.
+        assert any(f"fewer than {FRIENDS_MIN_SHARED_SEATRADES}" in e for e in exc_info.value.errors)
+
+    def test_frenemies_with_no_shared_preference_passes(self):
+        # Frenemies has no preference precondition — disjoint prefs are fine.
+        joined = pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Tillikum"],
+                "camper": ["Alice", "Carlos"],
+                "gender": ["female", "male"],
+                "seatrade_1": ["Sailing", "Archery"],
+                "seatrade_2": ["Climbing", "Kayaking"],
+                "seatrade_3": ["Crafts", "Tubing"],
+                "seatrade_4": ["Swimming", "Wibit"],
+            }
+        )
+        relationships = _relationship_row("Puffin", "Alice", "Tillikum", "Carlos", "frenemies")
+
+        result = validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert len(result) == 1
+
+    def test_invalid_relationship_value_rejected(self):
+        joined = _two_cabin_joined()
+        relationships = _relationship_row("Puffin", "Alice", "Puffin", "Bob", "rivals")
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert any("relationship" in e for e in exc_info.value.errors)
+
+    def test_duplicate_pair_does_not_cascade_other_errors(self):
+        # Two identical infeasible besties rows: the first row reports "share fewer";
+        # the duplicate row reports only "duplicate", not a second "share fewer".
+        joined = _two_cabin_joined()
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Puffin", "Puffin"],
+                "camper_1": ["Alice", "Alice"],
+                "cabin_2": ["Tillikum", "Tillikum"],
+                "camper_2": ["Carlos", "Carlos"],
+                "relationship": ["besties", "besties"],
+            }
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        errors = exc_info.value.errors
+        assert sum("duplicate" in e.lower() for e in errors) == 1
+        assert sum("share fewer" in e for e in errors) == 1
+
+
+class TestEmptyRelationships:
+    """empty_relationships builds a schema-valid, zero-row CamperRelationships frame."""
+
+    def test_has_schema_columns_and_is_empty(self):
+        result = empty_relationships()
+
+        assert list(result.columns) == ["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"]
+        assert len(result) == 0
+        CamperRelationships.validate(result)
+
+
+def test_besties_min_shared_seatrades_is_single_source():
+    """The feasibility threshold has one home in config, imported everywhere else."""
+    assert BESTIES_MIN_SHARED_SEATRADES == 2
 
 
 class TestReadCsvForSchema:

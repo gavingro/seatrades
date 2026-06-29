@@ -70,6 +70,31 @@ class CamperIdentity(DataFrameModel):
     gender: str = Field(ignore_na=False)
 
 
+RELATIONSHIP_TYPES = ["friends", "besties", "frenemies"]
+
+# A besties pair needs two identical sessions, so its members must share at least
+# this many preferred seatrades for the identical-schedule constraint to stay feasible.
+BESTIES_MIN_SHARED_SEATRADES = 2
+
+# A friends pair needs one shared session, so its members must share at least this
+# many preferred seatrades to have any session they could both occupy.
+FRIENDS_MIN_SHARED_SEATRADES = 1
+
+
+class CamperRelationships(DataFrameModel):
+    """Camper social relationships — pairs of campers with a relationship type.
+
+    Each pair uses (cabin, camper) composite keys to match the camper identity
+    domain model. ``relationship`` is one of friends, besties, or frenemies.
+    """
+
+    cabin_1: str = Field(ignore_na=False)
+    camper_1: str = Field(ignore_na=False)
+    cabin_2: str = Field(ignore_na=False)
+    camper_2: str = Field(ignore_na=False)
+    relationship: str = Field(isin=RELATIONSHIP_TYPES, ignore_na=False)
+
+
 class CamperPreferences(DataFrameModel):
     """Camper seatrade preferences — ranked choices."""
 

@@ -9,13 +9,30 @@ Pandera mypy suppressions:
 Revisit if pandera mypy plugin improves or pandas-stubs adds DataFrameModel support.
 """
 
+from __future__ import annotations
+
 import re
 
 import pandas as pd
 from pandera import DataFrameModel
 from pandera.errors import SchemaError, SchemaErrors
 
-from seatrades.config import PREF_COLS, CamperIdentity, CamperPreferences, SeatradesConfig
+from seatrades.config import (
+    BESTIES_MIN_SHARED_SEATRADES,
+    FRIENDS_MIN_SHARED_SEATRADES,
+    PREF_COLS,
+    CamperIdentity,
+    CamperPreferences,
+    CamperRelationships,
+    SeatradesConfig,
+)
+
+
+def empty_relationships() -> pd.DataFrame:
+    """An empty, schema-valid CamperRelationships frame (columns derived from the schema)."""
+    columns = CamperRelationships.to_schema().columns.keys()
+    empty = pd.DataFrame({col: pd.Series(dtype="object") for col in columns})
+    return CamperRelationships.validate(empty)  # type: ignore[return-value]
 
 
 class ValidationError(Exception):
@@ -107,19 +124,95 @@ def read_csv_for_schema(file_like, schema_class: type[DataFrameModel], **kwargs)
     return df[columns]
 
 
+def validate_relationships(
+    relationships_df: pd.DataFrame,
+    joined_campers: pd.DataFrame,
+    label: str = "Camper Relationships",
+) -> pd.DataFrame:
+    """Validate camper relationship pairs against the joined campers.
+
+    Checks (collect-all-errors-then-raise, like join_and_validate):
+    schema, self-pairs, order-insensitive duplicate pairs, that both campers
+    exist in joined_campers, that besties pairs share enough preferences to have
+    a feasible identical schedule, and that friends pairs share at least one
+    preferred seatrade so a shared session is possible. joined_campers carries
+    seatrade_1..4 so these feasibility checks can run before solver time.
+
+    Returns the validated relationships DataFrame.
+    """
+    errors: list[str] = []
+
+    validated: pd.DataFrame | None = None
+    try:
+        validated = validate_schema(CamperRelationships, relationships_df, label)
+    except ValidationError as e:
+        errors.extend(e.errors)
+
+    # Row-level checks only once the schema (columns, types, non-null) is sound.
+    if not errors:
+        assert validated is not None
+        prefs_by_camper = {
+            (row.cabin, row.camper): {getattr(row, col) for col in PREF_COLS}
+            for row in joined_campers.itertuples(index=False)
+        }
+        known_campers = set(prefs_by_camper)
+        seen_pairs: set[frozenset[tuple[str, str]]] = set()
+        for row in validated.itertuples(index=True):
+            camper_1 = (str(row.cabin_1), str(row.camper_1))
+            camper_2 = (str(row.cabin_2), str(row.camper_2))
+            if camper_1 == camper_2:
+                errors.append(f"Row {row.Index}: camper {camper_1} cannot have a relationship with itself.")
+                continue
+            pair = frozenset({camper_1, camper_2})
+            if pair in seen_pairs:
+                errors.append(f"Row {row.Index}: duplicate pair {camper_1} & {camper_2} (order does not matter).")
+                continue
+            seen_pairs.add(pair)
+
+            unknown = [c for c in (camper_1, camper_2) if c not in known_campers]
+            if unknown:
+                named = " and ".join(str(c) for c in unknown)
+                errors.append(f"Row {row.Index}: {named} is not a known camper.")
+                continue
+
+            if row.relationship == "besties":
+                shared = prefs_by_camper[camper_1] & prefs_by_camper[camper_2]
+                if len(shared) < BESTIES_MIN_SHARED_SEATRADES:
+                    errors.append(
+                        f"Row {row.Index}: besties pair {camper_1} & {camper_2} share fewer than "
+                        f"{BESTIES_MIN_SHARED_SEATRADES} preferred seatrades — no identical schedule is possible."
+                    )
+            elif row.relationship == "friends":
+                shared = prefs_by_camper[camper_1] & prefs_by_camper[camper_2]
+                if len(shared) < FRIENDS_MIN_SHARED_SEATRADES:
+                    errors.append(
+                        f"Row {row.Index}: friends pair {camper_1} & {camper_2} share fewer than "
+                        f"{FRIENDS_MIN_SHARED_SEATRADES} preferred seatrades — no shared session is possible."
+                    )
+
+    if errors:
+        raise ValidationError(errors)
+
+    return validated  # type: ignore[return-value]
+
+
 def join_and_validate(
     identity_df: pd.DataFrame,
     preferences_df: pd.DataFrame,
     seatrade_df: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Validate cross-references and join 3 DataFrames into 2.
+    relationships_df: pd.DataFrame | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
+    """Validate cross-references and join 3 DataFrames into 2 (+ optional relationships).
 
-    Takes camper identity, camper preferences, and seatrade config DataFrames.
-    Validates that camper names match between identity and preferences, and
-    that all seatrade names in preferences exist in the seatrade config.
+    Takes camper identity, camper preferences, seatrade config, and optionally
+    camper relationships DataFrames. Validates that camper names match between
+    identity and preferences, that all seatrade names in preferences exist in the
+    seatrade config, and (when provided) that relationships reference known campers
+    and are feasible.
 
-    Returns (joined_campers, seatrade_setup) where joined_campers has columns:
-    cabin, camper, gender, seatrade_1..4.
+    Returns (joined_campers, seatrade_setup, validated_relationships) where
+    joined_campers has columns cabin, camper, gender, seatrade_1..4 and
+    validated_relationships is None when no relationships are given (absent or empty).
     """
     errors: list[str] = []
 
@@ -170,9 +263,19 @@ def join_and_validate(
             invalid = ", ".join(sorted(invalid_seatrades))
             errors.append(f"Seatrades in preferences but not in seatrade config: {invalid}")
 
+    # Relationships are validated against the joined campers, but only once the
+    # identity/preferences data is internally consistent (the join is meaningful).
+    joined: pd.DataFrame | None = None
+    validated_relationships: pd.DataFrame | None = None
+    if not errors:
+        joined = identity_validated.merge(preferences_validated, on="camper")  # type: ignore[union-attr, arg-type]
+        if relationships_df is not None and not relationships_df.empty:
+            try:
+                validated_relationships = validate_relationships(relationships_df, joined, "Camper Relationships")
+            except ValidationError as e:
+                errors.extend(e.errors)
+
     if errors:
         raise ValidationError(errors)
 
-    # At this point all validated DataFrames are non-None (guaranteed by the raise above).
-    joined = identity_validated.merge(preferences_validated, on="camper")  # type: ignore[union-attr, arg-type]
-    return joined, seatrade_validated  # type: ignore[return-value]
+    return joined, seatrade_validated, validated_relationships  # type: ignore[return-value]

@@ -19,7 +19,7 @@ The scheduling captain spends dozens of hours manually assigning hundreds of cam
 
 ## How to Use
 
-The app has four tabs:
+The app has five tabs:
 
 ### 1. Assignments
 View the optimized results. The app comes pre-loaded with demo data so you can immediately see the optimizer in action. Results update automatically when configuration changes:
@@ -40,7 +40,14 @@ Configure the campers and their preferences. Upload a CSV or use the built-in si
 - Gender
 - Four seatrade preferences (required)
 
-### 4. Optimization Setup
+### 4. Friends
+Pair up campers with a relationship. Type rows directly in the grid or upload a CSV:
+- **Besties** — the pair gets an identical schedule (enforced now)
+- **Friends** / **frenemies** — saved and validated, but not yet enforced
+
+A besties pair must share at least two preferred seatrades; the app flags an infeasible pair before you optimize.
+
+### 5. Optimization Setup
 Adjust how the optimizer balances competing priorities:
 - Preference weight (how much to prioritize camper choices)
 - Cabin weight (how much to keep cabin groups together)

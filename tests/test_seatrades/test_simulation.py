@@ -2,7 +2,8 @@
 
 import pandas as pd
 
-from seatrades.config import CamperSimulationConfig, SeatradeSimulationConfig
+from seatrades.config import CamperRelationships, CamperSimulationConfig, SeatradeSimulationConfig
+from seatrades.preferences import validate_relationships
 from seatrades.simulation import (
     ALL_CABIN_DICT,
     BOY_CABIN_EXAMPLES,
@@ -10,6 +11,7 @@ from seatrades.simulation import (
     SEATRADE_EXAMPLES,
     simulate_camper_identity,
     simulate_camper_preferences,
+    simulate_camper_relationships,
     simulate_seatrade_preferences,
 )
 
@@ -134,3 +136,109 @@ class TestSimulateCamperPreferences:
         from seatrades.config import CamperPreferences
 
         CamperPreferences.validate(result)
+
+
+class TestSimulateCamperRelationships:
+    """simulate_camper_relationships produces a feasible mock besties pair."""
+
+    def _identity(self):
+        return pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Puffin", "Tillikum"],
+                "camper": ["Alice", "Bob", "Carlos"],
+                "gender": ["female", "female", "male"],
+            }
+        )
+
+    def _preferences(self):
+        # Alice and Bob (same cabin) share Sailing + Climbing (≥2). Carlos shares <2 with each.
+        return pd.DataFrame(
+            {
+                "camper": ["Alice", "Bob", "Carlos"],
+                "seatrade_1": ["Sailing", "Climbing", "Archery"],
+                "seatrade_2": ["Climbing", "Sailing", "Kayaking"],
+                "seatrade_3": ["Archery", "Archery", "Tubing"],
+                "seatrade_4": ["Crafts", "Swimming", "Wibit"],
+            }
+        )
+
+    def _roster_identity(self):
+        return pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Puffin", "Tillikum", "Tillikum", "Orca", "Narwhal"],
+                "camper": ["Alice", "Bob", "Carlos", "Dana", "Eve", "Frank"],
+                "gender": ["female", "female", "male", "male", "female", "male"],
+            }
+        )
+
+    def _roster_preferences(self):
+        # Alice&Bob (same cabin) share ≥2 → besties. Other pairs share ≥1 → friends/frenemies.
+        return pd.DataFrame(
+            {
+                "camper": ["Alice", "Bob", "Carlos", "Dana", "Eve", "Frank"],
+                "seatrade_1": ["Sailing", "Climbing", "Archery", "Sailing", "Climbing", "Kayaking"],
+                "seatrade_2": ["Climbing", "Sailing", "Sailing", "Archery", "Kayaking", "Tubing"],
+                "seatrade_3": ["Archery", "Archery", "Kayaking", "Crafts", "Tubing", "Wibit"],
+                "seatrade_4": ["Crafts", "Swimming", "Tubing", "Wibit", "Wibit", "Swimming"],
+            }
+        )
+
+    def test_seeds_friends_and_frenemies_rows(self):
+        result = simulate_camper_relationships(self._roster_identity(), self._roster_preferences())
+
+        seeded = set(result["relationship"])
+        assert "friends" in seeded
+        assert "frenemies" in seeded
+
+    def test_seeded_pairs_use_distinct_campers(self):
+        result = simulate_camper_relationships(self._roster_identity(), self._roster_preferences())
+
+        campers = [(r.cabin_1, r.camper_1) for r in result.itertuples()] + [
+            (r.cabin_2, r.camper_2) for r in result.itertuples()
+        ]
+        # Disjoint camper sets across pairs preclude contradictory friend/frenemy chains.
+        assert len(campers) == len(set(campers))
+
+    def test_seeded_roster_passes_validation(self):
+        identity, prefs = self._roster_identity(), self._roster_preferences()
+        joined = identity.merge(prefs, on="camper")
+
+        result = simulate_camper_relationships(identity, prefs)
+
+        validate_relationships(result, joined, "Camper Relationships")
+
+    def test_returns_single_same_cabin_besties_row(self):
+        result = simulate_camper_relationships(self._identity(), self._preferences())
+
+        assert len(result) == 1
+        row = result.iloc[0]
+        assert row["relationship"] == "besties"
+        assert row["cabin_1"] == row["cabin_2"]
+
+    def test_generated_pair_passes_validation(self):
+        identity, prefs = self._identity(), self._preferences()
+        joined = identity.merge(prefs, on="camper")
+
+        result = simulate_camper_relationships(identity, prefs)
+
+        # The seeded pair must survive validate_relationships (known + feasible).
+        validate_relationships(result, joined, "Camper Relationships")
+
+    def test_empty_when_no_feasible_pair(self):
+        identity = pd.DataFrame(
+            {"cabin": ["Puffin", "Puffin"], "camper": ["Solo", "Lone"], "gender": ["female", "female"]}
+        )
+        prefs = pd.DataFrame(
+            {
+                "camper": ["Solo", "Lone"],
+                "seatrade_1": ["Archery", "Sailing"],
+                "seatrade_2": ["Climbing", "Crafts"],
+                "seatrade_3": ["Kayaking", "Tubing"],
+                "seatrade_4": ["Wibit", "Swimming"],
+            }
+        )
+
+        result = simulate_camper_relationships(identity, prefs)
+
+        assert len(result) == 0
+        CamperRelationships.validate(result)

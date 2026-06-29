@@ -5,13 +5,21 @@ and return validated pandas DataFrames.
 """
 
 import random
+from typing import Callable, NamedTuple, Optional
 
 import numpy as np
 import pandas as pd
 from faker import Faker
 
 from seatrades import preferences
-from seatrades.config import NUM_PREFERENCES, PREF_COLS, CamperSimulationConfig, SeatradeSimulationConfig
+from seatrades.config import (
+    BESTIES_MIN_SHARED_SEATRADES,
+    FRIENDS_MIN_SHARED_SEATRADES,
+    NUM_PREFERENCES,
+    PREF_COLS,
+    CamperSimulationConfig,
+    SeatradeSimulationConfig,
+)
 
 # Real cabin names from Keats Camp
 GIRL_CABIN_EXAMPLES = [
@@ -127,3 +135,83 @@ def simulate_camper_preferences(
 
     result = pd.DataFrame(rows)
     return preferences.CamperPreferences.validate(result)  # type: ignore[return-value]
+
+
+class Camper(NamedTuple):
+    """A camper's identity and preferred seatrades, for pair selection."""
+
+    cabin: str
+    name: str
+    prefs: set[str]
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return (self.cabin, self.name)
+
+
+def simulate_camper_relationships(
+    identity_df: pd.DataFrame,
+    preferences_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Generate one mock pair of each relationship type, guaranteed solver-feasible.
+
+    Each pair uses distinct campers, so the three constraints can never form a
+    contradictory friend/frenemy chain. The pairs are picked to stay individually
+    feasible: besties and friends from a same-cabin pair (always the same fleet, so a
+    shared schedule/session is achievable) sharing enough preferred seatrades, and
+    frenemies from a cross-cabin pair (separable into different fleets, so they need
+    never overlap). Any type with no qualifying pair is skipped; an empty (but
+    schema-valid) frame is returned when none can be seeded.
+    """
+    merged = identity_df.merge(preferences_df, on="camper")
+    campers = [
+        Camper(str(row.cabin), str(row.camper), {getattr(row, col) for col in PREF_COLS})
+        for row in merged.itertuples(index=False)
+    ]
+    used: set[tuple[str, str]] = set()
+
+    def reserve_pair(
+        predicate: Callable[[Camper, Camper], bool],
+    ) -> Optional[tuple[tuple[str, str], tuple[str, str]]]:
+        """Return the first unused pair matching predicate and mark both campers used.
+
+        Mutates ``used`` so later calls can't reuse a camper — distinct campers per
+        pair preclude contradictory friend/frenemy chains.
+        """
+        for i in range(len(campers)):
+            for j in range(i + 1, len(campers)):
+                a, b = campers[i], campers[j]
+                if a.key in used or b.key in used or not predicate(a, b):
+                    continue
+                used.update({a.key, b.key})
+                return a.key, b.key
+        return None
+
+    def same_cabin(a: Camper, b: Camper) -> bool:
+        return a.cabin == b.cabin
+
+    def shared(a: Camper, b: Camper) -> int:
+        return len(a.prefs & b.prefs)
+
+    # Order is load-bearing: besties reserves first because its ≥2-shared pairs are
+    # scarcer than friends' ≥1-shared pairs; reordering could starve besties.
+    selections = {
+        "besties": reserve_pair(lambda a, b: same_cabin(a, b) and shared(a, b) >= BESTIES_MIN_SHARED_SEATRADES),
+        "friends": reserve_pair(lambda a, b: same_cabin(a, b) and shared(a, b) >= FRIENDS_MIN_SHARED_SEATRADES),
+        "frenemies": reserve_pair(lambda a, b: not same_cabin(a, b)),
+    }
+
+    rows = [
+        {
+            "cabin_1": pair[0][0],
+            "camper_1": pair[0][1],
+            "cabin_2": pair[1][0],
+            "camper_2": pair[1][1],
+            "relationship": relationship,
+        }
+        for relationship, pair in selections.items()
+        if pair is not None
+    ]
+    if not rows:
+        return preferences.empty_relationships()
+    return preferences.CamperRelationships.validate(pd.DataFrame(rows))  # type: ignore[return-value]

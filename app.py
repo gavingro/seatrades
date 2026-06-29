@@ -2,6 +2,7 @@ import streamlit as st
 
 from app.tabs.assignments_tab import AssignmentsTab
 from app.tabs.campers_tab import CamperSimulationConfigTab, _update_camper_simulation_config
+from app.tabs.friends_tab import FriendsTab
 from app.tabs.optimization_config_tab import (
     OptimizationConfigForm,
     _update_optimization_config,
@@ -15,6 +16,7 @@ from seatrades.preferences import join_and_validate
 from seatrades.simulation import (
     simulate_camper_identity,
     simulate_camper_preferences,
+    simulate_camper_relationships,
     simulate_seatrade_preferences,
 )
 
@@ -31,12 +33,14 @@ def main():
         assignments_tab,
         seatrades_tab,
         camper_pref_tab,
+        friends_tab,
         optimization_config_tab,
     ) = st.tabs(
         [
             ":material/date_range: Assignments",
             ":material/camping: Seatrade Setup",
             ":material/child_care: Camper Setup",
+            ":material/diversity_3: Friends",
             ":material/tune: Scheduling Setup",
         ]
     )
@@ -46,6 +50,8 @@ def main():
         SeatradeSimulationConfigTab().generate()
     with camper_pref_tab:
         CamperSimulationConfigTab().generate()
+    with friends_tab:
+        FriendsTab().generate()
     with optimization_config_tab:
         st.subheader("Scheduling Setup")
         OptimizationConfigForm().generate()
@@ -72,12 +78,19 @@ def _initial_page_setup():
         st.session_state["camper_preferences"] = simulate_camper_preferences(
             identity_df, st.session_state["seatrade_preferences"]
         )
+    # Seed a feasible mock besties pair so relationships are demoable out of the box.
+    if "camper_relationships" not in st.session_state:
+        st.session_state["camper_relationships"] = simulate_camper_relationships(
+            st.session_state["camper_identity"],
+            st.session_state["camper_preferences"],
+        )
     # cabin_camper_prefs is the joined result used by Seatrades
     if "cabin_camper_prefs" not in st.session_state:
-        joined_campers, _seatrade_setup = join_and_validate(
+        joined_campers, _seatrade_setup, _relationships = join_and_validate(
             st.session_state["camper_identity"],
             st.session_state["camper_preferences"],
             st.session_state["seatrade_preferences"],
+            st.session_state["camper_relationships"],
         )
         st.session_state["cabin_camper_prefs"] = joined_campers
 

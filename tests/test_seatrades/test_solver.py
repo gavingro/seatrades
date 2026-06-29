@@ -5,6 +5,7 @@ import pulp
 import pytest
 
 from seatrades.config import OptimizationConfig
+from seatrades.preferences import validate_relationships
 from seatrades.problem import SchedulingProblem
 from seatrades.results import (
     AssignmentSolution,
@@ -12,6 +13,7 @@ from seatrades.results import (
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
+from seatrades.simulation import simulate_camper_relationships
 from seatrades.solver import run
 
 
@@ -145,6 +147,192 @@ class TestSolverRun:
         alex_wide = wideform[wideform["camper"] == "Alex"]
         assert len(alex_wide) == 2
         assert set(alex_wide["cabin"]) == {"Cabin1", "Cabin2"}
+
+
+class TestBestiesConstraint:
+    """A besties pair must receive an identical schedule end-to-end."""
+
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "camper": ["Alice", "Bob", "Carol", "Dave"],
+            "gender": ["F", "M", "F", "M"],
+            "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
+            "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
+            "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
+            "seatrade_4": ["Kayaking", "Kayaking", "Kayaking", "Kayaking"],
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+            "campers_min": [0, 0, 0, 0],
+            "campers_max": [10, 10, 10, 10],
+        }
+    )
+
+    def test_besties_pair_gets_identical_schedule(self):
+        # Alice and Bob are both in Cabin1 and share Archery/Sailing/Climbing/Kayaking.
+        # A same-cabin pair stays feasible under fleet-balance regardless of cabin count.
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Cabin1"],
+                "camper_1": ["Alice"],
+                "cabin_2": ["Cabin1"],
+                "camper_2": ["Bob"],
+                "relationship": ["besties"],
+            }
+        )
+        problem = SchedulingProblem(self._joined, self._setup, relationships=relationships)
+        config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+        solution = run(problem, config)
+
+        assert solution.status.state == SolverState.OPTIMAL
+        # camper_ids: Alice=0, Bob=1. Identical assignment row across all seatrades.
+        alice = solution.assignments.loc[0]
+        bob = solution.assignments.loc[1]
+        assert (alice == bob).all(), f"besties schedules differ:\n{alice}\n{bob}"
+
+    def test_without_relationships_pair_need_not_match(self):
+        """Sanity: the identical-schedule outcome comes from the constraint, not the data."""
+        problem = SchedulingProblem(self._joined, self._setup)
+        config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+        solution = run(problem, config)
+
+        assert solution.status.state == SolverState.OPTIMAL
+        besties_names = [name for name in problem.build(config).constraints if name.startswith("besties_")]
+        assert besties_names == []
+
+
+class TestFriendsFrenemiesConstraints:
+    """Friends pairs share a session end-to-end; frenemies pairs share none."""
+
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "camper": ["Alice", "Bob", "Carol", "Dave"],
+            "gender": ["F", "M", "F", "M"],
+            "seatrade_1": ["Archery", "Archery", "Sailing", "Archery"],
+            "seatrade_2": ["Sailing", "Sailing", "Archery", "Climbing"],
+            "seatrade_3": ["Climbing", "Climbing", "Climbing", "Sailing"],
+            "seatrade_4": ["Kayaking", "Kayaking", "Kayaking", "Kayaking"],
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+            "campers_min": [0, 0, 0, 0],
+            "campers_max": [10, 10, 10, 10],
+        }
+    )
+    _config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+    def _shared_sessions(self, solution, c1, c2):
+        """Columns where both campers are assigned (both == 1)."""
+        both = (solution.assignments.loc[c1] == 1) & (solution.assignments.loc[c2] == 1)
+        return [s for s in solution.assignments.columns if both[s]]
+
+    def test_friends_pair_shares_a_session(self):
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Cabin1"],
+                "camper_1": ["Alice"],
+                "cabin_2": ["Cabin1"],
+                "camper_2": ["Bob"],
+                "relationship": ["friends"],
+            }
+        )
+        problem = SchedulingProblem(self._joined, self._setup, relationships=relationships)
+
+        solution = run(problem, self._config)
+
+        assert solution.status.state == SolverState.OPTIMAL
+        # Alice=0, Bob=1 must overlap in at least one session.
+        assert len(self._shared_sessions(solution, 0, 1)) >= 1
+
+    def test_frenemies_pair_shares_no_session(self):
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Cabin1"],
+                "camper_1": ["Alice"],
+                "cabin_2": ["Cabin2"],
+                "camper_2": ["Carol"],
+                "relationship": ["frenemies"],
+            }
+        )
+        problem = SchedulingProblem(self._joined, self._setup, relationships=relationships)
+
+        solution = run(problem, self._config)
+
+        assert solution.status.state == SolverState.OPTIMAL
+        # Alice=0, Carol=2 must not overlap in any session.
+        assert self._shared_sessions(solution, 0, 2) == []
+
+    def test_contradictory_chain_is_infeasible(self):
+        # besties(Alice,Bob) → identical schedules; friends(Bob,Carol) → Carol shares
+        # a session with Bob; frenemies(Alice,Carol) → Carol shares none with Alice.
+        # Alice≡Bob, so Carol must both share and not share that schedule — infeasible.
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Cabin1", "Cabin1", "Cabin1"],
+                "camper_1": ["Alice", "Bob", "Alice"],
+                "cabin_2": ["Cabin1", "Cabin2", "Cabin2"],
+                "camper_2": ["Bob", "Carol", "Carol"],
+                "relationship": ["besties", "friends", "frenemies"],
+            }
+        )
+        # The set passes validation — the conflict only surfaces at solve time.
+        validate_relationships(relationships, self._joined)
+
+        problem = SchedulingProblem(self._joined, self._setup, relationships=relationships)
+        solution = run(problem, self._config)
+
+        assert solution.status.state == SolverState.INFEASIBLE
+
+
+class TestSeededRosterSolves:
+    """The mock generator's seeded relationships must solve end-to-end (CONTEXT.md:86)."""
+
+    _identity = pd.DataFrame(
+        {
+            "cabin": ["Puffin", "Puffin", "Tillikum", "Tillikum", "Orca", "Narwhal"],
+            "camper": ["Alice", "Bob", "Carlos", "Dana", "Eve", "Frank"],
+            "gender": ["female", "female", "male", "male", "female", "male"],
+        }
+    )
+    # Alice&Bob (same cabin) share ≥2 → besties; Carlos&Dana (same cabin) share ≥1 →
+    # friends; the remaining cross-cabin pair → frenemies.
+    _preferences = pd.DataFrame(
+        {
+            "camper": ["Alice", "Bob", "Carlos", "Dana", "Eve", "Frank"],
+            "seatrade_1": ["Sailing", "Climbing", "Archery", "Sailing", "Climbing", "Kayaking"],
+            "seatrade_2": ["Climbing", "Sailing", "Sailing", "Archery", "Kayaking", "Tubing"],
+            "seatrade_3": ["Archery", "Archery", "Kayaking", "Crafts", "Tubing", "Wibit"],
+            "seatrade_4": ["Crafts", "Swimming", "Tubing", "Wibit", "Wibit", "Swimming"],
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["Sailing", "Climbing", "Archery", "Crafts", "Kayaking", "Tubing", "Wibit", "Swimming"],
+            "campers_min": [0] * 8,
+            "campers_max": [10] * 8,
+        }
+    )
+    _config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+    def test_all_three_seeded_relationships_solve(self):
+        relationships = simulate_camper_relationships(self._identity, self._preferences)
+        # Guard the premise: the generator must actually seed all three types.
+        assert set(relationships["relationship"]) == {"besties", "friends", "frenemies"}
+
+        joined = self._identity.merge(self._preferences, on="camper")
+        problem = SchedulingProblem(joined, self._setup, relationships=relationships)
+
+        solution = run(problem, self._config)
+
+        assert solution.status.state == SolverState.OPTIMAL
 
 
 class TestMangle:

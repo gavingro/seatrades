@@ -6,7 +6,12 @@ import streamlit as st
 from app.components import clear_optimization_results, show_validation_error, try_join_and_validate
 from seatrades.config import CamperIdentity, CamperPreferences, CamperSimulationConfig
 from seatrades.preferences import ValidationError, join_and_validate, read_csv_for_schema, validate_schema
-from seatrades.simulation import ALL_CABIN_DICT, simulate_camper_identity, simulate_camper_preferences
+from seatrades.simulation import (
+    ALL_CABIN_DICT,
+    simulate_camper_identity,
+    simulate_camper_preferences,
+    simulate_camper_relationships,
+)
 
 
 def _update_camper_simulation_config(camper_simulation_config: CamperSimulationConfig):
@@ -24,7 +29,8 @@ def _update_camper_simulation_config(camper_simulation_config: CamperSimulationC
         st.toast(f"Updating Camper Simulation Configuration.\n\n{camper_simulation_config}")
     st.session_state["camper_simulation_config"] = camper_simulation_config
     clear_optimization_results()
-    for key in ("camper_identity", "camper_preferences"):
+    # Relationships reference specific campers; drop them so they're re-seeded for the new roster.
+    for key in ("camper_identity", "camper_preferences", "camper_relationships"):
         if key in st.session_state:
             del st.session_state[key]
 
@@ -147,13 +153,17 @@ def _simulate_campers(camper_simulation_config: CamperSimulationConfig):
 
     identity_df = simulate_camper_identity(camper_simulation_config)
     preferences_df = simulate_camper_preferences(identity_df, seatrade_prefs)
+    relationships_df = simulate_camper_relationships(identity_df, preferences_df)
 
     st.session_state["camper_identity"] = identity_df
     st.session_state["camper_preferences"] = preferences_df
+    st.session_state["camper_relationships"] = relationships_df
     clear_optimization_results()
 
     try:
-        joined_campers, seatrade_setup = join_and_validate(identity_df, preferences_df, seatrade_prefs)
+        joined_campers, _seatrade_setup, _relationships = join_and_validate(
+            identity_df, preferences_df, seatrade_prefs, relationships_df
+        )
         st.session_state["cabin_camper_prefs"] = joined_campers
     except ValidationError as e:
         show_validation_error("Cross-reference Validation", e)
