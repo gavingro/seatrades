@@ -37,7 +37,7 @@ def main():
             ":material/date_range: Assignments",
             ":material/camping: Seatrade Setup",
             ":material/child_care: Camper Setup",
-            ":material/tune: Optimization Setup",
+            ":material/tune: Scheduling Setup",
         ]
     )
     with assignments_tab:
@@ -47,7 +47,7 @@ def main():
     with camper_pref_tab:
         CamperSimulationConfigTab().generate()
     with optimization_config_tab:
-        st.subheader("Optimization Setup")
+        st.subheader("Scheduling Setup")
         OptimizationConfigForm().generate()
 
 

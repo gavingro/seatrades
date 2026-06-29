@@ -53,15 +53,13 @@ class AssignmentsTab:
             else:
                 solution = st.session_state["assigned_solution"]
                 optimality = solution.status.optimality
-                st.success(f"Schedule ready — every camper is assigned, and it's {optimality:.0%} optimal.")
+                st.success(
+                    f"Every camper is assigned. Schedule is {optimality:.0%} optimal based on optimization preferences."
+                )
                 results_chart = display_assignments(solution)
                 st.altair_chart(results_chart)
                 st.caption(f"Blocks: {BLOCK_DECODER_CAPTION}")
-                st.caption(
-                    "Color = camper satisfaction (green = top pick → red = low or unranked). "
-                    "Numbers show the camper's choice rank; a colored cell with no number means they "
-                    "were assigned a seatrade they didn't rank. Blue cells are seatrades they weren't assigned."
-                )
+                st.caption("Color = camper satisfaction (green = 1st choice pick → red = lower ranked choices). ")
 
                 longform_df = wrangle_assignments_to_longform(solution)
 
@@ -117,7 +115,7 @@ def _generate_intro_dialogue() -> None:
         )
     with cols[2]:
         st.warning(
-            "Adjust your **goals and limits** to describe this week's priorities in the **Optimization Setup** tab.",
+            "Adjust your **goals and limits** to describe this week's priorities in the **Scheduling Setup** tab.",
             icon=":material/tune:",
         )
     st.markdown("Happy scheduling!")

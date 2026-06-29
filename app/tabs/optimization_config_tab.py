@@ -15,14 +15,14 @@ class OptimizationConfigForm:
     def generate(self):
         with st.form("Optimization Setup"):
             st.markdown(
-                "Tell the optimizer **what matters most** for this week. The goals below are "
-                "_soft preferences_ — the optimizer balances them against each other to find the "
-                "best overall schedule. Higher importance = stronger pull, never an absolute rule."
+                "Tell the optimizer what matters most for this week's schedule. These first sliders below are "
+                "_soft preferences_. The optimizer balances them against each other to find the "
+                "best overall schedule."
             )
 
             # --- Basic: the three competing goals ---
             preference_weight = st.slider(
-                "Camper top choices",
+                "Give Campers their Favourite Picks",
                 min_value=0,
                 max_value=5,
                 value=OptimizationConfig().preference_weight,
@@ -32,7 +32,7 @@ class OptimizationConfigForm:
                 ),
             )
             cabins_weight = st.slider(
-                "Cabin togetherness",
+                "Keep Cabinmates Together",
                 min_value=0,
                 max_value=5,
                 value=OptimizationConfig().cabins_weight,
