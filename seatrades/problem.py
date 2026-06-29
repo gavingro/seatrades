@@ -173,14 +173,14 @@ class SchedulingProblem:
             seatrade = seatrade_name(s)
             campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
             campers_max = self.seatrades_prefs.loc[seatrade, "campers_max"]
-            count = pulp.lpSum([camper_assignments[c][s] for c in self.campers])
+            camper_count = pulp.lpSum([camper_assignments[c][s] for c in self.campers])
             if config.allow_empty_sessions:
                 running = seatrade_assignment[block][seatrade]
-                problem += (count >= campers_min * running, f"Min_if_running_{s}")
-                problem += (count <= campers_max * running, f"Max_if_running_{s}")
+                problem += (camper_count >= campers_min * running, f"Min_if_running_{s}")
+                problem += (camper_count <= campers_max * running, f"Max_if_running_{s}")
             else:
-                problem += (count >= campers_min, f"More_than_{campers_min}_in_{s}")
-                problem += (count <= campers_max, f"Less_than_{campers_max}_in_{s}")
+                problem += (camper_count >= campers_min, f"More_than_{campers_min}_in_{s}")
+                problem += (camper_count <= campers_max, f"Less_than_{campers_max}_in_{s}")
 
     def _add_preference_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict) -> None:
         """Campers cannot be assigned to seatrades they didn't request."""
