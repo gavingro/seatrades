@@ -49,7 +49,10 @@ packages = ["seatrades"]
 
 [tool.pytest.ini_options]
 testpaths = "tests"
-addopts = "-v -ra --cov src"
+addopts = "-v -ra --cov src -m 'not slow'"
+markers = [
+    "slow: slow tests (e.g. full solver runs); deselected by default, run with -m slow",
+]
 log_format = "%(asctime)s %(levelname)s %(message)s"
 log_date_format = "%Y-%m-%d %H:%M:%S"
 

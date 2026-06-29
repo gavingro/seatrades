@@ -9,6 +9,7 @@ ADR 0002.
 
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
 APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
@@ -16,6 +17,7 @@ APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
 SOLVE_TIMEOUT_SECONDS = 180
 
 
+@pytest.mark.slow
 class TestAppSmoke:
     def test_assign_seatrades_end_to_end(self):
         at = AppTest.from_file(APP_SCRIPT, default_timeout=SOLVE_TIMEOUT_SECONDS)
