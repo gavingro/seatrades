@@ -11,7 +11,19 @@ import pandas as pd
 from faker import Faker
 
 from seatrades import preferences
-from seatrades.config import NUM_PREFERENCES, PREF_COLS, CamperSimulationConfig, SeatradeSimulationConfig
+from seatrades.config import (
+    NUM_PREFERENCES,
+    PREF_COLS,
+    CamperRelationships,
+    CamperSimulationConfig,
+    SeatradeSimulationConfig,
+)
+
+# A besties pair needs two identical sessions, so its members must share >= 2
+# preferred seatrades for the identical-schedule constraint to stay feasible.
+_BESTIES_MIN_SHARED_SEATRADES = 2
+
+_RELATIONSHIP_COLUMNS = ["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"]
 
 # Real cabin names from Keats Camp
 GIRL_CABIN_EXAMPLES = [
@@ -127,3 +139,40 @@ def simulate_camper_preferences(
 
     result = pd.DataFrame(rows)
     return preferences.CamperPreferences.validate(result)  # type: ignore[return-value]
+
+
+def simulate_camper_relationships(
+    identity_df: pd.DataFrame,
+    preferences_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Generate one mock besties pair, guaranteed solver-feasible.
+
+    Picks the first same-cabin pair of campers sharing at least two preferred
+    seatrades. A same-cabin pair avoids fleet-balance conflicts at any cabin count,
+    and the shared preferences make an identical schedule achievable — so the seeded
+    besties relationship always solves. Returns an empty (but schema-valid)
+    CamperRelationships frame if no such pair exists.
+    """
+    merged = identity_df.merge(preferences_df, on="camper")
+    for cabin, group in merged.groupby("cabin"):
+        members = list(group.itertuples(index=False))
+        for i in range(len(members)):
+            for j in range(i + 1, len(members)):
+                a, b = members[i], members[j]
+                shared = {getattr(a, col) for col in PREF_COLS} & {getattr(b, col) for col in PREF_COLS}
+                if len(shared) >= _BESTIES_MIN_SHARED_SEATRADES:
+                    row = pd.DataFrame(
+                        [
+                            {
+                                "cabin_1": cabin,
+                                "camper_1": a.camper,
+                                "cabin_2": cabin,
+                                "camper_2": b.camper,
+                                "relationship": "besties",
+                            }
+                        ]
+                    )
+                    return CamperRelationships.validate(row)  # type: ignore[return-value]
+
+    empty = pd.DataFrame({col: pd.Series(dtype="object") for col in _RELATIONSHIP_COLUMNS})
+    return CamperRelationships.validate(empty)  # type: ignore[return-value]

@@ -81,6 +81,10 @@ A social constraint between a pair of campers. Each relationship has:
 
 All relationship types are hard constraints — the solver must satisfy them or report infeasibility. Relationships are optional input; when absent, no relationship constraints are applied.
 
+**Implementation status (slice #65).** The schema, validation, Friends tab, and solver wiring are shared across all three types, but only **besties** is enforced by the solver so far. `friends` and `frenemies` rows validate and persist but are not yet constrained — enforcement (with auxiliary shared-session variables) lands in a follow-up slice.
+
+**Besties feasibility is checked at validation, not solve time.** A besties pair needs two identical sessions, so its members must share at least 2 preferred seatrades; `validate_relationships` rejects a besties pair that shares fewer (naming both campers) before the solver runs. The mock generator (`simulate_camper_relationships`) seeds a same-cabin pair sharing ≥2 preferences, so the default demo always solves.
+
 ### Assignment
 
 A mapping of a camper to a seatrade in a specific block. Each camper gets exactly 2 assignments per week (one per block).
@@ -134,7 +138,7 @@ flowchart LR
 ```
 1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation (produces 3 DataFrames: camper identity, camper preferences, seatrade setup + optional relationships [#58])
 2. preferences.py validates (names match, seatrades exist in setup, relationship pairs valid [#58]) and joins 3 DataFrames → 2 (joined campers, seatrade setup) + validated relationships [#58]
-3. SchedulingProblem(joined_campers, seatrade_setup) → holds parsed domain state (relationships parameter [#58 planned])
+3. SchedulingProblem(joined_campers, seatrade_setup, relationships) → holds parsed domain state; maps besties pairs to internal camper_ids [#65]
 4. solver.run(problem, config) → calls problem.build(config) internally, returns AssignmentSolution (with SolverStatus inside)
 5. UI reads AssignmentSolution.status via @st.fragment, displays assignments
 6. `wrangle_assignments_to_longform(solution)` / `wrangle_assignments_to_wideform(longform_df)` → formatted DataFrames
@@ -157,7 +161,7 @@ The scheduler solves a mixed-integer linear programming problem with these const
 6. **Cabin max per seatrade** - Max k campers from same cabin in one seatrade (by default k=4)
 7. **Fleet balance** - Cabins split evenly between fleets
 8. **Gender balance** - Boys/girls cabins split evenly between fleets
-9. **Camper relationships** - Friends (share ≥1 session), besties (identical schedule), frenemies (share zero sessions). Hard constraints, optional input.
+9. **Camper relationships** - Friends (share ≥1 session), besties (identical schedule), frenemies (share zero sessions). Hard constraints, optional input. **Only besties is enforced so far (slice #65)**; friends/frenemies validate but are not yet constrained. Besties is implemented in `_add_besties_constraints` by equating the two campers' assignment variables across every block_seatrade — no auxiliary variables.
 
 ### Objective Goals (user-facing)
 

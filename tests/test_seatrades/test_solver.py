@@ -147,6 +147,63 @@ class TestSolverRun:
         assert set(alex_wide["cabin"]) == {"Cabin1", "Cabin2"}
 
 
+class TestBestiesConstraint:
+    """A besties pair must receive an identical schedule end-to-end."""
+
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "camper": ["Alice", "Bob", "Carol", "Dave"],
+            "gender": ["F", "M", "F", "M"],
+            "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
+            "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
+            "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
+            "seatrade_4": ["Kayaking", "Kayaking", "Kayaking", "Kayaking"],
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+            "campers_min": [0, 0, 0, 0],
+            "campers_max": [10, 10, 10, 10],
+        }
+    )
+
+    def test_besties_pair_gets_identical_schedule(self):
+        # Alice and Bob are both in Cabin1 and share Archery/Sailing/Climbing/Kayaking.
+        # A same-cabin pair stays feasible under fleet-balance regardless of cabin count.
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Cabin1"],
+                "camper_1": ["Alice"],
+                "cabin_2": ["Cabin1"],
+                "camper_2": ["Bob"],
+                "relationship": ["besties"],
+            }
+        )
+        problem = SchedulingProblem(self._joined, self._setup, relationships=relationships)
+        config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+        solution = run(problem, config)
+
+        assert solution.status.state == SolverState.OPTIMAL
+        # camper_ids: Alice=0, Bob=1. Identical assignment row across all seatrades.
+        alice = solution.assignments.loc[0]
+        bob = solution.assignments.loc[1]
+        assert (alice == bob).all(), f"besties schedules differ:\n{alice}\n{bob}"
+
+    def test_without_relationships_pair_need_not_match(self):
+        """Sanity: the identical-schedule outcome comes from the constraint, not the data."""
+        problem = SchedulingProblem(self._joined, self._setup)
+        config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+        solution = run(problem, config)
+
+        assert solution.status.state == SolverState.OPTIMAL
+        besties_names = [name for name in problem.build(config).constraints if name.startswith("besties_")]
+        assert besties_names == []
+
+
 class TestMangle:
     """Name mangling must match PuLP's internal variable naming."""
 

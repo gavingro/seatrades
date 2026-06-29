@@ -1,6 +1,6 @@
 """SchedulingProblem — builds PuLP model from domain data."""
 
-from typing import Hashable
+from typing import Hashable, Optional
 
 import pandas as pd
 import pulp
@@ -32,7 +32,12 @@ class SchedulingProblem:
     VarDict = dict[Hashable, dict[str, pulp.LpVariable]]
     _CABIN_MAX_PER_SEATRADE = 4
 
-    def __init__(self, joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame):
+    def __init__(
+        self,
+        joined_campers: pd.DataFrame,
+        seatrade_setup: pd.DataFrame,
+        relationships: Optional[pd.DataFrame] = None,
+    ):
         # Campers are identified internally by zero-indexed integer IDs (row
         # position), never by name. IDs are unique by construction, so they key
         # PuLP variables without the name-collision hack and never leak to output.
@@ -53,6 +58,23 @@ class SchedulingProblem:
         self.seatrades = seatrade_setup["seatrade"]
         self.fleets = BLOCKS
         self.seatrades_full = [f"{block}_{seatrade}" for block in self.fleets for seatrade in self.seatrades]
+
+        # Relationships reference campers by (cabin, camper); map them to integer IDs
+        # so constraints can be expressed over the camper_assignments variables.
+        camper_id_by_key: dict[tuple[str, str], int] = {
+            (str(row.cabin), str(row.camper)): int(row.camper_id)  # type: ignore[arg-type]
+            for row in joined_campers.itertuples(index=False)
+        }
+        self.besties_pairs: list[tuple[int, int]] = []
+        if relationships is not None and not relationships.empty:
+            besties = relationships[relationships["relationship"] == "besties"]
+            for row in besties.itertuples(index=False):
+                self.besties_pairs.append(
+                    (
+                        camper_id_by_key[(str(row.cabin_1), str(row.camper_1))],
+                        camper_id_by_key[(str(row.cabin_2), str(row.camper_2))],
+                    )
+                )
 
     def build(self, config: OptimizationConfig) -> pulp.LpProblem:
         """Build an unsolved LpProblem from domain data and optimization config.
@@ -100,6 +122,7 @@ class SchedulingProblem:
         self._add_preference_constraints(problem, camper_assignments)
         self._add_top2_guarantee_constraints(problem, camper_assignments)
         self._add_cabin_max_constraints(problem, camper_assignments)
+        self._add_besties_constraints(problem, camper_assignments)
         self._add_fleet_assignment_constraints(problem, fleet_assignment)
         self._add_fleet_balance_constraints(problem, fleet_assignment)
         self._add_gender_balance_constraints(problem, fleet_assignment)
@@ -215,6 +238,20 @@ class SchedulingProblem:
                     pulp.lpSum([camper_assignments[c][s] for c in self.campers_by_cabin[cabin]])
                     <= self._CABIN_MAX_PER_SEATRADE,
                     f"{cabin}_max_{self._CABIN_MAX_PER_SEATRADE}_campers_to_{s}",
+                )
+
+    def _add_besties_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict) -> None:
+        """Besties pairs get identical schedules.
+
+        Equating the camper's assignment for every block_seatrade forces the same
+        seatrade in the same block for both blocks; the linking constraints then pull
+        both campers' cabins into the same fleet. No auxiliary variables needed.
+        """
+        for c1, c2 in self.besties_pairs:
+            for s in self.seatrades_full:
+                problem += (
+                    camper_assignments[c1][s] == camper_assignments[c2][s],
+                    f"besties_{c1}_{c2}_{s}",
                 )
 
     def _add_fleet_assignment_constraints(self, problem: pulp.LpProblem, fleet_assignment: VarDict) -> None:
