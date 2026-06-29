@@ -5,6 +5,7 @@ import pulp
 import pytest
 
 from seatrades.config import OptimizationConfig
+from seatrades.preferences import validate_relationships
 from seatrades.problem import SchedulingProblem
 from seatrades.results import (
     AssignmentSolution,
@@ -202,6 +203,92 @@ class TestBestiesConstraint:
         assert solution.status.state == SolverState.OPTIMAL
         besties_names = [name for name in problem.build(config).constraints if name.startswith("besties_")]
         assert besties_names == []
+
+
+class TestFriendsFrenemiesConstraints:
+    """Friends pairs share a session end-to-end; frenemies pairs share none."""
+
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "camper": ["Alice", "Bob", "Carol", "Dave"],
+            "gender": ["F", "M", "F", "M"],
+            "seatrade_1": ["Archery", "Archery", "Sailing", "Archery"],
+            "seatrade_2": ["Sailing", "Sailing", "Archery", "Climbing"],
+            "seatrade_3": ["Climbing", "Climbing", "Climbing", "Sailing"],
+            "seatrade_4": ["Kayaking", "Kayaking", "Kayaking", "Kayaking"],
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+            "campers_min": [0, 0, 0, 0],
+            "campers_max": [10, 10, 10, 10],
+        }
+    )
+    _config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+    def _shared_sessions(self, solution, c1, c2):
+        """Columns where both campers are assigned (both == 1)."""
+        both = (solution.assignments.loc[c1] == 1) & (solution.assignments.loc[c2] == 1)
+        return [s for s in solution.assignments.columns if both[s]]
+
+    def test_friends_pair_shares_a_session(self):
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Cabin1"],
+                "camper_1": ["Alice"],
+                "cabin_2": ["Cabin1"],
+                "camper_2": ["Bob"],
+                "relationship": ["friends"],
+            }
+        )
+        problem = SchedulingProblem(self._joined, self._setup, relationships=relationships)
+
+        solution = run(problem, self._config)
+
+        assert solution.status.state == SolverState.OPTIMAL
+        # Alice=0, Bob=1 must overlap in at least one session.
+        assert len(self._shared_sessions(solution, 0, 1)) >= 1
+
+    def test_frenemies_pair_shares_no_session(self):
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Cabin1"],
+                "camper_1": ["Alice"],
+                "cabin_2": ["Cabin2"],
+                "camper_2": ["Carol"],
+                "relationship": ["frenemies"],
+            }
+        )
+        problem = SchedulingProblem(self._joined, self._setup, relationships=relationships)
+
+        solution = run(problem, self._config)
+
+        assert solution.status.state == SolverState.OPTIMAL
+        # Alice=0, Carol=2 must not overlap in any session.
+        assert self._shared_sessions(solution, 0, 2) == []
+
+    def test_contradictory_chain_is_infeasible(self):
+        # besties(Alice,Bob) → identical schedules; friends(Bob,Carol) → Carol shares
+        # a session with Bob; frenemies(Alice,Carol) → Carol shares none with Alice.
+        # Alice≡Bob, so Carol must both share and not share that schedule — infeasible.
+        relationships = pd.DataFrame(
+            {
+                "cabin_1": ["Cabin1", "Cabin1", "Cabin1"],
+                "camper_1": ["Alice", "Bob", "Alice"],
+                "cabin_2": ["Cabin1", "Cabin2", "Cabin2"],
+                "camper_2": ["Bob", "Carol", "Carol"],
+                "relationship": ["besties", "friends", "frenemies"],
+            }
+        )
+        # The set passes validation — the conflict only surfaces at solve time.
+        validate_relationships(relationships, self._joined)
+
+        problem = SchedulingProblem(self._joined, self._setup, relationships=relationships)
+        solution = run(problem, self._config)
+
+        assert solution.status.state == SolverState.INFEASIBLE
 
 
 class TestMangle:

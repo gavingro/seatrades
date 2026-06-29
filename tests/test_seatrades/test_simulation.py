@@ -162,6 +162,51 @@ class TestSimulateCamperRelationships:
             }
         )
 
+    def _roster_identity(self):
+        return pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Puffin", "Tillikum", "Tillikum", "Orca", "Narwhal"],
+                "camper": ["Alice", "Bob", "Carlos", "Dana", "Eve", "Frank"],
+                "gender": ["female", "female", "male", "male", "female", "male"],
+            }
+        )
+
+    def _roster_preferences(self):
+        # Alice&Bob (same cabin) share ≥2 → besties. Other pairs share ≥1 → friends/frenemies.
+        return pd.DataFrame(
+            {
+                "camper": ["Alice", "Bob", "Carlos", "Dana", "Eve", "Frank"],
+                "seatrade_1": ["Sailing", "Climbing", "Archery", "Sailing", "Climbing", "Kayaking"],
+                "seatrade_2": ["Climbing", "Sailing", "Sailing", "Archery", "Kayaking", "Tubing"],
+                "seatrade_3": ["Archery", "Archery", "Kayaking", "Crafts", "Tubing", "Wibit"],
+                "seatrade_4": ["Crafts", "Swimming", "Tubing", "Wibit", "Wibit", "Swimming"],
+            }
+        )
+
+    def test_seeds_friends_and_frenemies_rows(self):
+        result = simulate_camper_relationships(self._roster_identity(), self._roster_preferences())
+
+        seeded = set(result["relationship"])
+        assert "friends" in seeded
+        assert "frenemies" in seeded
+
+    def test_seeded_pairs_use_distinct_campers(self):
+        result = simulate_camper_relationships(self._roster_identity(), self._roster_preferences())
+
+        campers = [(r.cabin_1, r.camper_1) for r in result.itertuples()] + [
+            (r.cabin_2, r.camper_2) for r in result.itertuples()
+        ]
+        # Disjoint camper sets across pairs preclude contradictory friend/frenemy chains.
+        assert len(campers) == len(set(campers))
+
+    def test_seeded_roster_passes_validation(self):
+        identity, prefs = self._roster_identity(), self._roster_preferences()
+        joined = identity.merge(prefs, on="camper")
+
+        result = simulate_camper_relationships(identity, prefs)
+
+        validate_relationships(result, joined, "Camper Relationships")
+
     def test_returns_single_same_cabin_besties_row(self):
         result = simulate_camper_relationships(self._identity(), self._preferences())
 

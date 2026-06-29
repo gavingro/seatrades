@@ -169,20 +169,26 @@ class TestSchedulingProblemBesties:
     def test_no_relationships_means_no_besties_pairs(self, scheduling_problem):
         assert scheduling_problem.besties_pairs == []
 
-    def test_only_besties_rows_become_pairs(self, joined_campers_df, seatrade_setup_df):
+    def test_relationship_rows_split_by_type(self, joined_campers_df, seatrade_setup_df):
         relationships = pd.DataFrame(
             {
-                "cabin_1": ["Cabin1", "Cabin1"],
-                "camper_1": ["Alice", "Bob"],
-                "cabin_2": ["Cabin2", "Cabin2"],
-                "camper_2": ["Carol", "Dave"],
-                "relationship": ["besties", "friends"],
+                "cabin_1": ["Cabin1", "Cabin1", "Cabin1"],
+                "camper_1": ["Alice", "Bob", "Alice"],
+                "cabin_2": ["Cabin2", "Cabin2", "Cabin2"],
+                "camper_2": ["Carol", "Dave", "Dave"],
+                "relationship": ["besties", "friends", "frenemies"],
             }
         )
         problem = SchedulingProblem(joined_campers_df, seatrade_setup_df, relationships=relationships)
 
-        # Only the besties row (Alice id 0, Carol id 2) is enforced this slice.
+        # camper_ids: Alice=0, Bob=1, Carol=2, Dave=3. Each list holds only its type.
         assert problem.besties_pairs == [(0, 2)]
+        assert problem.friends_pairs == [(1, 3)]
+        assert problem.frenemies_pairs == [(0, 3)]
+
+    def test_no_relationships_means_no_friends_or_frenemies_pairs(self, scheduling_problem):
+        assert scheduling_problem.friends_pairs == []
+        assert scheduling_problem.frenemies_pairs == []
 
 
 class TestSchedulingProblemConstraintGroups:
@@ -398,6 +404,48 @@ class TestSchedulingProblemConstraintGroups:
         vars_ = self._make_vars(sp)
 
         sp._add_besties_constraints(problem, vars_["camper_assignments"])
+
+        assert len(problem.constraints) == 0
+
+    def _relationships(self, relationship):
+        return pd.DataFrame(
+            {
+                "cabin_1": ["Cabin1"],
+                "camper_1": ["Alice"],
+                "cabin_2": ["Cabin2"],
+                "camper_2": ["Carol"],
+                "relationship": [relationship],
+            }
+        )
+
+    def test_add_friends_constraints(self, joined_campers_df, seatrade_setup_df):
+        sp = SchedulingProblem(joined_campers_df, seatrade_setup_df, relationships=self._relationships("friends"))
+        problem = pulp.LpProblem("test_friends")
+        vars_ = self._make_vars(sp)
+
+        sp._add_friends_constraints(problem, vars_["camper_assignments"])
+
+        # Three AND-linearization constraints per session, plus one >=1 overlap sum.
+        assert any(name.startswith("friends_") for name in problem.constraints)
+        assert len(problem.constraints) == 3 * len(sp.seatrades_full) + 1
+
+    def test_add_frenemies_constraints(self, joined_campers_df, seatrade_setup_df):
+        sp = SchedulingProblem(joined_campers_df, seatrade_setup_df, relationships=self._relationships("frenemies"))
+        problem = pulp.LpProblem("test_frenemies")
+        vars_ = self._make_vars(sp)
+
+        sp._add_frenemies_constraints(problem, vars_["camper_assignments"])
+
+        assert any(name.startswith("frenemies_") for name in problem.constraints)
+        assert len(problem.constraints) == 3 * len(sp.seatrades_full) + 1
+
+    def test_add_friends_constraints_noop_without_relationships(self, scheduling_problem):
+        sp = scheduling_problem
+        problem = pulp.LpProblem("test_friends_none")
+        vars_ = self._make_vars(sp)
+
+        sp._add_friends_constraints(problem, vars_["camper_assignments"])
+        sp._add_frenemies_constraints(problem, vars_["camper_assignments"])
 
         assert len(problem.constraints) == 0
 

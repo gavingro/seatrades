@@ -636,8 +636,9 @@ class TestValidateRelationships:
         assert any("share fewer" in e for e in exc_info.value.errors)
         assert any("Alice" in e and "Carlos" in e for e in exc_info.value.errors)
 
-    def test_friends_and_frenemies_pass_regardless_of_preference_overlap(self):
-        # Alice & Carlos share only 1 seatrade — fine for friends/frenemies (unenforced this slice).
+    def test_friends_and_frenemies_pass_with_one_shared_preference(self):
+        # Alice & Carlos share 1 seatrade (Archery): enough for friends (≥1), and
+        # frenemies has no preference precondition.
         joined = _two_cabin_joined()
         relationships = pd.DataFrame(
             {
@@ -652,6 +653,46 @@ class TestValidateRelationships:
         result = validate_relationships(relationships, joined, "Camper Relationships")
 
         assert len(result) == 2
+
+    def test_friends_with_no_shared_preference_rejected(self):
+        # Disjoint preferences — the pair can never co-occupy a session.
+        joined = pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Tillikum"],
+                "camper": ["Alice", "Carlos"],
+                "gender": ["female", "male"],
+                "seatrade_1": ["Sailing", "Archery"],
+                "seatrade_2": ["Climbing", "Kayaking"],
+                "seatrade_3": ["Crafts", "Tubing"],
+                "seatrade_4": ["Swimming", "Wibit"],
+            }
+        )
+        relationships = _relationship_row("Puffin", "Alice", "Tillikum", "Carlos", "friends")
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert any("Alice" in e and "Carlos" in e for e in exc_info.value.errors)
+        assert any("no shared session" in e for e in exc_info.value.errors)
+
+    def test_frenemies_with_no_shared_preference_passes(self):
+        # Frenemies has no preference precondition — disjoint prefs are fine.
+        joined = pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Tillikum"],
+                "camper": ["Alice", "Carlos"],
+                "gender": ["female", "male"],
+                "seatrade_1": ["Sailing", "Archery"],
+                "seatrade_2": ["Climbing", "Kayaking"],
+                "seatrade_3": ["Crafts", "Tubing"],
+                "seatrade_4": ["Swimming", "Wibit"],
+            }
+        )
+        relationships = _relationship_row("Puffin", "Alice", "Tillikum", "Carlos", "frenemies")
+
+        result = validate_relationships(relationships, joined, "Camper Relationships")
+
+        assert len(result) == 1
 
     def test_invalid_relationship_value_rejected(self):
         joined = _two_cabin_joined()

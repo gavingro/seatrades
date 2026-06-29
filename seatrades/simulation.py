@@ -5,6 +5,7 @@ and return validated pandas DataFrames.
 """
 
 import random
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,7 @@ from faker import Faker
 from seatrades import preferences
 from seatrades.config import (
     BESTIES_MIN_SHARED_SEATRADES,
+    FRIENDS_MIN_SHARED_SEATRADES,
     NUM_PREFERENCES,
     PREF_COLS,
     CamperSimulationConfig,
@@ -139,33 +141,57 @@ def simulate_camper_relationships(
     identity_df: pd.DataFrame,
     preferences_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Generate one mock besties pair, guaranteed solver-feasible.
+    """Generate one mock pair of each relationship type, guaranteed solver-feasible.
 
-    Picks the first same-cabin pair of campers sharing at least two preferred
-    seatrades. A same-cabin pair avoids fleet-balance conflicts at any cabin count,
-    and the shared preferences make an identical schedule achievable — so the seeded
-    besties relationship always solves. Returns an empty (but schema-valid)
-    CamperRelationships frame if no such pair exists.
+    Each pair uses distinct campers, so the three constraints can never form a
+    contradictory friend/frenemy chain. The pairs are picked to stay individually
+    feasible: besties and friends from a same-cabin pair (always the same fleet, so a
+    shared schedule/session is achievable) sharing enough preferred seatrades, and
+    frenemies from a cross-cabin pair (separable into different fleets, so they need
+    never overlap). Any type with no qualifying pair is skipped; an empty (but
+    schema-valid) frame is returned when none can be seeded.
     """
     merged = identity_df.merge(preferences_df, on="camper")
-    for cabin, group in merged.groupby("cabin"):
-        members = list(group.itertuples(index=False))
-        for i in range(len(members)):
-            for j in range(i + 1, len(members)):
-                camper_a, camper_b = members[i], members[j]
-                shared = {getattr(camper_a, col) for col in PREF_COLS} & {getattr(camper_b, col) for col in PREF_COLS}
-                if len(shared) >= BESTIES_MIN_SHARED_SEATRADES:
-                    row = pd.DataFrame(
-                        [
-                            {
-                                "cabin_1": cabin,
-                                "camper_1": camper_a.camper,
-                                "cabin_2": cabin,
-                                "camper_2": camper_b.camper,
-                                "relationship": "besties",
-                            }
-                        ]
-                    )
-                    return preferences.CamperRelationships.validate(row)  # type: ignore[return-value]
+    campers = [
+        (str(row.cabin), str(row.camper), {getattr(row, col) for col in PREF_COLS})
+        for row in merged.itertuples(index=False)
+    ]
+    used: set[tuple[str, str]] = set()
 
-    return preferences.empty_relationships()
+    def find_pair(predicate) -> Optional[tuple[tuple[str, str], tuple[str, str]]]:
+        for i in range(len(campers)):
+            for j in range(i + 1, len(campers)):
+                a, b = campers[i], campers[j]
+                key_a, key_b = (a[0], a[1]), (b[0], b[1])
+                if key_a in used or key_b in used or not predicate(a, b):
+                    continue
+                used.update({key_a, key_b})
+                return key_a, key_b
+        return None
+
+    def same_cabin(a, b) -> bool:
+        return a[0] == b[0]
+
+    def shared(a, b) -> int:
+        return len(a[2] & b[2])
+
+    selections = {
+        "besties": find_pair(lambda a, b: same_cabin(a, b) and shared(a, b) >= BESTIES_MIN_SHARED_SEATRADES),
+        "friends": find_pair(lambda a, b: same_cabin(a, b) and shared(a, b) >= FRIENDS_MIN_SHARED_SEATRADES),
+        "frenemies": find_pair(lambda a, b: not same_cabin(a, b)),
+    }
+
+    rows = [
+        {
+            "cabin_1": pair[0][0],
+            "camper_1": pair[0][1],
+            "cabin_2": pair[1][0],
+            "camper_2": pair[1][1],
+            "relationship": relationship,
+        }
+        for relationship, pair in selections.items()
+        if pair is not None
+    ]
+    if not rows:
+        return preferences.empty_relationships()
+    return preferences.CamperRelationships.validate(pd.DataFrame(rows))  # type: ignore[return-value]

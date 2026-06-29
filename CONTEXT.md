@@ -81,9 +81,9 @@ A social constraint between a pair of campers. Each relationship has:
 
 All relationship types are hard constraints — the solver must satisfy them or report infeasibility. Relationships are optional input; when absent, no relationship constraints are applied.
 
-**Implementation status (slice #65).** The schema, validation, Friends tab, and solver wiring are shared across all three types, but only **besties** is enforced by the solver so far. `friends` and `frenemies` rows validate and persist but are not yet constrained — enforcement (with auxiliary shared-session variables) lands in a follow-up slice.
+**Implementation status (slice #66).** All three types are now enforced by the solver. Besties (slice #65) equates assignment variables; friends and frenemies (slice #66) use an auxiliary binary `y[c1, c2, s]` = AND(both campers in session `s`), linearized with standard AND constraints. Friends require `sum_s y >= 1` (share at least one session); frenemies require `sum_s y == 0` (share none). See `_session_overlap_vars`, `_add_friends_constraints`, `_add_frenemies_constraints` in `problem.py`.
 
-**Besties feasibility is checked at validation, not solve time.** A besties pair needs two identical sessions, so its members must share at least 2 preferred seatrades; `validate_relationships` rejects a besties pair that shares fewer (naming both campers) before the solver runs. The mock generator (`simulate_camper_relationships`) seeds a same-cabin pair sharing ≥2 preferences, so the default demo always solves.
+**Feasibility is checked at validation, not solve time.** A besties pair needs two identical sessions, so its members must share at least 2 preferred seatrades; a friends pair needs one shared session, so its members must share at least 1. `validate_relationships` rejects either pair that shares too few (naming both campers) before the solver runs. Frenemies has no such precondition — forcing overlap depends on global capacity/assignment, which is the out-of-scope solver-diagnostics case. The mock generator (`simulate_camper_relationships`) seeds one pair of each type on distinct campers — same-cabin for besties/friends, cross-cabin for frenemies — so the default demo always solves.
 
 ### Assignment
 
@@ -138,7 +138,7 @@ flowchart LR
 ```
 1. User uploads CSVs or uses simulation → app/ calls seatrades.simulation (produces 3 DataFrames: camper identity, camper preferences, seatrade setup + optional relationships [#58])
 2. preferences.py validates (names match, seatrades exist in setup, relationship pairs valid [#58]) and joins 3 DataFrames → 2 (joined campers, seatrade setup) + validated relationships [#58]
-3. SchedulingProblem(joined_campers, seatrade_setup, relationships) → holds parsed domain state; maps besties pairs to internal camper_ids [#65]
+3. SchedulingProblem(joined_campers, seatrade_setup, relationships) → holds parsed domain state; maps besties/friends/frenemies pairs to internal camper_ids [#65, #66]
 4. solver.run(problem, config) → calls problem.build(config) internally, returns AssignmentSolution (with SolverStatus inside)
 5. UI reads AssignmentSolution.status via @st.fragment, displays assignments
 6. `wrangle_assignments_to_longform(solution)` / `wrangle_assignments_to_wideform(longform_df)` → formatted DataFrames
@@ -161,7 +161,7 @@ The scheduler solves a mixed-integer linear programming problem with these const
 6. **Cabin max per seatrade** - Max k campers from same cabin in one seatrade (by default k=4)
 7. **Fleet balance** - Cabins split evenly between fleets
 8. **Gender balance** - Boys/girls cabins split evenly between fleets
-9. **Camper relationships** - Friends (share ≥1 session), besties (identical schedule), frenemies (share zero sessions). Hard constraints, optional input. **Only besties is enforced so far (slice #65)**; friends/frenemies validate but are not yet constrained. Besties is implemented in `_add_besties_constraints` by equating the two campers' assignment variables across every block_seatrade — no auxiliary variables.
+9. **Camper relationships** - Friends (share ≥1 session), besties (identical schedule), frenemies (share zero sessions). Hard constraints, optional input. **All three are enforced (besties slice #65, friends/frenemies slice #66).** Besties (`_add_besties_constraints`) equates the two campers' assignment variables across every block_seatrade — no auxiliary variables. Friends and frenemies share an auxiliary binary `y[c1, c2, s]` = AND(both in session `s`); friends require `sum_s y >= 1`, frenemies `sum_s y == 0`.
 
 ### Objective Goals (user-facing)
 
@@ -236,6 +236,8 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 13. **Camper relationships are hard MILP constraints with a dedicated input DataFrame.** Schema: `(cabin_1, camper_1, cabin_2, camper_2, relationship)` with values `friends`, `besties`, `frenemies`. Uses composite keys matching existing domain model. Session = seatrade + fleet + block; all relationship constraints operate on sessions. Validation rejects self-pairs and duplicate pairs (regardless of order). Relationships are optional — no constraints by default. Diagnosing contradictory constraint chains causing infeasibility is future work. PRD: `docs/prd/camper-relationships.md`.
 
 14. **`campers_min` is a conditional minimum per session (issue #48).** A session may have either 0 campers (it doesn't run) or a count within `[campers_min, campers_max]` (it runs) — nothing in between. This reframes `campers_min` as a *viability threshold* ("worth running only with N campers") rather than a forced quota, and removes a class of spurious infeasibility where an unranked seatrade's floor was force-filled. Constraints-only — no objective term or penalty; whether a session empties is still driven by the existing objective (notably `sparsity_weight`). Reuses the existing per-session `seatrade_assignment` indicator (the "session runs" binary) — no new variable. Both bounds are gated on that indicator in `_add_capacity_constraints`. Default-on via `OptimizationConfig.allow_empty_sessions` (not exposed in the UI); setting it `False` restores the legacy hard floor. Only *widens* the feasible region — never makes a feasible problem infeasible; with `campers_min = 0` it is a no-op.
+
+15. **Friends and frenemies are enforced via a shared session-overlap auxiliary variable (slice #66).** Both reuse one binary `y[c1, c2, s]` = AND(camper c1 in session `s`, camper c2 in session `s`), linearized with the standard AND constraints (`y <= x1`, `y <= x2`, `y >= x1 + x2 - 1`) in `_session_overlap_vars`. Friends then require `sum_s y >= 1` (share at least one session); frenemies require `sum_s y == 0` (share none). Besties keeps its simpler variable-equality formulation (no aux var). Friends gain a pre-solve feasibility check mirroring besties: a friends pair sharing 0 preferred seatrades is rejected at validation (`FRIENDS_MIN_SHARED_SEATRADES = 1`), since they could never co-occupy a session. Frenemies has no cheap provable precondition (forcing overlap depends on global capacity/assignment), so it is left to solve-time infeasibility — the out-of-scope diagnostics case from item 13.
 
 ## Tech Stack
 

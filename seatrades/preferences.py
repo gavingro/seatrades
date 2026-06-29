@@ -19,6 +19,7 @@ from pandera.errors import SchemaError, SchemaErrors
 
 from seatrades.config import (
     BESTIES_MIN_SHARED_SEATRADES,
+    FRIENDS_MIN_SHARED_SEATRADES,
     PREF_COLS,
     CamperIdentity,
     CamperPreferences,
@@ -132,9 +133,10 @@ def validate_relationships(
 
     Checks (collect-all-errors-then-raise, like join_and_validate):
     schema, self-pairs, order-insensitive duplicate pairs, that both campers
-    exist in joined_campers, and that besties pairs share enough preferences to
-    have a feasible identical schedule. joined_campers carries seatrade_1..4 so
-    the besties feasibility check can run before solver time.
+    exist in joined_campers, that besties pairs share enough preferences to have
+    a feasible identical schedule, and that friends pairs share at least one
+    preferred seatrade so a shared session is possible. joined_campers carries
+    seatrade_1..4 so these feasibility checks can run before solver time.
 
     Returns the validated relationships DataFrame.
     """
@@ -179,6 +181,13 @@ def validate_relationships(
                     errors.append(
                         f"Row {row.Index}: besties pair {camper_1} & {camper_2} share fewer than "
                         f"{BESTIES_MIN_SHARED_SEATRADES} preferred seatrades — no identical schedule is possible."
+                    )
+            elif row.relationship == "friends":
+                shared = prefs_by_camper[camper_1] & prefs_by_camper[camper_2]
+                if len(shared) < FRIENDS_MIN_SHARED_SEATRADES:
+                    errors.append(
+                        f"Row {row.Index}: friends pair {camper_1} & {camper_2} share no preferred "
+                        f"seatrades — no shared session is possible."
                     )
 
     if errors:
