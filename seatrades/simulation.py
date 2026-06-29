@@ -142,7 +142,7 @@ class Camper(NamedTuple):
 
     cabin: str
     name: str
-    prefs: set
+    prefs: set[str]
 
     @property
     def key(self) -> tuple[str, str]:
@@ -171,7 +171,7 @@ def simulate_camper_relationships(
     used: set[tuple[str, str]] = set()
 
     def reserve_pair(
-        predicate: Callable[["Camper", "Camper"], bool],
+        predicate: Callable[[Camper, Camper], bool],
     ) -> Optional[tuple[tuple[str, str], tuple[str, str]]]:
         """Return the first unused pair matching predicate and mark both campers used.
 

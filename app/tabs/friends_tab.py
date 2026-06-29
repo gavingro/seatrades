@@ -25,18 +25,18 @@ class FriendsTab:
     def generate(self) -> None:
         st.subheader("Friends")
         st.markdown(
-            "Pair up campers whose social ties should shape the schedule. Each row links two "
-            "campers — a `(cabin, camper)` and another `(cabin, camper)` — plus a relationship "
-            "type. Type rows directly in the grid below, or upload a CSV to fill it. Every "
+            "Pair up campers if you want to honor sepcific friendships beyond the 'cabin togetherness' scores"
+            "in the scheduling setup. Each row links two "
+            "campers plus a relationship type. Type rows directly in the grid below, or upload a CSV to fill it. Every "
             "relationship is a **hard rule**: the optimizer must satisfy all of them, or it "
             "reports that no schedule is possible."
         )
-        with st.expander("What do friends, besties, and frenemies mean?"):
+        with st.expander("What relationships are available? (Friends, Besties, Frenemies)"):
             st.markdown(
-                "- **Friends** — the pair shares **at least one session**: the same seatrade, in "
+                "- **Friends** — the pair shares **at least one seatrade session**: the same seatrade, in "
                 "the same fleet and block (so they're together at least once during the week). "
                 "_Needs at least one preferred seatrade in common, or it can't be honoured._\n"
-                "- **Besties** — the pair gets an **identical schedule**: the same seatrades in "
+                "- **Besties** — the pair gets an **identical seatrade schedule**: the same seatrades in "
                 "the same blocks for the whole week (this also puts them in the same fleet). "
                 "_Needs at least two preferred seatrades in common._\n"
                 "- **Frenemies** — the pair shares **no session**: they are never placed in the "
