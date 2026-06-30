@@ -67,6 +67,14 @@ A cabin's fleet is chosen **per half, independently** — a cabin can be morning
 
 **Same fleet all week (optional, issue #22).** A Scheduling Captain working by hand keeps each cabin in one fleet all week purely for simplicity. The solver doesn't need that crutch, so per-half independence is the default. A user can switch ON an *optional hard constraint* that forces a cabin's fleet to match across both halves (AM 1st half ⇒ AM 2nd half, and PM ⇒ PM), reproducing the legacy hand-scheduled behavior. Default OFF. Implemented by `OptimizationConfig.force_same_fleet_all_week` → `_add_same_fleet_constraints` in `problem.py`, exposed as a checkbox in the optimization config form's Advanced settings. Do not write user-facing copy that asserts a cabin is in one fleet for the whole week.
 
+### Fleet Time
+
+The non-seatrade activity. Each half-week has two time slots (AM and PM). A cabin attends a seatrade during its assigned slot; during the *other* slot of that half it is on Fleet Time — a single large group activity (a hike, a wide game) that every not-on-a-seatrade camper does together.
+
+Fleet Time is the **perfect complement** of seatrade assignment: in any time slot, a camper is either in a seatrade or on Fleet Time, never both and never neither. It is therefore **not modeled in the solver** — it is implied by the absence of a seatrade. The output layer fills the empty seatrade cells with the label `"Fleet Time"` (`results.py`); it has no capacity, preference, or block parameters.
+
+Because the Fleet Time group in one slot is exactly the set of cabins *not* on seatrades that slot — which is the seatrade population of the opposite-fleet block in the same half — any measurement over each block's seatrade population also describes the Fleet Time gatherings, with no need to model Fleet Time directly.
+
 ### Camper Relationship
 
 A social constraint between a pair of campers. Each relationship has:
@@ -97,7 +105,7 @@ Self-contained and portable — no reference to the MILP model. Fields: assignme
 
 ### SolverStatus
 
-A field inside `AssignmentSolution` (not a separate return). Tracks the outcome of a solve. Fields: state (SolverState enum: optimal/infeasible/error), gap (optimality gap as a float), message (human-readable, e.g. infeasibility detail). Progress monitoring (percent-complete during a running solve) stays in the UI layer via `@st.fragment` log polling — not in SolverStatus.
+A field inside `AssignmentSolution` (not a separate return). Tracks the outcome of a solve. Fields: state (SolverState enum: optimal/infeasible/error), gap (optimality gap as a float), message (human-readable, e.g. infeasibility detail). Progress monitoring (percent-complete during a running solve) lives in the service layer's `SolveRun.progress()` (a `SolveProgress` snapshot computed from the CBC log + elapsed time) — not in SolverStatus. The UI only polls it and renders.
 
 ### Assignment Export
 
@@ -116,7 +124,7 @@ Each export includes columns: camper, seatrade, assignment (0/1), preference (1-
 flowchart LR
     subgraph UI [app/ — Presentation Layer]
         Upload[File Upload / Simulation Forms]
-        Fragment["@st.fragment polling SolverStatus"]
+        Poll["UI loop polling SolveRun.progress() / result()"]
         Display[Render AssignmentSolution + Charts]
     end
 
@@ -124,6 +132,7 @@ flowchart LR
         Sim[simulation.py: Generate Mock Data]
         Val[preferences.py: Validate + Join 3→2 + Relationships]
         Prob[SchedulingProblem: Build MILP]
+        Run[solve_run.py: SolveRun thread + log progress]
         Solve[solver.py: Solve + SolverStatus]
         Result[results.py: AssignmentSolution]
     end
@@ -131,7 +140,9 @@ flowchart LR
     Upload --> Sim
     Sim -->|3 DataFrames + optional relationships [#58]| Val
     Val -->|2 DataFrames + validated relationships [#58]| Prob
-    Solve -->|AssignmentSolution| Fragment
+    Prob --> Run
+    Run -->|solver.run| Solve
+    Run -->|SolveProgress / AssignmentSolution| Poll
     Result --> Display
 ```
 
@@ -200,7 +211,8 @@ Note the tension: `cabins_weight` (soft, encourages cabinmates together) pushes 
 | Module | Owns |
 |--------|------|
 | `problem.py` | `SchedulingProblem` — holds parsed domain state, builds MILP (variables, constraints, objective) when `.build(config)` is called. Does NOT solve. Config (weights, limits, solver settings) is passed at build time, not init — allows rebuilding with different configs against the same domain data. |
-| `solver.py` | `solver.run(problem, config) -> AssignmentSolution` — orchestrates build + solve + wrangle. Calls `problem.build(config)` internally. Manages solver thread and CBC log reading. |
+| `solver.py` | `solver.run(problem, config) -> AssignmentSolution` — pure synchronous orchestration of build + solve + wrangle. Calls `problem.build(config)` internally. Does NOT manage threads or read the log — that lives in `solve_run.py`. |
+| `solve_run.py` | `SolveRun` — runs `solver.run` in a background thread, reads the CBC log, and exposes `progress()` (a `SolveProgress` snapshot) / `result()`. The service-layer seam ADR-0004 mandates; the UI polls it and never imports `threading`/`queue` or opens the log file. |
 | `results.py` | `AssignmentSolution` dataclass + free functions for wrangling (`wrangle_assignments_to_longform`, `wrangle_assignments_to_wideform`, `prepare_seatrade_leaders`) and export views. Functions take `AssignmentSolution`, not the problem. |
 | `visualization.py` | Build `alt.Chart` specs from `AssignmentSolution`. No Streamlit dependency — renders in any Altair-capable frontend. Colors cells by a camper-satisfaction scale (top choice → low/unranked) and labels block facets via `blocks.py`. |
 | `blocks.py` | Pure decoder from block codes to Captain-friendly labels (`1a` → `1st·AM`) plus `BLOCK_DECODER_CAPTION`. No Streamlit, no side effects. |
@@ -214,11 +226,11 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 
 1. **`Seatrades` class → split into SchedulingProblem + solver + results.** Problem builder owns variables/constraints/objective. Solving is separate. Wrangling is separate. `SchedulingProblem` is stateful (holds parsed domain state) because the wrangler needs the same state — avoids re-parsing or building a second context object. Module is `problem.py` (not `scheduling_problem.py`). Config passed at `.build(config)` time, not init — allows rebuilding with different configs against same domain data.
 
-2. **Solver produces `AssignmentSolution`, not raw pulp object.** Clean boundary: problem goes in, solution comes out. No leaking PuLP internals. `AssignmentSolution` is self-contained and portable — holds assignments DataFrame, SolverStatus, and domain data needed by wrangling/visualization. `SolverStatus` is a field inside `AssignmentSolution` (not a separate return): state is a `SolverState` enum (optimal/infeasible/error), `gap` is the optimality gap, `message` for human-readable detail. Progress monitoring stays in UI layer only.
+2. **Solver produces `AssignmentSolution`, not raw pulp object.** Clean boundary: problem goes in, solution comes out. No leaking PuLP internals. `AssignmentSolution` is self-contained and portable — holds assignments DataFrame, SolverStatus, and domain data needed by wrangling/visualization. `SolverStatus` is a field inside `AssignmentSolution` (not a separate return): state is a `SolverState` enum (optimal/infeasible/error), `gap` is the optimality gap, `message` for human-readable detail. Progress monitoring lives in the `SolveRun` seam (service layer), surfaced as `SolveProgress`; the UI only polls and renders.
 
 3. **Service function `solver.run(problem, config) -> AssignmentSolution`.** UI calls one function. `solver.run` calls `problem.build(config)` internally. No solver orchestration in the presentation layer.
 
-4. **Solver monitoring splits: service layer runs solver + reads CBC log, UI polls `AssignmentSolution.status` via `@st.fragment`.** PuLP/CBC doesn't support mid-solve callbacks — log file is the only progress signal. `@st.fragment(run_every=...)` replaces manual `while`+`sleep` polling. Progress percent stays in UI polling layer, not in SolverStatus.
+4. **Solver monitoring splits: the `SolveRun` seam (service layer, `solve_run.py`) runs the solve in a thread + reads the CBC log and exposes `progress()`/`result()`; the UI polls those and renders.** PuLP/CBC doesn't support mid-solve callbacks — the log file is the only progress signal. Progress percent is computed in `SolveRun.progress()` (a `SolveProgress` snapshot), not in SolverStatus. The UI still polls via a `while`+`sleep` loop; swapping it for `@st.fragment(run_every=...)` and moving `SolveRun` into `session_state` is tracked in #61 (ADR-0004 is the target end-state).
 
 5. **Simulation data generation moves to service layer** (`seatrades/simulation.py`). It's domain logic, not UI. Simulation produces 3 separate DataFrames (camper identity, camper preferences, seatrade setup) — goes through same validation pipeline as real uploads.
 

@@ -1,6 +1,22 @@
 """Tests for the assignments_tab module."""
 
-from app.tabs.assignments_tab import render_view
+from app.tabs.assignments_tab import assignment_failure_warning, render_view
+from seatrades.results import SolverState, SolverStatus
+
+
+class TestAssignmentFailureWarning:
+    def test_error_surfaces_the_message(self):
+        """A crashed solve shows its failure message, not the infeasibility copy."""
+        status = SolverStatus(state=SolverState.ERROR, message="solver blew up")
+        warning = assignment_failure_warning(status)
+        assert "solver blew up" in warning
+
+    def test_infeasible_shows_relax_a_limit_copy(self):
+        """An infeasible solve keeps the relax-a-hard-limit guidance (unchanged copy)."""
+        status = SolverStatus(state=SolverState.INFEASIBLE, message="")
+        warning = assignment_failure_warning(status)
+        assert "relaxing a hard limit" in warning
+        assert "solver blew up" not in warning
 
 
 class TestRenderView:

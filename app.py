@@ -1,4 +1,8 @@
+import random
+
+import numpy as np
 import streamlit as st
+from faker import Faker
 
 from app.tabs.assignments_tab import AssignmentsTab
 from app.tabs.campers_tab import CamperSimulationConfigTab, _update_camper_simulation_config
@@ -19,6 +23,11 @@ from seatrades.simulation import (
     simulate_camper_relationships,
     simulate_seatrade_preferences,
 )
+
+# Seed for the out-of-the-box demo data. Chosen because the default simulation
+# configs at this seed produce a known-feasible week (every camper assignable),
+# so the app opens on solvable mock data and the full-solve smoke test stays green.
+MOCK_DATA_SEED = 0
 
 
 # Set up logging to capture all info level logs from the root logger
@@ -66,6 +75,15 @@ def _initial_page_setup():
         _update_seatrade_simulation_config(seatrade_simulation_config=SeatradeSimulationConfig())
     if "camper_simulation_config" not in st.session_state:
         _update_camper_simulation_config(camper_simulation_config=CamperSimulationConfig())
+
+    # Seed the RNGs once, before any mock data is generated, so the out-of-the-box
+    # demo week is deterministic and known-feasible. Re-simulating from the UI advances
+    # the RNG naturally, so users still get fresh data on each click.
+    if "mock_data_seeded" not in st.session_state:
+        random.seed(MOCK_DATA_SEED)
+        np.random.seed(MOCK_DATA_SEED)
+        Faker.seed(MOCK_DATA_SEED)
+        st.session_state["mock_data_seeded"] = True
 
     # Initialize Mock Data
     if "seatrade_preferences" not in st.session_state:

@@ -1,7 +1,3 @@
-import logging
-import queue
-import re
-import threading
 import time
 from typing import Literal, Optional
 
@@ -9,24 +5,24 @@ import pandas as pd
 import streamlit as st
 
 from seatrades.blocks import BLOCK_DECODER_CAPTION
-from seatrades.config import SEATRADES_LOG_PATH, OptimizationConfig
+from seatrades.config import OptimizationConfig
 from seatrades.preferences import ValidationError, join_and_validate
 from seatrades.problem import SchedulingProblem
 from seatrades.results import (
-    AssignmentSolution,
     SolverState,
+    SolverStatus,
     prepare_seatrade_leaders,
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
-from seatrades.solver import run as solver_run
+from seatrades.solve_run import SolveRun
 from seatrades.visualization import display_assignments
 
-logger = logging.getLogger(__name__)
-
-status_queue: queue.Queue[int] = queue.Queue()
+# Makes Streamlit log-widget keys unique across reruns (presentation concern only).
 log_counter = 1
-_TIMEOUT_LOG_PATTERN = re.compile(r"Result - Stopped on time limit")
+
+# How often the UI re-polls SolveRun.progress() while a solve runs.
+_POLL_INTERVAL_SECONDS = 2
 
 
 class AssignmentsTab:
@@ -45,11 +41,7 @@ class AssignmentsTab:
         if st.session_state.get("assigned_solution"):
             # Display results
             if not st.session_state["optimization_success"]:
-                st.warning(
-                    "No schedule could satisfy all the rules this time. Try relaxing a hard limit "
-                    "under **Advanced settings** in Optimization Setup (e.g. raise *Max seatrades "
-                    "per fleet*), or lower the *Minimum solution quality*, then assign again."
-                )
+                st.warning(assignment_failure_warning(st.session_state["assigned_solution"].status))
             else:
                 solution = st.session_state["assigned_solution"]
                 optimality = solution.status.optimality
@@ -150,10 +142,10 @@ def _assign_seatrades(
     st.session_state["cabin_camper_prefs"] = joined_campers
     st.toast("Beginning Seatrade Optimization.")
     problem = SchedulingProblem(joined_campers, seatrade_setup, relationships=validated_relationships)
-    result_container: dict[str, AssignmentSolution] = {}
+    run = SolveRun(problem, optimization_config)
     with st.status("Setting up the optimization…") as status:
-        # CAUTION: Does not actually stop the solver subthread which will keep running.
-        # This will be a problem later if a user starts a ton of solver threads behind the scenes.
+        # CAUTION: Stopping only interrupts this UI loop — the daemon solve thread keeps
+        # running. Real cancellation is tracked in #61 / Spec B.
         stop_button = st.empty()
 
         def _stop_optimizing() -> None:
@@ -163,78 +155,44 @@ def _assign_seatrades(
 
         progress_bar = st.progress(0, "Setting up the optimization…")
 
-        # Start the solver in a background thread, read logs in real time.
         # Raw solver logs are tucked into a collapsed expander so the default view stays friendly.
         global log_counter
         with st.expander("Show technical details (solver logs)"):
             log_container = st.empty()
-        log_text = ""
-        if SEATRADES_LOG_PATH.exists():
-            SEATRADES_LOG_PATH.unlink(missing_ok=True)
-        started = time.time()
-        timeout = False
-        solver_thread = threading.Thread(
-            target=_run_assignment_and_capture_logs,
-            daemon=True,
-            args=(problem, optimization_config, result_container),
-        )
-        solver_thread.start()
-        while solver_thread.is_alive():
-            elapsed_seconds = int(time.time() - started)
-            elapsed_pct_of_time_limit = elapsed_seconds / optimization_config.solver.timeLimit
-            if elapsed_pct_of_time_limit > 1.0:
-                timeout = True
-            progress_bar.progress(
-                min(elapsed_pct_of_time_limit, 1.0),
-                ("Optimizing seatrade assignments…" if not timeout else "Finishing up — time limit reached…"),
-            )
-            try:
-                if SEATRADES_LOG_PATH.exists():
-                    with open(SEATRADES_LOG_PATH, "r") as log_file:
-                        log_text = "".join(log_file.readlines()[::-1])
-                    if log_text:
-                        log_container.text_area(
-                            "Solver Logs.",
-                            value=log_text,
-                            height=300,
-                            key=str(log_counter) + log_text,
-                        )
-                        if _TIMEOUT_LOG_PATTERN.search(log_text):
-                            timeout = True
 
-                        if not timeout:
-                            status.update(label="Optimizing seatrade assignments…")
-                        else:
-                            status.update(label="Finishing up — time limit reached…")
-
-            except Exception as e:
+        # SolveRun owns the thread + log file; the UI just polls and renders.
+        run.start()
+        progress = run.progress()
+        while progress.running:
+            progress_bar.progress(progress.percent, progress.message)
+            # Newest log lines on top while streaming, so the latest CBC output is
+            # visible without scrolling. The final render below stays chronological.
+            live_log = "".join(progress.log_text.splitlines(keepends=True)[::-1])
+            if live_log:
                 log_container.text_area(
-                    "Solver Logs.",
-                    f"Error reading logs: {e}",
+                    "Solver Logs",
+                    value=live_log,
                     height=300,
+                    key=str(log_counter) + live_log,
                 )
-            time.sleep(2)  # Adjust polling frequency
+                status.update(label=progress.message)
+            time.sleep(_POLL_INTERVAL_SECONDS)
             log_counter += 1
-        if SEATRADES_LOG_PATH.exists():
-            with open(SEATRADES_LOG_PATH, "r") as log_file:
-                log_text = log_file.read()
+            progress = run.progress()
+
         log_container.text_area(
             "Solver Logs",
-            value=log_text,
+            value=progress.log_text,
             height=300,
             key="logs",
         )
-        timeout_kwd_match = _TIMEOUT_LOG_PATTERN.search(log_text)
-        timeout = bool(timeout or timeout_kwd_match)
-        timeout_status = " - Timeout Reached" if timeout else ""
-        solution_optimality = result_container["solution"].status.optimality if "solution" in result_container else 1.0
+        solution = run.result()
+        timeout_status = " - Timeout Reached" if progress.timed_out else ""
+        solution_optimality = solution.status.optimality if solution is not None else 1.0
         optimality_status = f" - {solution_optimality:.0%} Optimal Solution found"
-        progress_bar.progress(
-            1.0,
-            ("Optimization Concluded."),
-        )
+        progress_bar.progress(1.0, "Optimization Concluded.")
         st.toast("Seatrade Optimization Concluded.")
-        if not status_queue.empty() and status_queue.get() > 0:
+        if solution is not None and solution.status.state == SolverState.OPTIMAL:
             st.session_state["optimization_success"] = True
             st.toast("Optimization Problem Solved!", icon="🎉")
             status.update(
@@ -246,26 +204,25 @@ def _assign_seatrades(
             st.session_state["optimization_success"] = False
             st.toast("Failed to solve optimization problem.", icon="🚨")
             status.update(state="error", label="Seatrades failed to be assigned.")
-    if "solution" in result_container:
-        st.session_state["assigned_solution"] = result_container["solution"]
+    if solution is not None:
+        st.session_state["assigned_solution"] = solution
     stop_button.empty()
 
 
-def _run_assignment_and_capture_logs(
-    problem: SchedulingProblem, optimization_config: OptimizationConfig, result_container: dict[str, AssignmentSolution]
-) -> None:
-    """Run solver and capture status to status_queue, intended to be run in a separate thread."""
-    try:
-        solution = solver_run(problem, optimization_config)
-        result_container["solution"] = solution
-        if solution.status.state == SolverState.OPTIMAL:
-            status_queue.put(1)
-        else:
-            status_queue.put(-1)
+def assignment_failure_warning(status: SolverStatus) -> str:
+    """User-facing copy for a non-optimal solve.
 
-    except Exception as e:
-        logger.error("Solver thread failed: %s", e)
-        status_queue.put(-1)
+    A crash (ERROR) surfaces its message so the Captain is never shown an
+    untrustworthy result without explanation (story #73-16); an infeasible solve
+    keeps the relax-a-hard-limit guidance.
+    """
+    if status.state == SolverState.ERROR:
+        return f"The optimizer hit an unexpected error and couldn't finish: {status.message}"
+    return (
+        "No schedule could satisfy all the rules this time. Try relaxing a hard limit "
+        "under **Advanced settings** in Optimization Setup (e.g. raise *Max seatrades "
+        "per fleet*), or lower the *Minimum solution quality*, then assign again."
+    )
 
 
 def render_view(

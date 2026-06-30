@@ -16,12 +16,16 @@ The current implementation uses a manual `while` loop with `time.sleep(2)`, a `q
 
 The monitoring splits into two layers:
 
-1. **Service layer** (`solver.py`) — runs the solver in a background thread, reads the CBC log, writes structured progress to a `SolverStatus` object (percent, message, state). No Streamlit imports.
-2. **UI layer** (`app/tabs/`) — `@st.fragment` reads `SolverStatus` from session state and renders progress widgets. Never touches the log file or manages threads.
+1. **Service layer** (`solve_run.py`) — the `SolveRun` seam runs the solve in a background thread, reads the CBC log, and exposes `progress()` (a `SolveProgress` snapshot: running, percent, message, log_text, timed_out) and `result()`. Percent is computed here (time-based, via the pure `percent_from_elapsed`/`detect_timeout` helpers), not stored on `SolverStatus`. No Streamlit imports.
+2. **UI layer** (`app/tabs/`) — polls `SolveRun.progress()`/`result()` and renders progress widgets. Never touches the log file or manages threads.
+
+## Implementation status
+
+The service-layer seam landed in #73: `SolveRun` (in `solve_run.py`) now owns the thread and log reading, so the UI no longer imports `threading`/`queue` or reads the log file. The UI still polls via a `while` + `time.sleep(2)` loop reading `progress()`/`result()`; swapping that loop for `@st.fragment(run_every=...)` and moving `SolveRun` into `session_state` is the remaining step toward this ADR's end-state, tracked in #61.
 
 ## Consequences
 
 - The UI never imports `threading`, `queue`, or reads log files directly.
-- `SolverStatus` is a plain dataclass with no Streamlit dependency — testable without the UI.
-- Log-parsing regex and thread management move from `assignments_tab.py` to `solver.py`.
+- `SolveProgress` and `SolverStatus` are plain dataclasses with no Streamlit dependency — testable without the UI (`tests/test_seatrades/test_solve_run.py`).
+- Log-parsing regex and thread management moved from `assignments_tab.py` to `solve_run.py` (`SolveRun`).
 - Future: if a solver with callback support replaces PuLP, the service layer can switch to callbacks without changing the UI layer.
