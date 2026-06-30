@@ -67,6 +67,14 @@ A cabin's fleet is chosen **per half, independently** — a cabin can be morning
 
 **Same fleet all week (optional, issue #22).** A Scheduling Captain working by hand keeps each cabin in one fleet all week purely for simplicity. The solver doesn't need that crutch, so per-half independence is the default. A user can switch ON an *optional hard constraint* that forces a cabin's fleet to match across both halves (AM 1st half ⇒ AM 2nd half, and PM ⇒ PM), reproducing the legacy hand-scheduled behavior. Default OFF. Implemented by `OptimizationConfig.force_same_fleet_all_week` → `_add_same_fleet_constraints` in `problem.py`, exposed as a checkbox in the optimization config form's Advanced settings. Do not write user-facing copy that asserts a cabin is in one fleet for the whole week.
 
+### Fleet Time
+
+The non-seatrade activity. Each half-week has two time slots (AM and PM). A cabin attends a seatrade during its assigned slot; during the *other* slot of that half it is on Fleet Time — a single large group activity (a hike, a wide game) that every not-on-a-seatrade camper does together.
+
+Fleet Time is the **perfect complement** of seatrade assignment: in any time slot, a camper is either in a seatrade or on Fleet Time, never both and never neither. It is therefore **not modeled in the solver** — it is implied by the absence of a seatrade. The output layer fills the empty seatrade cells with the label `"Fleet Time"` (`results.py`); it has no capacity, preference, or block parameters.
+
+Because the Fleet Time group in one slot is exactly the set of cabins *not* on seatrades that slot — which is the seatrade population of the opposite-fleet block in the same half — any measurement over each block's seatrade population also describes the Fleet Time gatherings, with no need to model Fleet Time directly.
+
 ### Camper Relationship
 
 A social constraint between a pair of campers. Each relationship has:
