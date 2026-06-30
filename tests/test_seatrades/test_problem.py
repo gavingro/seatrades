@@ -35,12 +35,12 @@ class TestSchedulingProblemInit:
         assert problem.camper_names == ["Alice", "Bob", "Carol", "Dave"]
 
         assert problem.seatrades.tolist() == ["Archery", "Sailing", "Climbing", "Kayaking"]
-        assert problem.fleets == ["1a", "1b", "2a", "2b"]
+        assert problem.blocks == ["1a", "1b", "2a", "2b"]
 
         # seatrades_full has all block_seatrade combinations
         assert "1a_Archery" in problem.seatrades_full
         assert "2b_Kayaking" in problem.seatrades_full
-        assert len(problem.seatrades_full) == 4 * 4  # 4 fleets × 4 seatrades
+        assert len(problem.seatrades_full) == 4 * 4  # 4 blocks × 4 seatrades
 
         # cabin_camper_prefs indexed by integer camper_id, has cabin column
         assert problem.cabin_camper_prefs.index.name == "camper_id"
@@ -211,16 +211,16 @@ class TestSchedulingProblemConstraintGroups:
                 upBound=1,
                 cat=pulp.LpBinary,
             ),
-            "fleet_assignment": pulp.LpVariable.dicts(
-                "Cabin_Fleet_Assignment",
-                (sp.cabins, sp.fleets),
+            "block_assignment": pulp.LpVariable.dicts(
+                "Cabin_Block_Assignment",
+                (sp.cabins, sp.blocks),
                 lowBound=0,
                 upBound=1,
                 cat=pulp.LpBinary,
             ),
             "seatrade_assignment": pulp.LpVariable.dicts(
                 "Seatrade_Fleet_Assignment",
-                (sp.fleets, sp.seatrades),
+                (sp.blocks, sp.seatrades),
                 lowBound=0,
                 upBound=1,
                 cat=pulp.LpBinary,
@@ -235,8 +235,8 @@ class TestSchedulingProblemConstraintGroups:
         sp._add_linking_constraints(problem, **vars_)
 
         group1 = sum(len(sp.campers_by_cabin[cabin]) for cabin in sp.cabins) * len(sp.seatrades_full)
-        group2 = len(sp.fleets) * len(sp.seatrades) * sum(len(sp.campers_by_cabin[cabin]) for cabin in sp.cabins)
-        group3 = len(sp.fleets) * len(sp.seatrades) * len(sp.campers)
+        group2 = len(sp.blocks) * len(sp.seatrades) * sum(len(sp.campers_by_cabin[cabin]) for cabin in sp.cabins)
+        group3 = len(sp.blocks) * len(sp.seatrades) * len(sp.campers)
         expected = group1 + group2 + group3
         assert len(problem.constraints) == expected
 
@@ -322,27 +322,27 @@ class TestSchedulingProblemConstraintGroups:
         assert len(problem.constraints) == expected
         assert any("_max_4_campers_to_" in name for name in problem.constraints)
 
-    def test_add_fleet_assignment_constraints(self, scheduling_problem):
+    def test_add_block_assignment_constraints(self, scheduling_problem):
         sp = scheduling_problem
         problem = pulp.LpProblem("test_fleet_assign")
         vars_ = self._make_vars(sp)
 
-        sp._add_fleet_assignment_constraints(problem, vars_["fleet_assignment"])
+        sp._add_block_assignment_constraints(problem, vars_["block_assignment"])
 
         # 2 block pairs × 2 cabins = 4
         expected = 2 * len(sp.cabins)
         assert len(problem.constraints) == expected
         assert any("_in_only_1_fleet_" in name for name in problem.constraints)
 
-    def test_add_fleet_balance_constraints(self, scheduling_problem):
+    def test_add_block_balance_constraints(self, scheduling_problem):
         sp = scheduling_problem
         problem = pulp.LpProblem("test_fleet_balance")
         vars_ = self._make_vars(sp)
 
-        sp._add_fleet_balance_constraints(problem, vars_["fleet_assignment"])
+        sp._add_block_balance_constraints(problem, vars_["block_assignment"])
 
-        # 1 constraint per fleet
-        assert len(problem.constraints) == len(sp.fleets)
+        # 1 constraint per block
+        assert len(problem.constraints) == len(sp.blocks)
         assert any("Roughly_half_of_cabins" in name for name in problem.constraints)
 
     def test_add_gender_balance_constraints(self, scheduling_problem):
@@ -350,12 +350,12 @@ class TestSchedulingProblemConstraintGroups:
         problem = pulp.LpProblem("test_gender_balance")
         vars_ = self._make_vars(sp)
 
-        sp._add_gender_balance_constraints(problem, vars_["fleet_assignment"])
+        sp._add_gender_balance_constraints(problem, vars_["block_assignment"])
 
-        # unique cabin genders × fleets (uses cabin_genders, not camper-level data)
-        expected = len(sp.cabin_genders.unique()) * len(sp.fleets)
+        # unique cabin genders × blocks (uses cabin_genders, not camper-level data)
+        expected = len(sp.cabin_genders.unique()) * len(sp.blocks)
         assert len(problem.constraints) == expected
-        assert any("Roughly_half_of" in name and "_cabins_in_fleet" in name for name in problem.constraints)
+        assert any("Roughly_half_of" in name and "_cabins_in_block" in name for name in problem.constraints)
 
     def test_add_max_seatrades_per_fleet_constraints(self, scheduling_problem):
         sp = scheduling_problem
@@ -365,7 +365,7 @@ class TestSchedulingProblemConstraintGroups:
 
         sp._add_max_seatrades_per_fleet_constraints(problem, vars_["seatrade_assignment"], config)
 
-        assert len(problem.constraints) == len(sp.fleets)
+        assert len(problem.constraints) == len(sp.blocks)
         assert any("has_less_than" in name for name in problem.constraints)
 
     def test_add_max_seatrades_per_fleet_constraints_skipped_when_none(self, scheduling_problem):

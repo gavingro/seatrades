@@ -24,6 +24,12 @@ class OptimizationConfig:
     # count in [min, max] or doesn't run (0 campers). When False, restores the legacy
     # hard floor that force-fills campers_min into every session. Not exposed in the UI.
     allow_empty_sessions: bool = True
+    # When True, force each cabin into the same fleet (AM/PM) across both halves of the
+    # week — a cabin that is Morning in the first half stays Morning in the second (and
+    # Afternoon stays Afternoon). When False (default), the solver picks each cabin's
+    # fleet per half independently. Opt-in hard constraint; reproduces the legacy
+    # hand-scheduled arrangement.
+    force_same_fleet_all_week: bool = False
     log_path: Path = SEATRADES_LOG_PATH
     # Accepts None as input, but __post_init__ guarantees a solver afterward —
     # typed non-Optional so callers (and mypy) can treat it as always present.

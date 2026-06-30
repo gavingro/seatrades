@@ -71,6 +71,16 @@ class OptimizationConfigForm:
                         "absolute rule, not a preference — unlike the 'Fewer seatrades to staff' goal."
                     ),
                 )
+                force_same_fleet_all_week = st.checkbox(
+                    "Keep each cabin in the same fleet (Morning/Afternoon) all week.",
+                    value=OptimizationConfig().force_same_fleet_all_week,
+                    help=(
+                        "When on, a cabin that is Morning in the first half of the week stays "
+                        "Morning in the second (and Afternoon stays Afternoon) — the simple "
+                        "hand-scheduled arrangement. When off, the optimizer may switch a cabin "
+                        "between Morning and Afternoon across the two halves for more flexibility."
+                    ),
+                )
                 # Solution quality, framed as "how optimal" (higher = better, slower).
                 min_quality_pct = st.slider(
                     "Minimum solution quality",
@@ -101,6 +111,7 @@ class OptimizationConfigForm:
                 cabins_weight=cabins_weight,
                 sparsity_weight=sparsity_weight,
                 max_seatrades_per_fleet=max_seatrades_per_fleet,
+                force_same_fleet_all_week=force_same_fleet_all_week,
                 solver=pulp.apis.PULP_CBC_CMD(
                     timeLimit=timeout_limit_minutes * 60,
                     gapRel=optimality_gap,

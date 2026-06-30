@@ -56,8 +56,8 @@ class SchedulingProblem:
 
         self.seatrades_prefs = seatrade_setup.set_index("seatrade")
         self.seatrades = seatrade_setup["seatrade"]
-        self.fleets = BLOCKS
-        self.seatrades_full = [f"{block}_{seatrade}" for block in self.fleets for seatrade in self.seatrades]
+        self.blocks = BLOCKS
+        self.seatrades_full = [f"{block}_{seatrade}" for block in self.blocks for seatrade in self.seatrades]
 
         # Relationships reference campers by (cabin, camper); map them to integer IDs
         # so constraints can be expressed over the camper_assignments variables.
@@ -104,23 +104,23 @@ class SchedulingProblem:
             upBound=1,
             cat=pulp.LpBinary,
         )
-        fleet_assignment = pulp.LpVariable.dicts(
-            "Cabin_Fleet_Assignment",
-            (self.cabins, self.fleets),
+        block_assignment = pulp.LpVariable.dicts(
+            "Cabin_Block_Assignment",
+            (self.cabins, self.blocks),
             lowBound=0,
             upBound=1,
             cat=pulp.LpBinary,
         )
         seatrade_assignment = pulp.LpVariable.dicts(
             "Seatrade_Fleet_Assignment",
-            (self.fleets, self.seatrades),
+            (self.blocks, self.seatrades),
             lowBound=0,
             upBound=1,
             cat=pulp.LpBinary,
         )
 
         self._add_linking_constraints(
-            problem, camper_assignments, cabin_assignments, fleet_assignment, seatrade_assignment
+            problem, camper_assignments, cabin_assignments, block_assignment, seatrade_assignment
         )
         self._add_assignment_constraints(problem, camper_assignments)
         self._add_no_duplicate_seatrade_constraints(problem, camper_assignments)
@@ -131,9 +131,10 @@ class SchedulingProblem:
         self._add_besties_constraints(problem, camper_assignments)
         self._add_friends_constraints(problem, camper_assignments)
         self._add_frenemies_constraints(problem, camper_assignments)
-        self._add_fleet_assignment_constraints(problem, fleet_assignment)
-        self._add_fleet_balance_constraints(problem, fleet_assignment)
-        self._add_gender_balance_constraints(problem, fleet_assignment)
+        self._add_block_assignment_constraints(problem, block_assignment)
+        self._add_block_balance_constraints(problem, block_assignment)
+        self._add_gender_balance_constraints(problem, block_assignment)
+        self._add_same_fleet_constraints(problem, block_assignment, config)
         self._add_max_seatrades_per_fleet_constraints(problem, seatrade_assignment, config)
         self._add_objective(problem, camper_assignments, cabin_assignments, seatrade_assignment, config)
 
@@ -144,7 +145,7 @@ class SchedulingProblem:
         problem: pulp.LpProblem,
         camper_assignments: VarDict,
         cabin_assignments: VarDict,
-        fleet_assignment: VarDict,
+        block_assignment: VarDict,
         seatrade_assignment: VarDict,
     ) -> None:
         """Link helper variables to camper assignments so they track activation."""
@@ -153,18 +154,18 @@ class SchedulingProblem:
                 for c in self.campers_by_cabin[cabin]:
                     problem += cabin_assignments[cabin][s] >= camper_assignments[c][s]
 
-        for fleet in self.fleets:
+        for block in self.blocks:
             for seatrade in self.seatrades:
-                full_name = f"{fleet}_{seatrade}"
+                full_name = f"{block}_{seatrade}"
                 for cabin in self.cabins:
                     for c in self.campers_by_cabin[cabin]:
-                        problem += fleet_assignment[cabin][fleet] >= camper_assignments[c][full_name]
+                        problem += block_assignment[cabin][block] >= camper_assignments[c][full_name]
 
-        for fleet in self.fleets:
+        for block in self.blocks:
             for seatrade in self.seatrades:
-                full_name = f"{fleet}_{seatrade}"
+                full_name = f"{block}_{seatrade}"
                 for c in self.campers:
-                    problem += seatrade_assignment[fleet][seatrade] >= camper_assignments[c][full_name]
+                    problem += seatrade_assignment[block][seatrade] >= camper_assignments[c][full_name]
 
     def _add_assignment_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict) -> None:
         """Each camper is assigned exactly one seatrade per block pair."""
@@ -181,7 +182,7 @@ class SchedulingProblem:
         for seatrade in self.seatrades:
             for c in self.campers:
                 problem += (
-                    pulp.lpSum([camper_assignments[c][f"{fleet}_{seatrade}"] for fleet in self.fleets]) <= 1,
+                    pulp.lpSum([camper_assignments[c][f"{block}_{seatrade}"] for block in self.blocks]) <= 1,
                     f"{c}_cant_take_{seatrade}_in_both_blocks",
                 )
 
@@ -231,7 +232,7 @@ class SchedulingProblem:
             problem += (
                 pulp.lpSum(
                     camper_assignments[c][f"{block}_{s}"] * (preferences.index(s))
-                    for block in self.fleets
+                    for block in self.blocks
                     for s in preferences
                 )
                 <= 4,
@@ -253,7 +254,7 @@ class SchedulingProblem:
 
         Equating the camper's assignment for every block_seatrade forces the same
         seatrade in the same block for both blocks; the linking constraints then pull
-        both campers' cabins into the same fleet. No auxiliary variables needed.
+        both campers' cabins into the same block. No auxiliary variables needed.
         """
         for c1, c2 in self.besties_pairs:
             for s in self.seatrades_full:
@@ -291,46 +292,63 @@ class SchedulingProblem:
             overlap = self._session_overlap_vars(problem, camper_assignments, c1, c2)
             problem += (pulp.lpSum(overlap.values()) == 0, f"frenemies_{c1}_{c2}")
 
-    def _add_fleet_assignment_constraints(self, problem: pulp.LpProblem, fleet_assignment: VarDict) -> None:
+    def _add_block_assignment_constraints(self, problem: pulp.LpProblem, block_assignment: VarDict) -> None:
         """Each cabin is assigned to exactly one fleet per block pair."""
         for fleet_blocks in FLEET_BLOCKS:
             for cabin in self.cabins:
                 problem += (
-                    pulp.lpSum([fleet_assignment[cabin][f] for f in fleet_blocks]) == 1,
+                    pulp.lpSum([block_assignment[cabin][f] for f in fleet_blocks]) == 1,
                     f"{cabin}_in_only_1_fleet_{fleet_blocks}",
                 )
 
-    def _add_fleet_balance_constraints(self, problem: pulp.LpProblem, fleet_assignment: VarDict) -> None:
-        """Cabins are roughly evenly distributed across fleets."""
+    def _add_block_balance_constraints(self, problem: pulp.LpProblem, block_assignment: VarDict) -> None:
+        """Cabins are roughly evenly distributed across blocks."""
         half_of_the_cabins_min = len(self.cabins) // 2
-        for fleet in self.fleets:
+        for block in self.blocks:
             problem += (
-                pulp.lpSum([fleet_assignment[cabin][fleet] for cabin in self.cabins]) >= half_of_the_cabins_min,
-                f"Roughly_half_of_cabins_in_fleet_{fleet}",
+                pulp.lpSum([block_assignment[cabin][block] for cabin in self.cabins]) >= half_of_the_cabins_min,
+                f"Roughly_half_of_cabins_in_block_{block}",
             )
 
-    def _add_gender_balance_constraints(self, problem: pulp.LpProblem, fleet_assignment: VarDict) -> None:
-        """Each gender's cabins are roughly evenly distributed across fleets."""
+    def _add_gender_balance_constraints(self, problem: pulp.LpProblem, block_assignment: VarDict) -> None:
+        """Each gender's cabins are roughly evenly distributed across blocks."""
         for gender in self.cabin_genders.unique():
             gender_cabins = self.cabin_genders[self.cabin_genders == gender].index.tolist()
             half_of_the_gender_cabins_min = len(gender_cabins) // 2
-            for fleet in self.fleets:
+            for block in self.blocks:
                 problem += (
-                    pulp.lpSum([fleet_assignment[cabin][fleet] for cabin in gender_cabins])
+                    pulp.lpSum([block_assignment[cabin][block] for cabin in gender_cabins])
                     >= half_of_the_gender_cabins_min,
-                    f"Roughly_half_of_{gender}_cabins_in_fleet_{fleet}",
+                    f"Roughly_half_of_{gender}_cabins_in_block_{block}",
                 )
+
+    def _add_same_fleet_constraints(
+        self, problem: pulp.LpProblem, block_assignment: VarDict, config: OptimizationConfig
+    ) -> None:
+        """Optionally tie each cabin's fleet (AM/PM) to match across both halves (optional).
+
+        When ``force_same_fleet_all_week`` is set, a cabin that is Morning (AM) in the first
+        half must stay Morning in the second (and Afternoon stays Afternoon). Reuses the
+        existing per-cabin block-selection variable — no new variables. Given each cabin
+        already picks exactly one block per half, equating the AM blocks also pins the PM
+        blocks, but both are stated for clarity.
+        """
+        if not config.force_same_fleet_all_week:
+            return
+        for cabin in self.cabins:
+            problem += (block_assignment[cabin]["1a"] == block_assignment[cabin]["2a"], f"same_fleet_AM_{cabin}")
+            problem += (block_assignment[cabin]["1b"] == block_assignment[cabin]["2b"], f"same_fleet_PM_{cabin}")
 
     def _add_max_seatrades_per_fleet_constraints(
         self, problem: pulp.LpProblem, seatrade_assignment: VarDict, config: OptimizationConfig
     ) -> None:
         """Cap the number of distinct seatrades per fleet (optional)."""
         if config.max_seatrades_per_fleet:
-            for fleet in self.fleets:
+            for block in self.blocks:
                 problem += (
-                    pulp.lpSum([seatrade_assignment[fleet][seatrade] for seatrade in self.seatrades])
+                    pulp.lpSum([seatrade_assignment[block][seatrade] for seatrade in self.seatrades])
                     <= config.max_seatrades_per_fleet,
-                    f"Ensure_{fleet}_has_less_than_{config.max_seatrades_per_fleet}_seatrades",
+                    f"Ensure_{block}_has_less_than_{config.max_seatrades_per_fleet}_seatrades",
                 )
 
     def _add_objective(
@@ -344,7 +362,7 @@ class SchedulingProblem:
         """Minimize preference penalty, with optional cabin-distribution and sparsity terms."""
         objective = 0
         for c, preferences in self.camper_prefs.items():
-            for block in self.fleets:
+            for block in self.blocks:
                 objective += config.preference_weight * pulp.lpSum(
                     [camper_assignments[c][f"{block}_{s}"] * (preferences.index(s)) for s in preferences]
                 )
@@ -352,7 +370,7 @@ class SchedulingProblem:
             for s in self.seatrades_full:
                 objective += config.cabins_weight * pulp.lpSum([cabin_assignments[cabin][s] for cabin in self.cabins])
         if config.sparsity_weight:
-            for fleet in self.fleets:
+            for block in self.blocks:
                 for s in self.seatrades:
-                    objective += config.sparsity_weight * seatrade_assignment[fleet][s]
+                    objective += config.sparsity_weight * seatrade_assignment[block][s]
         problem += objective
