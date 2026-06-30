@@ -21,6 +21,9 @@ from seatrades.visualization import display_assignments
 # Makes Streamlit log-widget keys unique across reruns (presentation concern only).
 log_counter = 1
 
+# How often the UI re-polls SolveRun.progress() while a solve runs.
+_POLL_INTERVAL_SECONDS = 2
+
 
 class AssignmentsTab:
     """Tab Content for Assigning Seatrades"""
@@ -162,16 +165,18 @@ def _assign_seatrades(
         progress = run.progress()
         while progress.running:
             progress_bar.progress(progress.percent, progress.message)
+            # Newest log lines on top while streaming, so the latest CBC output is
+            # visible without scrolling. The final render below stays chronological.
             live_log = "".join(progress.log_text.splitlines(keepends=True)[::-1])
             if live_log:
                 log_container.text_area(
-                    "Solver Logs.",
+                    "Solver Logs",
                     value=live_log,
                     height=300,
                     key=str(log_counter) + live_log,
                 )
                 status.update(label=progress.message)
-            time.sleep(2)  # Adjust polling frequency
+            time.sleep(_POLL_INTERVAL_SECONDS)
             log_counter += 1
             progress = run.progress()
 

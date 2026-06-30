@@ -126,5 +126,5 @@ class SolveRun:
         """Raw CBC log contents (chronological); '' if the log isn't there yet."""
         try:
             return self._config.log_path.read_text()
-        except (FileNotFoundError, OSError):
+        except OSError:  # includes FileNotFoundError — log not written yet
             return ""
