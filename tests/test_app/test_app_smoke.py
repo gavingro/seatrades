@@ -57,3 +57,9 @@ class TestAppSmoke:
         assert at.session_state["assigned_solution"] is not None, "solve did not finish within timeout"
         assert at.session_state["optimization_success"] is True
         assert at.success, "expected a success message after solving"
+
+        # The final CBC log is retained and viewable after the solve concludes.
+        assert at.session_state["solver_log"], "solver log not retained after solve"
+        log_areas = [area for area in at.text_area if area.label == "Solver Logs"]
+        assert log_areas, "solver log not shown in the done view"
+        assert log_areas[0].value == at.session_state["solver_log"]

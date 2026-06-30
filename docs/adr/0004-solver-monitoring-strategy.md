@@ -27,6 +27,7 @@ The monitoring splits into two layers:
 
 - The UI never imports `threading`, `queue`, or reads log files directly, and holds no orchestration globals — the single active `SolveRun` lives in `session_state`.
 - Exactly one solve runs at a time: the active run's presence both drives the polling fragment and disables the Assign button, so concurrent CBC solves are impossible (resolves the #61 OOM risk).
+- `finalize_solve` stashes the final CBC log into `session_state` as the run is cleared, so the done view keeps a collapsed (chronological, non-live) "solver logs" expander for post-solve inspection after a solve or timeout — the live stream only exists while the run is in flight.
 - `SolveProgress` and `SolverStatus` are plain dataclasses with no Streamlit dependency — testable without the UI (`tests/test_seatrades/test_solve_run.py`). The fragment's lifetime/guard logic is pulled into pure functions (`solve_view_state`, `finalize_solve`) tested without driving Streamlit timers (`tests/test_app/test_assignments_tab.py`, `test_assignments_guard.py`).
 - Log-parsing regex and thread management moved from `assignments_tab.py` to `solve_run.py` (`SolveRun`).
 - Future: if a solver with callback support replaces PuLP, the service layer can switch to callbacks without changing the UI layer.

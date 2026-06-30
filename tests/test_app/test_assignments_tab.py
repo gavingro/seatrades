@@ -48,7 +48,7 @@ class TestFinalizeSolve:
         solution = _FakeSolution(SolverState.OPTIMAL)
         state = {ACTIVE_RUN_KEY: _FinishedRun(solution)}
 
-        finalize_solve(state[ACTIVE_RUN_KEY], state)
+        finalize_solve(state[ACTIVE_RUN_KEY], "CBC log lines", state)
 
         assert state["assigned_solution"] is solution
         assert state["optimization_success"] is True
@@ -59,11 +59,20 @@ class TestFinalizeSolve:
         solution = _FakeSolution(SolverState.ERROR)
         state = {ACTIVE_RUN_KEY: _FinishedRun(solution)}
 
-        finalize_solve(state[ACTIVE_RUN_KEY], state)
+        finalize_solve(state[ACTIVE_RUN_KEY], "CBC log lines", state)
 
         assert state["assigned_solution"] is solution
         assert state["optimization_success"] is False
         assert ACTIVE_RUN_KEY not in state
+
+    def test_retains_final_solver_log_for_post_solve_inspection(self):
+        """The finished run's log is stashed so the done view can show it after solving."""
+        solution = _FakeSolution(SolverState.OPTIMAL)
+        state = {ACTIVE_RUN_KEY: _FinishedRun(solution)}
+
+        finalize_solve(state[ACTIVE_RUN_KEY], "Cbc0010I solved\nDone", state)
+
+        assert state["solver_log"] == "Cbc0010I solved\nDone"
 
 
 class TestAssignmentFailureWarning:

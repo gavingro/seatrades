@@ -46,17 +46,19 @@ def solve_view_state(session_state: MutableMapping[Any, Any]) -> Literal["idle",
     return "idle"
 
 
-def finalize_solve(run: _CompletedRun, session_state: MutableMapping[Any, Any]) -> None:
+def finalize_solve(run: _CompletedRun, log_text: str, session_state: MutableMapping[Any, Any]) -> None:
     """Move a finished run's result into session_state and clear the active run.
 
-    Called once the run's solve has completed. Stores the solution and a
-    success flag (True only when optimal), then deletes the active-run key so the
-    concurrency guard re-enables the Assign button and polling stops.
+    Called once the run's solve has completed. Stores the solution, a success flag
+    (True only when optimal), and the final solver log (so the done view can show
+    it after solving), then deletes the active-run key so the concurrency guard
+    re-enables the Assign button and polling stops.
     """
     solution = run.result()
     if solution is not None:
         session_state["assigned_solution"] = solution
         session_state["optimization_success"] = solution.status.state == SolverState.OPTIMAL
+    session_state["solver_log"] = log_text
     del session_state[ACTIVE_RUN_KEY]
 
 
@@ -109,6 +111,13 @@ class AssignmentsTab:
                 assert selected_view in view_options
 
                 st.dataframe(render_view(longform_df, selected_view, camper_order=solution.campers))
+
+            # Final CBC log, kept for post-solve inspection (no longer live-updating).
+            # Chronological — read top-to-bottom — unlike the reversed live stream.
+            solver_log = st.session_state.get("solver_log")
+            if solver_log:
+                with st.expander("Show technical details (solver logs)"):
+                    st.text_area("Solver Logs", value=solver_log, height=300, key="final_solver_logs")
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -204,7 +213,7 @@ def _solve_progress_fragment() -> None:
         return
     progress = run.progress()
     if not progress.running:
-        finalize_solve(run, st.session_state)
+        finalize_solve(run, progress.log_text, st.session_state)
         st.rerun()
         return
     with st.status(progress.message, expanded=True):
