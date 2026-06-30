@@ -211,7 +211,8 @@ Note the tension: `cabins_weight` (soft, encourages cabinmates together) pushes 
 | Module | Owns |
 |--------|------|
 | `problem.py` | `SchedulingProblem` — holds parsed domain state, builds MILP (variables, constraints, objective) when `.build(config)` is called. Does NOT solve. Config (weights, limits, solver settings) is passed at build time, not init — allows rebuilding with different configs against the same domain data. |
-| `solver.py` | `solver.run(problem, config) -> AssignmentSolution` — orchestrates build + solve + wrangle. Calls `problem.build(config)` internally. Manages solver thread and CBC log reading. |
+| `solver.py` | `solver.run(problem, config) -> AssignmentSolution` — pure synchronous orchestration of build + solve + wrangle. Calls `problem.build(config)` internally. Does NOT manage threads or read the log — that lives in `solve_run.py`. |
+| `solve_run.py` | `SolveRun` — runs `solver.run` in a background thread, reads the CBC log, and exposes `progress()` (a `SolveProgress` snapshot) / `result()`. The service-layer seam ADR-0004 mandates; the UI polls it and never imports `threading`/`queue` or opens the log file. |
 | `results.py` | `AssignmentSolution` dataclass + free functions for wrangling (`wrangle_assignments_to_longform`, `wrangle_assignments_to_wideform`, `prepare_seatrade_leaders`) and export views. Functions take `AssignmentSolution`, not the problem. |
 | `visualization.py` | Build `alt.Chart` specs from `AssignmentSolution`. No Streamlit dependency — renders in any Altair-capable frontend. Colors cells by a camper-satisfaction scale (top choice → low/unranked) and labels block facets via `blocks.py`. |
 | `blocks.py` | Pure decoder from block codes to Captain-friendly labels (`1a` → `1st·AM`) plus `BLOCK_DECODER_CAPTION`. No Streamlit, no side effects. |

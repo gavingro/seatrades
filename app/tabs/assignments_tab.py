@@ -10,6 +10,7 @@ from seatrades.preferences import ValidationError, join_and_validate
 from seatrades.problem import SchedulingProblem
 from seatrades.results import (
     SolverState,
+    SolverStatus,
     prepare_seatrade_leaders,
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
@@ -37,11 +38,7 @@ class AssignmentsTab:
         if st.session_state.get("assigned_solution"):
             # Display results
             if not st.session_state["optimization_success"]:
-                st.warning(
-                    "No schedule could satisfy all the rules this time. Try relaxing a hard limit "
-                    "under **Advanced settings** in Optimization Setup (e.g. raise *Max seatrades "
-                    "per fleet*), or lower the *Minimum solution quality*, then assign again."
-                )
+                st.warning(assignment_failure_warning(st.session_state["assigned_solution"].status))
             else:
                 solution = st.session_state["assigned_solution"]
                 optimality = solution.status.optimality
@@ -205,6 +202,22 @@ def _assign_seatrades(
     if solution is not None:
         st.session_state["assigned_solution"] = solution
     stop_button.empty()
+
+
+def assignment_failure_warning(status: SolverStatus) -> str:
+    """User-facing copy for a non-optimal solve.
+
+    A crash (ERROR) surfaces its message so the Captain is never shown an
+    untrustworthy result without explanation (story #73-16); an infeasible solve
+    keeps the relax-a-hard-limit guidance.
+    """
+    if status.state == SolverState.ERROR:
+        return f"The optimizer hit an unexpected error and couldn't finish: {status.message}"
+    return (
+        "No schedule could satisfy all the rules this time. Try relaxing a hard limit "
+        "under **Advanced settings** in Optimization Setup (e.g. raise *Max seatrades "
+        "per fleet*), or lower the *Minimum solution quality*, then assign again."
+    )
 
 
 def render_view(
