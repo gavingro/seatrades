@@ -21,6 +21,10 @@ class TestOptimizationConfig:
         assert config.cabins_weight == 2
         assert config.sparsity_weight == 1
         assert config.max_seatrades_per_fleet is None
+        assert config.force_same_fleet_all_week is False
+
+    def test_force_same_fleet_all_week_opt_in(self):
+        assert OptimizationConfig(force_same_fleet_all_week=True).force_same_fleet_all_week is True
 
     def test_solver_default_is_not_shared(self):
         config_a = OptimizationConfig()

@@ -292,6 +292,111 @@ class TestFriendsFrenemiesConstraints:
         assert solution.status.state == SolverState.INFEASIBLE
 
 
+def _cabin_fleet_per_half(solution, problem):
+    """Map each cabin to (first_half_fleet, second_half_fleet) read from assignments.
+
+    A camper's assigned column ``{block}_{seatrade}`` encodes the block; the block's
+    letter is the fleet ('a' = Morning/AM, 'b' = Afternoon/PM). All campers in a cabin
+    share a fleet per half, so reading any one camper is enough.
+    """
+    fleets = {}
+    for cabin, camper_ids in problem.campers_by_cabin.items():
+        row = solution.assignments.loc[camper_ids[0]]
+        assigned = [col for col in row.index if row[col] == 1]
+        first = next(col for col in assigned if col.startswith(("1a_", "1b_")))
+        second = next(col for col in assigned if col.startswith(("2a_", "2b_")))
+        fleets[cabin] = (first[1], second[1])
+    return fleets
+
+
+class TestSameFleetAllWeek:
+    """force_same_fleet_all_week ties each cabin's AM/PM choice across both halves.
+
+    The roster below is tuned (with sparsity_weight high) so the *unconstrained* optimum
+    rotates some cabins between AM and PM across the two halves — making the toggle bind.
+    """
+
+    # 4 cabins, 2 campers each. With the flag off, the sparsity-minimal schedule moves at
+    # least one cabin between fleets across the halves (verified empirically).
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["C0", "C0", "C1", "C1", "C2", "C2", "C3", "C3"],
+            "camper": ["C0_0", "C0_1", "C1_0", "C1_1", "C2_0", "C2_1", "C3_0", "C3_1"],
+            "gender": ["M", "M", "F", "F", "M", "M", "F", "F"],
+            "seatrade_1": ["P", "P", "Q", "Q", "U", "U", "T", "T"],
+            "seatrade_2": ["U", "U", "R", "R", "P", "P", "U", "U"],
+            "seatrade_3": ["T", "T", "U", "U", "R", "R", "R", "R"],
+            "seatrade_4": ["Q", "Q", "P", "P", "T", "T", "Q", "Q"],
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["P", "Q", "R", "T", "U"],
+            "campers_min": [0] * 5,
+            "campers_max": [50] * 5,
+        }
+    )
+
+    def _config(self, force):
+        return OptimizationConfig(
+            solver=pulp.apis.PULP_CBC_CMD(msg=0),
+            sparsity_weight=5,
+            cabins_weight=0,
+            preference_weight=1,
+            force_same_fleet_all_week=force,
+        )
+
+    def test_flag_off_lets_a_cabin_switch_fleets(self):
+        """Baseline: without the toggle, the optimum rotates at least one cabin's fleet."""
+        problem = SchedulingProblem(self._joined, self._setup)
+
+        solution = run(problem, self._config(force=False))
+
+        assert solution.status.state == SolverState.OPTIMAL
+        fleets = _cabin_fleet_per_half(solution, problem)
+        assert any(first != second for first, second in fleets.values()), fleets
+
+    def test_flag_off_adds_no_same_fleet_constraints(self):
+        """Off-path is the current model: no same-fleet constraints are built."""
+        problem = SchedulingProblem(self._joined, self._setup)
+
+        constraints = problem.build(self._config(force=False)).constraints
+        assert [name for name in constraints if name.startswith("same_fleet_")] == []
+
+    def test_flag_on_holds_every_cabin_in_one_fleet(self):
+        problem = SchedulingProblem(self._joined, self._setup)
+
+        solution = run(problem, self._config(force=True))
+
+        assert solution.status.state == SolverState.OPTIMAL
+        fleets = _cabin_fleet_per_half(solution, problem)
+        for cabin, (first, second) in fleets.items():
+            assert first == second, f"{cabin} switches fleet: 1st={first} 2nd={second}"
+
+    def test_flag_on_costs_optimality(self):
+        """The toggle is a real hard constraint: holding fleet fixed costs a worse optimum."""
+        problem = SchedulingProblem(self._joined, self._setup)
+
+        off_obj = self._solved_objective(problem, force=False)
+        on_obj = self._solved_objective(problem, force=True)
+
+        # Objective is minimized, so a larger value is a worse (more-constrained) schedule.
+        assert on_obj > off_obj, f"toggle did not bind: off={off_obj} on={on_obj}"
+
+    @staticmethod
+    def _solved_objective(problem, force):
+        config = OptimizationConfig(
+            solver=pulp.apis.PULP_CBC_CMD(msg=0),
+            sparsity_weight=5,
+            cabins_weight=0,
+            preference_weight=1,
+            force_same_fleet_all_week=force,
+        )
+        lp = problem.build(config)
+        config.solver.solve(lp)
+        return pulp.value(lp.objective)
+
+
 class TestSeededRosterSolves:
     """The mock generator's seeded relationships must solve end-to-end (CONTEXT.md:86)."""
 
