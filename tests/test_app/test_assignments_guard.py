@@ -27,7 +27,7 @@ class _RunningRun:
             timed_out=False,
         )
 
-    def result(self):
+    def result(self) -> None:
         return None
 
 
