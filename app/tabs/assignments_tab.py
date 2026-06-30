@@ -1,4 +1,5 @@
-from typing import Literal, Optional
+from collections.abc import MutableMapping
+from typing import Any, Literal, Optional, Protocol
 
 import pandas as pd
 import streamlit as st
@@ -8,6 +9,7 @@ from seatrades.config import OptimizationConfig
 from seatrades.preferences import ValidationError, join_and_validate
 from seatrades.problem import SchedulingProblem
 from seatrades.results import (
+    AssignmentSolution,
     SolverState,
     SolverStatus,
     prepare_seatrade_leaders,
@@ -25,7 +27,13 @@ ACTIVE_RUN_KEY = "solve_run"
 _POLL_INTERVAL_SECONDS = 2
 
 
-def solve_view_state(session_state) -> Literal["idle", "running", "done"]:
+class _CompletedRun(Protocol):
+    """A finished SolveRun: ``result()`` yields its solution (None only mid-solve)."""
+
+    def result(self) -> Optional[AssignmentSolution]: ...
+
+
+def solve_view_state(session_state: MutableMapping[Any, Any]) -> Literal["idle", "running", "done"]:
     """Which assignments view to render, derived purely from session_state.
 
     "running" while a SolveRun is active (takes precedence over a lingering prior
@@ -38,7 +46,7 @@ def solve_view_state(session_state) -> Literal["idle", "running", "done"]:
     return "idle"
 
 
-def finalize_solve(run, session_state) -> None:
+def finalize_solve(run: _CompletedRun, session_state: MutableMapping[Any, Any]) -> None:
     """Move a finished run's result into session_state and clear the active run.
 
     Called once the run's solve has completed. Stores the solution and a
