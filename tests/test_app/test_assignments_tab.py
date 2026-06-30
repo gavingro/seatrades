@@ -1,7 +1,69 @@
 """Tests for the assignments_tab module."""
 
-from app.tabs.assignments_tab import assignment_failure_warning, render_view
+from app.tabs.assignments_tab import (
+    ACTIVE_RUN_KEY,
+    assignment_failure_warning,
+    finalize_solve,
+    render_view,
+    solve_view_state,
+)
 from seatrades.results import SolverState, SolverStatus
+
+
+class _FakeSolution:
+    """Minimal stand-in for AssignmentSolution: finalize only reads status.state."""
+
+    def __init__(self, state):
+        self.status = SolverStatus(state=state, message="")
+
+
+class _FinishedRun:
+    """Fake SolveRun whose solve has already completed with the given solution."""
+
+    def __init__(self, solution):
+        self._solution = solution
+
+    def result(self):
+        return self._solution
+
+
+class TestSolveViewState:
+    def test_empty_state_is_idle(self):
+        """No active run and no solution → idle."""
+        assert solve_view_state({}) == "idle"
+
+    def test_active_run_is_running(self):
+        """An active run present → running, even if a prior solution lingers."""
+        state = {ACTIVE_RUN_KEY: object(), "assigned_solution": object()}
+        assert solve_view_state(state) == "running"
+
+    def test_solution_without_run_is_done(self):
+        """A stored solution and no active run → done."""
+        assert solve_view_state({"assigned_solution": object()}) == "done"
+
+
+class TestFinalizeSolve:
+    def test_optimal_run_stores_solution_and_clears_active_run(self):
+        """A finished optimal solve lands its solution + success=True and frees the guard."""
+        solution = _FakeSolution(SolverState.OPTIMAL)
+        state = {ACTIVE_RUN_KEY: _FinishedRun(solution)}
+
+        finalize_solve(state[ACTIVE_RUN_KEY], state)
+
+        assert state["assigned_solution"] is solution
+        assert state["optimization_success"] is True
+        assert ACTIVE_RUN_KEY not in state
+
+    def test_error_run_stores_solution_with_success_false(self):
+        """A crashed solve still stores its solution but marks success=False."""
+        solution = _FakeSolution(SolverState.ERROR)
+        state = {ACTIVE_RUN_KEY: _FinishedRun(solution)}
+
+        finalize_solve(state[ACTIVE_RUN_KEY], state)
+
+        assert state["assigned_solution"] is solution
+        assert state["optimization_success"] is False
+        assert ACTIVE_RUN_KEY not in state
 
 
 class TestAssignmentFailureWarning:
