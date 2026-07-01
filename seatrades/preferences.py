@@ -92,7 +92,7 @@ def validate_schema(
                 'failed check "{check}" in column "{column}"',
             )
             indices = col_rows["index"].dropna().unique().tolist()
-            msg = msg_template.format(column=col, check=checks[0], label=label)
+            msg = msg_template.format(column=col, check=checks[0])
             if indices:
                 msg += f" (rows {_format_indices(indices)})"
             errors.append(f'"{label}" {msg}')

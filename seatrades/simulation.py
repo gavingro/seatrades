@@ -94,7 +94,7 @@ def simulate_seatrade_preferences(
 def simulate_camper_identity(
     camper_simulation_config: CamperSimulationConfig,
 ) -> pd.DataFrame:
-    """Generate simulated camper identity DataFrame (cabin, camper, gender)."""
+    """Generate simulated camper identity DataFrame (cabin, camper, gender, age)."""
     cabins = random.sample(list(ALL_CABIN_DICT.keys()), k=camper_simulation_config.num_cabins)
     name_faker = Faker(locale=["en", "es", "it_IT", "fr_FR", "fr_QC"])
 

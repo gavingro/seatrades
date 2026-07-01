@@ -86,7 +86,7 @@ class TestSimulateCamperIdentity:
         assert (result["age"] >= 1).all()
 
     def test_ages_cluster_within_each_cabin(self):
-        """Each cabin spans only a year or two around its base, never the camp range."""
+        """Each cabin stays within a few years of its base, never the camp range."""
         config = CamperSimulationConfig(num_cabins=8, base_age_min=13, base_age_max=16, age_spread=0.7)
         result = simulate_camper_identity(config)
         for cabin in result["cabin"].unique():
