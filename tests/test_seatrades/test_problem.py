@@ -69,6 +69,7 @@ class TestSchedulingProblemInit:
                 "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
                 "camper": ["Zoe", "Alice", "Mona", "Bob"],
                 "gender": ["F", "F", "F", "M"],
+                "age": [13, 14, 15, 16],
                 "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
                 "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
                 "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],

@@ -136,6 +136,11 @@ class TestWrangleAssignmentsToLongform:
         alice_rows = result[result["camper"] == "Alice"]
         assert (alice_rows["cabin"] == "Cabin1").all()
 
+    def test_age_lookup(self, sample_assignment_solution):
+        result = wrangle_assignments_to_longform(sample_assignment_solution)
+        alice_rows = result[result["camper"] == "Alice"]
+        assert (alice_rows["age"] == 13).all()
+
     def test_block_split(self, sample_assignment_solution):
         result = wrangle_assignments_to_longform(sample_assignment_solution)
         assert set(result["block"].unique()) == {"1a", "2b"}

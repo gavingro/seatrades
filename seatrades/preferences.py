@@ -52,6 +52,7 @@ _CHECK_MESSAGES = {
     "not_nullable": 'has missing or empty values in column "{column}"',
     "coerce": 'has invalid values in column "{column}"',
     "column_in_dataframe": 'is missing required column "{failure_case}"',
+    "greater_than_or_equal_to": 'has out-of-range values in column "{column}"',
 }
 
 

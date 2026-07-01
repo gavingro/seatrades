@@ -76,8 +76,38 @@ class TestSimulateCamperIdentity:
         config = CamperSimulationConfig()
         result = simulate_camper_identity(config)
         assert isinstance(result, pd.DataFrame)
-        for col in ["cabin", "camper", "gender"]:
+        for col in ["cabin", "camper", "gender", "age"]:
             assert col in result.columns
+
+    def test_ages_are_positive_integers(self):
+        config = CamperSimulationConfig(num_cabins=8)
+        result = simulate_camper_identity(config)
+        assert result["age"].dtype.kind == "i"
+        assert (result["age"] >= 1).all()
+
+    def test_ages_cluster_within_each_cabin(self):
+        """Each cabin spans only a year or two around its base, never the camp range."""
+        config = CamperSimulationConfig(num_cabins=8, base_age_min=13, base_age_max=16, age_spread=0.7)
+        result = simulate_camper_identity(config)
+        for cabin in result["cabin"].unique():
+            ages = result.loc[result["cabin"] == cabin, "age"]
+            # Jitter is a ±1–2 minority around one base, so the spread stays tight.
+            assert ages.max() - ages.min() <= 5
+
+    def test_most_campers_sit_on_their_cabin_base_age(self):
+        """Camp-wide, most campers land on their cabin's modal (base) age — a clear plurality."""
+        # A tight spread makes "most" unambiguous; the mechanism (base + jitter) is the same.
+        config = CamperSimulationConfig(num_cabins=8, base_age_min=13, base_age_max=16, age_spread=0.5)
+        result = simulate_camper_identity(config)
+        cabin_base = result.groupby("cabin")["age"].transform(lambda a: a.mode().iloc[0])
+        assert (result["age"] == cabin_base).mean() >= 0.5
+
+    def test_base_ages_vary_across_camp(self):
+        """Independent per-cabin base draws give the camp a spread of younger/older cabins."""
+        config = CamperSimulationConfig(num_cabins=8, base_age_min=13, base_age_max=16, age_spread=0.7)
+        result = simulate_camper_identity(config)
+        cabin_modal_ages = result.groupby("cabin")["age"].agg(lambda a: a.mode().iloc[0])
+        assert cabin_modal_ages.nunique() >= 2
 
     def test_cabin_count_matches_config(self):
         config = CamperSimulationConfig(num_cabins=4)

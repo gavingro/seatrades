@@ -27,6 +27,7 @@ def seatrade_sort_df():
     data = {
         "camper": ["Zed", "Alice", "Bob", "Carol"],
         "cabin": ["Cabin2", "Cabin1", "Cabin1", "Cabin2"],
+        "age": [16, 13, 14, 15],
         "block": ["2a", "1a", "1a", "1a"],
         "seatrade": ["Archery", "Archery", "Climbing", "Archery"],
         "assignment": [1.0, 1.0, 1.0, 1.0],

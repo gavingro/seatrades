@@ -101,6 +101,12 @@ def simulate_camper_identity(
     rows = []
     for cabin in cabins:
         cabin_gender = ALL_CABIN_DICT[cabin]
+        # One base age per cabin (inclusive of both bounds) so cabins cluster in age
+        # but the camp still spans younger and older cabins.
+        base_age = np.random.randint(
+            camper_simulation_config.base_age_min,
+            camper_simulation_config.base_age_max + 1,
+        )
         for _ in range(
             np.random.randint(
                 camper_simulation_config.camper_per_cabin_min,
@@ -108,7 +114,9 @@ def simulate_camper_identity(
             )
         ):
             name = name_faker.name_male() if cabin_gender == "male" else name_faker.name_female()
-            rows.append({"cabin": cabin, "camper": name, "gender": cabin_gender})
+            # Jitter around the cabin base; no clamp to the base range, only stay positive.
+            age = max(1, int(base_age + round(np.random.normal(0, camper_simulation_config.age_spread))))
+            rows.append({"cabin": cabin, "camper": name, "gender": cabin_gender, "age": age})
 
     result = pd.DataFrame(rows)
     return preferences.CamperIdentity.validate(result)  # type: ignore[return-value]

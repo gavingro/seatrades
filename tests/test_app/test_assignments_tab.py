@@ -97,6 +97,7 @@ class TestRenderView:
         assert result.columns.tolist() == [
             "cabin",
             "camper",
+            "age",
             "Seatrade 1a",
             "Seatrade 1b",
             "Seatrade 2a",

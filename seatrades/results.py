@@ -91,6 +91,7 @@ def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFram
         return None
 
     df["cabin"] = df.apply(lookup_cabin, axis=1)  # type: ignore[call-overload]
+    df["age"] = df["camper_id"].map(solution.cabin_camper_prefs["age"])
     df["camper"] = df["camper_id"].map(solution.camper_names)
     df = df.drop(columns="camper_id")
     df[["block", "seatrade"]] = df["seatrade"].str.split("_", expand=True)
@@ -117,7 +118,7 @@ def wrangle_assignments_to_wideform(
     assignments["seatrade_name"] = assignments["seatrade"]
 
     assigned_by_camper = assignments.pivot_table(
-        index=["cabin", "camper"],
+        index=["cabin", "camper", "age"],
         columns="block_label",
         values="seatrade_name",
         aggfunc="first",
@@ -146,7 +147,7 @@ def wrangle_assignments_to_wideform(
     else:
         assigned_by_camper = assigned_by_camper.sort_values(by=["cabin", "camper"], kind="stable")
 
-    assigned_by_camper = assigned_by_camper[["cabin", "camper"] + SEATRADE_BLOCK_COLUMNS]
+    assigned_by_camper = assigned_by_camper[["cabin", "camper", "age"] + SEATRADE_BLOCK_COLUMNS]
     assigned_by_camper.loc[:, SEATRADE_BLOCK_COLUMNS] = (
         assigned_by_camper.loc[:, SEATRADE_BLOCK_COLUMNS].replace("", pd.NA).fillna("Fleet Time")
     )
