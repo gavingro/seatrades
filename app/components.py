@@ -25,6 +25,7 @@ def clear_optimization_results():
         st.toast("Clearing Previous Optimization Results.")
     st.session_state["optimization_success"] = None
     st.session_state["assigned_solution"] = None
+    st.session_state["solver_log"] = None
 
 
 def try_join_and_validate():

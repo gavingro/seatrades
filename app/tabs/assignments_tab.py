@@ -1,5 +1,5 @@
-import time
-from typing import Literal, Optional
+from collections.abc import MutableMapping
+from typing import Any, Literal, Optional, Protocol
 
 import pandas as pd
 import streamlit as st
@@ -9,6 +9,7 @@ from seatrades.config import OptimizationConfig
 from seatrades.preferences import ValidationError, join_and_validate
 from seatrades.problem import SchedulingProblem
 from seatrades.results import (
+    AssignmentSolution,
     SolverState,
     SolverStatus,
     prepare_seatrade_leaders,
@@ -18,11 +19,47 @@ from seatrades.results import (
 from seatrades.solve_run import SolveRun
 from seatrades.visualization import display_assignments
 
-# Makes Streamlit log-widget keys unique across reruns (presentation concern only).
-log_counter = 1
+# session_state key holding the active SolveRun. Its presence *is* "a solve is in
+# flight" — the single source of truth for the concurrency guard (no separate flag).
+ACTIVE_RUN_KEY = "solve_run"
 
-# How often the UI re-polls SolveRun.progress() while a solve runs.
+# How often the fragment re-polls SolveRun.progress() while a solve runs.
 _POLL_INTERVAL_SECONDS = 2
+
+
+class _CompletedRun(Protocol):
+    """A finished SolveRun: ``result()`` yields its solution (None only mid-solve)."""
+
+    def result(self) -> Optional[AssignmentSolution]: ...
+
+
+def solve_view_state(session_state: MutableMapping[Any, Any]) -> Literal["idle", "running", "done"]:
+    """Which assignments view to render, derived purely from session_state.
+
+    "running" while a SolveRun is active (takes precedence over a lingering prior
+    solution), "done" once a solution is stored with no active run, else "idle".
+    """
+    if session_state.get(ACTIVE_RUN_KEY):
+        return "running"
+    if session_state.get("assigned_solution"):
+        return "done"
+    return "idle"
+
+
+def finalize_solve(run: _CompletedRun, log_text: str, session_state: MutableMapping[Any, Any]) -> None:
+    """Move a finished run's result into session_state and clear the active run.
+
+    Called once the run's solve has completed. Stores the solution, a success flag
+    (True only when optimal), and the final solver log (so the done view can show
+    it after solving), then deletes the active-run key so the concurrency guard
+    re-enables the Assign button and polling stops.
+    """
+    solution = run.result()
+    if solution is not None:
+        session_state["assigned_solution"] = solution
+        session_state["optimization_success"] = solution.status.state == SolverState.OPTIMAL
+    session_state["solver_log"] = log_text
+    del session_state[ACTIVE_RUN_KEY]
 
 
 class AssignmentsTab:
@@ -31,14 +68,20 @@ class AssignmentsTab:
     def generate(self) -> None:
         if "introduced" not in st.session_state or not st.session_state["introduced"]:
             _generate_intro_dialogue()
+        view_state = solve_view_state(st.session_state)
         st.button(
             "Assign Seatrades.",
             on_click=_assign_seatrades,
             kwargs={
                 "optimization_config": st.session_state["optimization_config"],
             },
+            # Single-run guard: disabled while a solve is in flight (run present).
+            disabled=view_state == "running",
         )
-        if st.session_state.get("assigned_solution"):
+        if view_state == "running":
+            # An active solve: poll it without blocking the script.
+            _solve_progress_fragment()
+        elif view_state == "done":
             # Display results
             if not st.session_state["optimization_success"]:
                 st.warning(assignment_failure_warning(st.session_state["assigned_solution"].status))
@@ -68,6 +111,13 @@ class AssignmentsTab:
                 assert selected_view in view_options
 
                 st.dataframe(render_view(longform_df, selected_view, camper_order=solution.campers))
+
+            # Final CBC log, kept for post-solve inspection (no longer live-updating).
+            # Chronological — read top-to-bottom — unlike the reversed live stream.
+            solver_log = st.session_state.get("solver_log")
+            if solver_log:
+                with st.expander("Show technical details (solver logs)"):
+                    st.text_area("Solver Logs", value=solver_log, height=300, key="final_solver_logs")
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -142,71 +192,38 @@ def _assign_seatrades(
     st.session_state["cabin_camper_prefs"] = joined_campers
     st.toast("Beginning Seatrade Optimization.")
     problem = SchedulingProblem(joined_campers, seatrade_setup, relationships=validated_relationships)
+    # Construct, start, and store the run; its presence guards against a second solve.
+    # The fragment polls it, renders progress, and finalizes on completion.
     run = SolveRun(problem, optimization_config)
-    with st.status("Setting up the optimization…") as status:
-        # CAUTION: Stopping only interrupts this UI loop — the daemon solve thread keeps
-        # running. Real cancellation is tracked in #61 / Spec B.
-        stop_button = st.empty()
+    run.start()
+    st.session_state[ACTIVE_RUN_KEY] = run
 
-        def _stop_optimizing() -> None:
-            raise KeyboardInterrupt
 
-        stop_button.button("Stop Optimizing", on_click=_stop_optimizing)
+@st.fragment(run_every=_POLL_INTERVAL_SECONDS)
+def _solve_progress_fragment() -> None:
+    """Poll the active SolveRun, render live progress, and finalize on completion.
 
-        progress_bar = st.progress(0, "Setting up the optimization…")
-
-        # Raw solver logs are tucked into a collapsed expander so the default view stays friendly.
-        global log_counter
+    Invoked only while an active run is present (from ``generate``). Each tick it
+    redraws the progress bar + collapsible solver logs. When the solve finishes it
+    stores the result and clears the active run, then triggers a full-script rerun
+    so the main script leaves this fragment branch and polling stops cleanly.
+    """
+    run = st.session_state.get(ACTIVE_RUN_KEY)
+    if run is None:
+        return
+    progress = run.progress()
+    if not progress.running:
+        finalize_solve(run, progress.log_text, st.session_state)
+        st.rerun()
+        return
+    with st.status(progress.message, expanded=True):
+        st.progress(progress.percent, progress.message)
+        # Newest log lines on top while streaming, so the latest CBC output is
+        # visible without scrolling. A single stable widget key re-renders in place.
+        live_log = "".join(progress.log_text.splitlines(keepends=True)[::-1])
         with st.expander("Show technical details (solver logs)"):
-            log_container = st.empty()
-
-        # SolveRun owns the thread + log file; the UI just polls and renders.
-        run.start()
-        progress = run.progress()
-        while progress.running:
-            progress_bar.progress(progress.percent, progress.message)
-            # Newest log lines on top while streaming, so the latest CBC output is
-            # visible without scrolling. The final render below stays chronological.
-            live_log = "".join(progress.log_text.splitlines(keepends=True)[::-1])
-            if live_log:
-                log_container.text_area(
-                    "Solver Logs",
-                    value=live_log,
-                    height=300,
-                    key=str(log_counter) + live_log,
-                )
-                status.update(label=progress.message)
-            time.sleep(_POLL_INTERVAL_SECONDS)
-            log_counter += 1
-            progress = run.progress()
-
-        log_container.text_area(
-            "Solver Logs",
-            value=progress.log_text,
-            height=300,
-            key="logs",
-        )
-        solution = run.result()
-        timeout_status = " - Timeout Reached" if progress.timed_out else ""
-        solution_optimality = solution.status.optimality if solution is not None else 1.0
-        optimality_status = f" - {solution_optimality:.0%} Optimal Solution found"
-        progress_bar.progress(1.0, "Optimization Concluded.")
-        st.toast("Seatrade Optimization Concluded.")
-        if solution is not None and solution.status.state == SolverState.OPTIMAL:
-            st.session_state["optimization_success"] = True
-            st.toast("Optimization Problem Solved!", icon="🎉")
-            status.update(
-                state="complete",
-                label=("Seatrades assigned successfully" + timeout_status + optimality_status + "."),
-                expanded=False,
-            )
-        else:
-            st.session_state["optimization_success"] = False
-            st.toast("Failed to solve optimization problem.", icon="🚨")
-            status.update(state="error", label="Seatrades failed to be assigned.")
-    if solution is not None:
-        st.session_state["assigned_solution"] = solution
-    stop_button.empty()
+            st.text_area("Solver Logs", value=live_log, height=300, key="solver_logs")
+        st.caption("This solve finishes on its own or stops at the configured time limit.")
 
 
 def assignment_failure_warning(status: SolverStatus) -> str:

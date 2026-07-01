@@ -10,7 +10,7 @@ PuLP's `.solve()` is a blocking call to CBC. The solver writes progress to a log
 
 ## Why `@st.fragment`?
 
-The current implementation uses a manual `while` loop with `time.sleep(2)`, a `queue.Queue` for status, and regex parsing of the log file — all inside `assignments_tab.py`. `@st.fragment(run_every=timedelta(seconds=2))` is Streamlit's built-in mechanism for periodic UI updates. It replaces the manual polling loop and keeps the UI responsive without blocking the main script.
+The original implementation used a manual `while` loop with `time.sleep(2)`, a `queue.Queue` for status, and regex parsing of the log file — all inside `assignments_tab.py`, which blocked the whole script while CBC solved. `@st.fragment(run_every=2)` is Streamlit's built-in mechanism for periodic UI updates. It replaces the manual polling loop and keeps the UI responsive without blocking the main script: the fragment re-runs on its own timer, polls `SolveRun.progress()`, and re-renders only its own subtree.
 
 ## Architecture
 
@@ -21,11 +21,13 @@ The monitoring splits into two layers:
 
 ## Implementation status
 
-The service-layer seam landed in #73: `SolveRun` (in `solve_run.py`) now owns the thread and log reading, so the UI no longer imports `threading`/`queue` or reads the log file. The UI still polls via a `while` + `time.sleep(2)` loop reading `progress()`/`result()`; swapping that loop for `@st.fragment(run_every=...)` and moving `SolveRun` into `session_state` is the remaining step toward this ADR's end-state, tracked in #61.
+**Fully implemented.** The service-layer seam landed in #73: `SolveRun` (in `solve_run.py`) owns the thread and log reading, so the UI no longer imports `threading`/`queue` or reads the log file. #61 completed the migration: the active `SolveRun` lives in `session_state`, the UI polls it via `@st.fragment(run_every=2)` instead of a blocking `while`/`sleep` loop, the run's presence *is* a single-run guard (the Assign button is disabled while a solve is in flight), and the fragment self-terminates by finalizing the result and triggering a full-script rerun once the solve completes. The broken "Stop" button and the last orchestration global (`log_counter`) were removed (Stop deferral: ADR-0008 / #74).
 
 ## Consequences
 
-- The UI never imports `threading`, `queue`, or reads log files directly.
-- `SolveProgress` and `SolverStatus` are plain dataclasses with no Streamlit dependency — testable without the UI (`tests/test_seatrades/test_solve_run.py`).
+- The UI never imports `threading`, `queue`, or reads log files directly, and holds no orchestration globals — the single active `SolveRun` lives in `session_state`.
+- Exactly one solve runs at a time: the active run's presence both drives the polling fragment and disables the Assign button, so concurrent CBC solves are impossible (resolves the #61 OOM risk).
+- `finalize_solve` stashes the final CBC log into `session_state` as the run is cleared, so the done view keeps a collapsed (chronological, non-live) "solver logs" expander for post-solve inspection after a solve or timeout — the live stream only exists while the run is in flight.
+- `SolveProgress` and `SolverStatus` are plain dataclasses with no Streamlit dependency — testable without the UI (`tests/test_seatrades/test_solve_run.py`). The fragment's lifetime/guard logic is pulled into pure functions (`solve_view_state`, `finalize_solve`) tested without driving Streamlit timers (`tests/test_app/test_assignments_tab.py`, `test_assignments_guard.py`).
 - Log-parsing regex and thread management moved from `assignments_tab.py` to `solve_run.py` (`SolveRun`).
 - Future: if a solver with callback support replaces PuLP, the service layer can switch to callbacks without changing the UI layer.

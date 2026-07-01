@@ -10,7 +10,7 @@ A child attending camp. Has:
 
 - **Name** - Display name (not a unique identifier — two campers can share a name)
 - **Cabin** - Group of ~12 campers staying together
-- **Age** - Camp year (determines cabin assignment)
+- **Age** - The camper's age in whole years (required). Cabins cluster campers of similar age, but a cabin is *not* uniform — ages within one cabin typically span 1–3 years. Used as a soft optimization preference to keep similar-aged campers together within sessions and within blocks.
 - **Gender** - Used for fleet balance constraints
 - **Preferences** - Ranked list of 4 seatrades (required)
 - **Composite key** - `(cabin, name)` uniquely identifies a camper
@@ -124,7 +124,7 @@ Each export includes columns: camper, seatrade, assignment (0/1), preference (1-
 flowchart LR
     subgraph UI [app/ — Presentation Layer]
         Upload[File Upload / Simulation Forms]
-        Poll["UI loop polling SolveRun.progress() / result()"]
+        Poll["@st.fragment polling SolveRun.progress() / result()"]
         Display[Render AssignmentSolution + Charts]
     end
 
@@ -230,7 +230,7 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 
 3. **Service function `solver.run(problem, config) -> AssignmentSolution`.** UI calls one function. `solver.run` calls `problem.build(config)` internally. No solver orchestration in the presentation layer.
 
-4. **Solver monitoring splits: the `SolveRun` seam (service layer, `solve_run.py`) runs the solve in a thread + reads the CBC log and exposes `progress()`/`result()`; the UI polls those and renders.** PuLP/CBC doesn't support mid-solve callbacks — the log file is the only progress signal. Progress percent is computed in `SolveRun.progress()` (a `SolveProgress` snapshot), not in SolverStatus. The UI still polls via a `while`+`sleep` loop; swapping it for `@st.fragment(run_every=...)` and moving `SolveRun` into `session_state` is tracked in #61 (ADR-0004 is the target end-state).
+4. **Solver monitoring splits: the `SolveRun` seam (service layer, `solve_run.py`) runs the solve in a thread + reads the CBC log and exposes `progress()`/`result()`; the UI polls those and renders.** PuLP/CBC doesn't support mid-solve callbacks — the log file is the only progress signal. Progress percent is computed in `SolveRun.progress()` (a `SolveProgress` snapshot), not in SolverStatus. The migration is complete (#61): the active `SolveRun` lives in `session_state` (one run at a time, no queue), the UI polls it via `@st.fragment(run_every=2)` instead of a blocking loop, the run's presence both drives the fragment and disables the Assign button (single-run guard — no concurrent CBC solves), and the fragment finalizes the result then triggers a full-script rerun to stop polling. The non-functional "Stop" button was removed; true cancellation is deferred (ADR-0008 / #74).
 
 5. **Simulation data generation moves to service layer** (`seatrades/simulation.py`). It's domain logic, not UI. Simulation produces 3 separate DataFrames (camper identity, camper preferences, seatrade setup) — goes through same validation pipeline as real uploads.
 

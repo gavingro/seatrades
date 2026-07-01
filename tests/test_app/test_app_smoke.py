@@ -5,8 +5,14 @@ open the app, dismiss the intro dialog, click "Assign Seatrades.", let the CBC
 solver finish, and confirm the run raises no Streamlit exceptions and produces a
 schedule. Spans every tab plus the solver, so it lives at the package level per
 ADR 0002.
+
+The solve is async (ADR-0004): clicking Assign starts a background SolveRun and
+the UI polls it via ``@st.fragment``. AppTest does not auto-advance ``run_every``
+timers, so the test polls completion itself — re-running the app until the solve
+finalizes its result into session_state.
 """
 
+import time
 from pathlib import Path
 
 import pytest
@@ -32,13 +38,28 @@ class TestAppSmoke:
         dismiss[0].click().run()
         assert not at.exception
 
-        # Run the solve.
+        # Start the async solve.
         assign = [button for button in at.button if "Assign" in button.label]
         assert assign, "Assign Seatrades button not found"
         assign[0].click().run()
+        assert not at.exception
+
+        # Poll the fragment to completion: each at.run() re-polls progress(); the
+        # finalizing tick fills assigned_solution (None until the solve finishes —
+        # the key exists from startup, so poll on the value, not key presence).
+        deadline = time.time() + SOLVE_TIMEOUT_SECONDS
+        while at.session_state["assigned_solution"] is None and time.time() < deadline:
+            time.sleep(2)
+            at.run()
+            assert not at.exception
 
         # Confirm the solve finished cleanly with a usable schedule.
-        assert not at.exception
+        assert at.session_state["assigned_solution"] is not None, "solve did not finish within timeout"
         assert at.session_state["optimization_success"] is True
-        assert "assigned_solution" in at.session_state
         assert at.success, "expected a success message after solving"
+
+        # The final CBC log is retained and viewable after the solve concludes.
+        assert at.session_state["solver_log"], "solver log not retained after solve"
+        log_areas = [area for area in at.text_area if area.label == "Solver Logs"]
+        assert log_areas, "solver log not shown in the done view"
+        assert log_areas[0].value == at.session_state["solver_log"]
