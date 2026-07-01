@@ -46,6 +46,11 @@ class CamperSimulationConfig:
     num_preferences: int = 4
     camper_per_cabin_min: int = 8
     camper_per_cabin_max: int = 12
+    # Bounds on each cabin's *base* age, drawn uniformly per cabin. Per-camper jitter
+    # (normal spread) rides on top and may land just outside these bounds.
+    base_age_min: int = 13
+    base_age_max: int = 16
+    age_spread: float = 0.7
 
 
 @dataclass
@@ -69,11 +74,12 @@ class SeatradesConfig(DataFrameModel):
 
 
 class CamperIdentity(DataFrameModel):
-    """Camper identity data — cabin, name, gender."""
+    """Camper identity data — cabin, name, gender, age."""
 
     cabin: str = Field(ignore_na=False)
     camper: str = Field(ignore_na=False)
     gender: str = Field(ignore_na=False)
+    age: int = Field(ge=1, coerce=True, ignore_na=False)
 
 
 RELATIONSHIP_TYPES = ["friends", "besties", "frenemies"]

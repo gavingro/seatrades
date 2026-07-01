@@ -25,6 +25,15 @@ def _update_camper_simulation_config(camper_simulation_config: CamperSimulationC
             icon="🚨",
         )
         return
+    if camper_simulation_config.base_age_min >= camper_simulation_config.base_age_max:
+        st.toast(
+            "Error updating simulation configuration.\n"
+            " Base age min must be strictly less than base age max.\n"
+            f"Instead found {camper_simulation_config.base_age_min}"
+            f" >= {camper_simulation_config.base_age_max}.",
+            icon="🚨",
+        )
+        return
     if st.session_state.get("camper_simulation_config") is not None:
         st.toast(f"Updating Camper Simulation Configuration.\n\n{camper_simulation_config}")
     st.session_state["camper_simulation_config"] = camper_simulation_config
@@ -43,10 +52,10 @@ class CamperSimulationConfigTab:
 
         # --- Identity uploader ---
         uploaded_identity = st.file_uploader(
-            label="Upload camper identity (cabin, camper, gender).",
+            label="Upload camper identity (cabin, camper, gender, age).",
             type="csv",
-            help="""Upload a .csv with columns: cabin, camper, gender.
-            Each row is one camper.""",
+            help="""Upload a .csv with columns: cabin, camper, gender, age.
+            Each row is one camper. Age is a whole number of years.""",
             key="identity_uploader",
         )
         if uploaded_identity:
@@ -102,11 +111,36 @@ class CamperSimulationConfigTab:
                     value=CamperSimulationConfig().camper_per_cabin_max,
                     help="Most campers a generated cabin can have. Must be above the min.",
                 )
+                base_age_min = st.slider(
+                    "Cabin base age (min)",
+                    min_value=8,
+                    max_value=20,
+                    value=CamperSimulationConfig().base_age_min,
+                    help="Lowest base age a generated cabin can cluster around. Must be below the max.",
+                )
+                base_age_max = st.slider(
+                    "Cabin base age (max)",
+                    min_value=8,
+                    max_value=20,
+                    value=CamperSimulationConfig().base_age_max,
+                    help="Highest base age a generated cabin can cluster around. Must be above the min.",
+                )
+                age_spread = st.slider(
+                    "Age spread (jitter years)",
+                    min_value=0.0,
+                    max_value=3.0,
+                    step=0.1,
+                    value=CamperSimulationConfig().age_spread,
+                    help="How far campers scatter around their cabin's base age. Higher = more mixed ages per cabin.",
+                )
 
                 camper_simulation_config = CamperSimulationConfig(
                     num_cabins=num_cabins,
                     camper_per_cabin_min=camper_per_cabin_min,
                     camper_per_cabin_max=camper_per_cabin_max,
+                    base_age_min=base_age_min,
+                    base_age_max=base_age_max,
+                    age_spread=age_spread,
                 )
                 st.form_submit_button(
                     "Simulate Campers",
@@ -142,6 +176,12 @@ def _simulate_campers(camper_simulation_config: CamperSimulationConfig):
     if camper_simulation_config.camper_per_cabin_min >= camper_simulation_config.camper_per_cabin_max:
         st.toast(
             "Error simulating campers: min must be less than max.",
+            icon="🚨",
+        )
+        return
+    if camper_simulation_config.base_age_min >= camper_simulation_config.base_age_max:
+        st.toast(
+            "Error simulating campers: base age min must be strictly less than base age max.",
             icon="🚨",
         )
         return

@@ -34,6 +34,7 @@ def _two_cabin_joined() -> pd.DataFrame:
             "cabin": ["Puffin", "Puffin", "Tillikum"],
             "camper": ["Alice", "Bob", "Carlos"],
             "gender": ["female", "female", "male"],
+            "age": [13, 14, 15],
             "seatrade_1": ["Sailing", "Climbing", "Archery"],
             "seatrade_2": ["Climbing", "Sailing", "Kayaking"],
             "seatrade_3": ["Archery", "Archery", "Tubing"],
@@ -63,6 +64,7 @@ class TestJoinAndValidateHappyPath:
                 "cabin": ["Puffin", "Puffin", "Tillikum"],
                 "camper": ["Alice", "Bob", "Carlos"],
                 "gender": ["female", "female", "male"],
+                "age": [13, 14, 15],
             }
         )
         preferences_df = pd.DataFrame(
@@ -97,6 +99,7 @@ class TestJoinAndValidateHappyPath:
                 "cabin": ["Puffin"],
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         preferences_df = pd.DataFrame(
@@ -131,6 +134,7 @@ class TestJoinAndValidateCamperNameMismatch:
                 "cabin": ["Puffin", "Puffin"],
                 "camper": ["Alice", "Bob"],
                 "gender": ["female", "female"],
+                "age": [13, 14],
             }
         )
         preferences_df = pd.DataFrame(
@@ -162,6 +166,7 @@ class TestJoinAndValidateCamperNameMismatch:
                 "cabin": ["Puffin"],
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         preferences_df = pd.DataFrame(
@@ -193,6 +198,7 @@ class TestJoinAndValidateCamperNameMismatch:
                 "cabin": ["Puffin"],
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         preferences_df = pd.DataFrame(
@@ -228,6 +234,7 @@ class TestJoinAndValidateNonexistentSeatrade:
                 "cabin": ["Puffin"],
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         preferences_df = pd.DataFrame(
@@ -259,6 +266,7 @@ class TestJoinAndValidateNonexistentSeatrade:
                 "cabin": ["Puffin", "Puffin"],
                 "camper": ["Alice", "Bob"],
                 "gender": ["female", "female"],
+                "age": [13, 14],
             }
         )
         preferences_df = pd.DataFrame(
@@ -295,6 +303,7 @@ class TestJoinAndValidateCombinedErrors:
                 "cabin": ["Puffin"],
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         preferences_df = pd.DataFrame(
@@ -333,6 +342,7 @@ class TestJoinAndValidateSchemaErrors:
                 "cabin": [None],
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         preferences_df = pd.DataFrame(
@@ -365,6 +375,7 @@ class TestJoinAndValidateSchemaErrors:
                 "cabin": ["Puffin"],
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         preferences_df = pd.DataFrame(
@@ -396,6 +407,7 @@ class TestJoinAndValidateSchemaErrors:
                 "cabin": [None],
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         preferences_df = pd.DataFrame(
@@ -434,6 +446,7 @@ class TestValidateSchema:
                 "cabin": ["Puffin"],
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         result = validate_schema(CamperIdentity, identity_df, "Camper Identity")
@@ -446,6 +459,7 @@ class TestValidateSchema:
                 "cabin": ["Puffin", None],
                 "camper": ["Alice", "Bob"],
                 "gender": ["female", "male"],
+                "age": [13, 14],
             }
         )
         with pytest.raises(ValidationError) as exc_info:
@@ -458,12 +472,47 @@ class TestValidateSchema:
             {
                 "camper": ["Alice"],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         with pytest.raises(ValidationError) as exc_info:
             validate_schema(CamperIdentity, df, "Camper Identity")
         assert any("Camper Identity" in e for e in exc_info.value.errors)
         assert any("cabin" in e for e in exc_info.value.errors)
+
+    def test_out_of_range_age_message(self):
+        """A non-positive age surfaces a translated message, not a raw pandera check name."""
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin"],
+                "camper": ["Alice"],
+                "gender": ["female"],
+                "age": [0],
+            }
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            validate_schema(CamperIdentity, df, "Camper Identity")
+        errors = exc_info.value.errors
+        assert any("age" in e and "out-of-range" in e for e in errors)
+        assert not any("greater_than_or_equal_to" in e for e in errors)
+
+    def test_non_numeric_age_message(self):
+        """A non-numeric age surfaces one translated 'invalid values' message, no raw check names."""
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin"],
+                "camper": ["Alice"],
+                "gender": ["female"],
+                "age": ["not-a-number"],
+            }
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            validate_schema(CamperIdentity, df, "Camper Identity")
+        errors = exc_info.value.errors
+        age_errors = [e for e in errors if "age" in e]
+        assert len(age_errors) == 1
+        assert "invalid values" in age_errors[0]
+        assert not any("coerce_dtype" in e or "dtype(" in e for e in errors)
 
     def test_uniqueness_check_error_message(self):
         df = pd.DataFrame(
@@ -486,6 +535,7 @@ class TestValidateSchema:
                 "cabin": [None],
                 "camper": [None],
                 "gender": ["female"],
+                "age": [13],
             }
         )
         with pytest.raises(ValidationError) as exc_info:
@@ -502,6 +552,7 @@ class TestJoinAndValidateRelationships:
                 "cabin": ["Puffin", "Puffin"],
                 "camper": ["Alice", "Bob"],
                 "gender": ["female", "female"],
+                "age": [13, 14],
             }
         )
         preferences_df = pd.DataFrame(
@@ -749,20 +800,20 @@ class TestReadCsvForSchema:
     """read_csv_for_schema reads CSV with usecols from schema, stripping rogue index columns."""
 
     def test_reads_clean_csv(self):
-        csv = StringIO("cabin,camper,gender\nPuffin,Alice,F\nTillikum,Bob,M")
+        csv = StringIO("cabin,camper,gender,age\nPuffin,Alice,F,13\nTillikum,Bob,M,15")
         result = read_csv_for_schema(csv, CamperIdentity)
-        assert set(result.columns) == {"cabin", "camper", "gender"}
+        assert set(result.columns) == {"cabin", "camper", "gender", "age"}
         assert len(result) == 2
 
     def test_strips_unnamed_index_column(self):
-        csv = StringIO(",cabin,camper,gender\n0,Puffin,Alice,F\n1,Tillikum,Bob,M")
+        csv = StringIO(",cabin,camper,gender,age\n0,Puffin,Alice,F,13\n1,Tillikum,Bob,M,15")
         result = read_csv_for_schema(csv, CamperIdentity)
         assert "Unnamed: 0" not in result.columns
-        assert list(result.columns) == ["cabin", "camper", "gender"]
+        assert list(result.columns) == ["cabin", "camper", "gender", "age"]
 
     def test_same_output_with_or_without_rogue_index(self):
-        csv_clean = StringIO("cabin,camper,gender\nPuffin,Alice,F\nTillikum,Bob,M")
-        csv_with_index = StringIO(",cabin,camper,gender\n0,Puffin,Alice,F\n1,Tillikum,Bob,M")
+        csv_clean = StringIO("cabin,camper,gender,age\nPuffin,Alice,F,13\nTillikum,Bob,M,15")
+        csv_with_index = StringIO(",cabin,camper,gender,age\n0,Puffin,Alice,F,13\n1,Tillikum,Bob,M,15")
 
         result_clean = read_csv_for_schema(csv_clean, CamperIdentity)
         result_with_index = read_csv_for_schema(csv_with_index, CamperIdentity)
@@ -773,10 +824,17 @@ class TestReadCsvForSchema:
         )
 
     def test_raises_validation_error_on_missing_schema_columns(self):
-        csv = StringIO("cabin,camper\nPuffin,Alice\nTillikum,Bob")  # missing 'gender'
+        csv = StringIO("cabin,camper,age\nPuffin,Alice,13\nTillikum,Bob,15")  # missing 'gender'
         with pytest.raises(ValidationError) as exc_info:
             read_csv_for_schema(csv, CamperIdentity)
         assert any("gender" in e for e in exc_info.value.errors)
+        assert any("missing required column" in e for e in exc_info.value.errors)
+
+    def test_raises_validation_error_on_missing_age_column(self):
+        csv = StringIO("cabin,camper,gender\nPuffin,Alice,F\nTillikum,Bob,M")  # missing 'age'
+        with pytest.raises(ValidationError) as exc_info:
+            read_csv_for_schema(csv, CamperIdentity)
+        assert any("age" in e for e in exc_info.value.errors)
         assert any("missing required column" in e for e in exc_info.value.errors)
 
     def test_works_with_seatrades_config(self):
@@ -791,6 +849,6 @@ class TestReadCsvForSchema:
         assert list(result.columns) == ["camper", "seatrade_1", "seatrade_2", "seatrade_3", "seatrade_4"]
 
     def test_column_order_matches_schema(self):
-        csv = StringIO("gender,camper,cabin\nF,Alice,Puffin\nM,Bob,Tillikum")
+        csv = StringIO("age,gender,camper,cabin\n13,F,Alice,Puffin\n15,M,Bob,Tillikum")
         result = read_csv_for_schema(csv, CamperIdentity)
-        assert list(result.columns) == ["cabin", "camper", "gender"]
+        assert list(result.columns) == ["cabin", "camper", "gender", "age"]
