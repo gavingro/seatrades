@@ -47,11 +47,15 @@ class ValidationError(Exception):
 
 
 # Pandera check names → user-friendly message templates.
-# Keys are substrings matched against the `check` column in failure_cases.
+# Matched as a prefix of the check name, because pandera suffixes the check with
+# its argument (e.g. "greater_than_or_equal_to(1)", "coerce_dtype('int64')").
+# Ordered by priority: when one column trips several checks (a non-numeric value
+# fails coercion, dtype, AND the range check), the first match wins so the user
+# sees the root cause once, not a pile of consequential errors.
 _CHECK_MESSAGES = {
     "not_nullable": 'has missing or empty values in column "{column}"',
     "coerce": 'has invalid values in column "{column}"',
-    "column_in_dataframe": 'is missing required column "{failure_case}"',
+    "dtype": 'has invalid values in column "{column}"',
     "greater_than_or_equal_to": 'has out-of-range values in column "{column}"',
 }
 
@@ -71,23 +75,28 @@ def validate_schema(
     except SchemaErrors as e:
         errors: list[str] = []
         fc = e.failure_cases
-        for check_name in fc["check"].unique():
-            check_rows = fc[fc["check"] == check_name]
-            columns = check_rows["column"].unique()
-            for col in columns:
-                col_rows = check_rows[check_rows["column"] == col]
-                indices = col_rows["index"].dropna().unique().tolist()
-                failure_cases = col_rows["failure_case"].dropna().unique().tolist()
-                msg_template = _CHECK_MESSAGES.get(check_name, 'failed check "{check}" in column "{column}"')
-                msg = msg_template.format(
-                    column=col,
-                    check=check_name,
-                    label=label,
-                    failure_case=", ".join(str(f) for f in failure_cases),
-                )
-                if indices:
-                    msg += f" (rows {_format_indices(indices)})"
-                errors.append(f'"{label}" {msg}')
+
+        # Missing-column failures carry the column name in `failure_case`, not `column`.
+        missing_cols = fc.loc[fc["check"] == "column_in_dataframe", "failure_case"].dropna().unique()
+        for name in missing_cols:
+            errors.append(f'"{label}" is missing required column "{name}"')
+
+        # Value failures: one message per column. When a column trips several checks,
+        # the highest-priority template wins so the user sees the root cause once.
+        value_fc = fc[fc["check"] != "column_in_dataframe"]
+        for col in value_fc["column"].dropna().unique():
+            col_rows = value_fc[value_fc["column"] == col]
+            checks = [str(c) for c in col_rows["check"]]
+            msg_template = next(
+                (tmpl for key, tmpl in _CHECK_MESSAGES.items() if any(c.startswith(key) for c in checks)),
+                'failed check "{check}" in column "{column}"',
+            )
+            indices = col_rows["index"].dropna().unique().tolist()
+            msg = msg_template.format(column=col, check=checks[0], label=label)
+            if indices:
+                msg += f" (rows {_format_indices(indices)})"
+            errors.append(f'"{label}" {msg}')
+
         raise ValidationError(errors) from e
     except SchemaError as e:
         # Single error (non-lazy path shouldn't reach here, but handle defensively)
@@ -212,7 +221,7 @@ def join_and_validate(
     and are feasible.
 
     Returns (joined_campers, seatrade_setup, validated_relationships) where
-    joined_campers has columns cabin, camper, gender, seatrade_1..4 and
+    joined_campers has columns cabin, camper, gender, age, seatrade_1..4 and
     validated_relationships is None when no relationships are given (absent or empty).
     """
     errors: list[str] = []

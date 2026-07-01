@@ -480,6 +480,40 @@ class TestValidateSchema:
         assert any("Camper Identity" in e for e in exc_info.value.errors)
         assert any("cabin" in e for e in exc_info.value.errors)
 
+    def test_out_of_range_age_message(self):
+        """A non-positive age surfaces a translated message, not a raw pandera check name."""
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin"],
+                "camper": ["Alice"],
+                "gender": ["female"],
+                "age": [0],
+            }
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            validate_schema(CamperIdentity, df, "Camper Identity")
+        errors = exc_info.value.errors
+        assert any("age" in e and "out-of-range" in e for e in errors)
+        assert not any("greater_than_or_equal_to" in e for e in errors)
+
+    def test_non_numeric_age_message(self):
+        """A non-numeric age surfaces one translated 'invalid values' message, no raw check names."""
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin"],
+                "camper": ["Alice"],
+                "gender": ["female"],
+                "age": ["not-a-number"],
+            }
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            validate_schema(CamperIdentity, df, "Camper Identity")
+        errors = exc_info.value.errors
+        age_errors = [e for e in errors if "age" in e]
+        assert len(age_errors) == 1
+        assert "invalid values" in age_errors[0]
+        assert not any("coerce_dtype" in e or "dtype(" in e for e in errors)
+
     def test_uniqueness_check_error_message(self):
         df = pd.DataFrame(
             {

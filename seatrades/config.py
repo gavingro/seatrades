@@ -74,7 +74,7 @@ class SeatradesConfig(DataFrameModel):
 
 
 class CamperIdentity(DataFrameModel):
-    """Camper identity data — cabin, name, gender."""
+    """Camper identity data — cabin, name, gender, age."""
 
     cabin: str = Field(ignore_na=False)
     camper: str = Field(ignore_na=False)
