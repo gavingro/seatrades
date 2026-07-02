@@ -17,13 +17,14 @@ from seatrades.config import (
 class TestOptimizationConfig:
     def test_defaults(self):
         config = OptimizationConfig()
-        assert config.preference_weight == 3
-        assert config.cabins_weight == 2
-        assert config.sparsity_weight == 1
+        assert config.preference_weight == 4
+        assert config.cabins_weight == 3
+        assert config.sparsity_weight == 2
         assert config.age_weight == 1
         assert config.age_balance == 0.5
         assert config.max_seatrades_per_fleet is None
         assert config.force_same_fleet_all_week is False
+        assert config.solver.timeLimit == 120
 
     def test_force_same_fleet_all_week_opt_in(self):
         assert OptimizationConfig(force_same_fleet_all_week=True).force_same_fleet_all_week is True

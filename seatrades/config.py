@@ -16,9 +16,9 @@ PREF_COLS = [f"seatrade_{i}" for i in range(1, NUM_PREFERENCES + 1)]
 
 @dataclass
 class OptimizationConfig:
-    preference_weight: int = 3
-    cabins_weight: int = 2
-    sparsity_weight: int = 1
+    preference_weight: int = 4
+    cabins_weight: int = 3
+    sparsity_weight: int = 2
     # Soft age-grouping penalty. age_weight defaults ON at a low weight (like
     # sparsity_weight): the always-present age data nudges the solver toward tighter
     # age spread. age_balance splits emphasis between the session level (per
@@ -43,7 +43,7 @@ class OptimizationConfig:
 
     def __post_init__(self) -> None:
         if self.solver is None:
-            self.solver = pulp.apis.PULP_CBC_CMD(timeLimit=60, gapRel=0.10, logPath=self.log_path)
+            self.solver = pulp.apis.PULP_CBC_CMD(timeLimit=120, gapRel=0.10, logPath=self.log_path)
 
 
 @dataclass
