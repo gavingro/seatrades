@@ -146,6 +146,25 @@ pip install -e ".[dev]"
 
 Dev dependencies include: `ruff`, `mypy`, `pandas-stubs`, `types-PyYAML`, `pandera[mypy]`, `pre-commit`, `pytest`, `pytest-cov`.
 
+Requires Python **3.10+** (matches CI and `pyproject.toml`'s `requires-python`).
+
+### Regenerating `requirements.txt`
+
+`requirements.txt` is a fully pinned runtime lock (no dev tools). To bump a
+runtime dependency, regenerate it under **Python 3.10** (CI's version) so the
+pins match what CI installs — a lock frozen under a newer Python resolves to
+versions that may not install on 3.10:
+
+```bash
+# fresh Python 3.10 venv, then:
+pip install <the deps from pyproject [project].dependencies, with your bump pinned>
+pip freeze > requirements.txt   # then drop any local/editable (-e) self line
+```
+
+To move **only one** dependency without dragging everything else forward, hold
+the current pins as constraints and let just the target (and its required
+transitive deps) move — see `docs/adr/0009-streamlit-floor-apptest-file-uploader.md`.
+
 Install pre-commit hooks (runs automatically on every commit):
 
 ```bash
