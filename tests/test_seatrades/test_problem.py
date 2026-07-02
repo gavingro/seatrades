@@ -462,7 +462,7 @@ class TestSchedulingProblemConstraintGroups:
 
         assert problem.objective is not None
 
-    def test_add_age_penalty_creates_aux_vars_and_links(self, scheduling_problem, default_config):
+    def test_age_penalty_term_creates_aux_vars_and_links(self, scheduling_problem, default_config):
         sp = scheduling_problem
         problem = pulp.LpProblem("test_age")
         vars_ = self._make_vars(sp)

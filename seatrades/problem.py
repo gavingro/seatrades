@@ -363,7 +363,7 @@ class SchedulingProblem:
         ``memberships`` pairs each candidate camper's age with its 0/1 membership
         expression for this group. Two continuous aux vars are pinned to reality:
         ``maxAge >= age*membership`` drives max down to the true max under minimization,
-        ``minAge <= age + M*(1 - membership)`` drives min up to the true min. The final
+        ``minAge <= age + big_m*(1 - membership)`` drives min up to the true min. The final
         ``minAge <= maxAge`` pins an empty / not-running group to range 0. These links
         only define the aux vars — they forbid no assignment.
         """
