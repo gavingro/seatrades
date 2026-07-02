@@ -467,7 +467,7 @@ class TestSchedulingProblemConstraintGroups:
         problem = pulp.LpProblem("test_age")
         vars_ = self._make_vars(sp)
 
-        term = sp._add_age_penalty(problem, vars_["camper_assignments"], default_config)
+        term = sp._age_penalty_term(problem, vars_["camper_assignments"], default_config.age_balance)
 
         # Two aux continuous vars (maxAge, minAge) per session group and per block group.
         var_names = [v.name for v in problem.variables()]
@@ -482,6 +482,13 @@ class TestSchedulingProblemConstraintGroups:
         block_links = len(sp.blocks) * (2 * len(sp.campers) + 1)
         assert len(problem.constraints) == session_links + block_links
         assert term is not None
+
+    def test_age_weight_zero_builds_no_age_penalty(self, scheduling_problem):
+        """age_weight=0 reproduces the baseline: no age aux vars, no age links in the model."""
+        problem = scheduling_problem.build(OptimizationConfig(age_weight=0))
+
+        var_names = [v.name for v in problem.variables()]
+        assert not any(name.startswith("maxAge_") or name.startswith("minAge_") for name in var_names)
 
     def test_empty_group_contributes_zero_age_range(self, scheduling_problem, default_config):
         """An empty / not-running session pins to range 0 — no negative-penalty farming."""
@@ -523,7 +530,7 @@ class TestSchedulingProblemConstraintGroups:
         vars_ = self._make_vars(sp)
         camper_assignments = vars_["camper_assignments"]
 
-        sp._add_age_penalty(problem, camper_assignments, default_config)
+        sp._age_penalty_term(problem, camper_assignments, default_config.age_balance)
 
         def in_session_links(session, assignment_var):
             """Whether assignment_var appears in the linking constraints of one session group."""

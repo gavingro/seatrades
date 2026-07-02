@@ -375,14 +375,15 @@ class SchedulingProblem:
         problem += min_age <= max_age
         return max_age - min_age
 
-    def _add_age_penalty(
-        self, problem: pulp.LpProblem, camper_assignments: VarDict, config: OptimizationConfig
+    def _age_penalty_term(
+        self, problem: pulp.LpProblem, camper_assignments: VarDict, age_balance: float
     ) -> pulp.LpAffineExpression:
-        """Soft age-grouping penalty: mean per-group age range, over sessions and blocks.
+        """Unweighted age-grouping penalty: mean per-group age range, over sessions and blocks.
 
-        Each level is normalized by its group count (mean range, not sum) so the two are
-        in comparable units and ``age_balance``'s midpoint is meaningful. Adds only
-        definitional linking constraints; returns the objective term.
+        ``age_balance`` blends the two levels, each normalized by its group count (mean
+        range, not sum) so they are in comparable units and the midpoint is meaningful.
+        Adds only definitional linking constraints; returns the objective term. The caller
+        scales this by ``age_weight``.
         """
         ages = self.cabin_camper_prefs["age"].to_dict()
         big_m = int(self.cabin_camper_prefs["age"].max())
@@ -405,7 +406,7 @@ class SchedulingProblem:
 
         session_term = pulp.lpSum(session_ranges) / len(self.seatrades_full)
         fleet_term = pulp.lpSum(block_ranges) / len(self.blocks)
-        return config.age_weight * (config.age_balance * session_term + (1 - config.age_balance) * fleet_term)
+        return age_balance * session_term + (1 - age_balance) * fleet_term
 
     def _add_objective(
         self,
@@ -430,5 +431,5 @@ class SchedulingProblem:
                 for s in self.seatrades:
                     objective += config.sparsity_weight * seatrade_assignment[block][s]
         if config.age_weight:
-            objective += self._add_age_penalty(problem, camper_assignments, config)
+            objective += config.age_weight * self._age_penalty_term(problem, camper_assignments, config.age_balance)
         problem += objective
