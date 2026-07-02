@@ -3,6 +3,45 @@
 import pandas as pd
 import pytest
 
+from seatrades.solve_run import SolveProgress
+
+
+class _NoSolveRun:
+    """SolveRun stand-in: captures the built problem/config, never spawns a CBC solve.
+
+    Lets pre-solve tests click "Assign" and assert on the resulting run/config without
+    paying for a real solve. Reports ``running=True`` so the poll fragment renders and
+    never finalizes.
+    """
+
+    def __init__(self, problem, config):
+        self.problem = problem
+        self.config = config
+        self.started = False
+
+    def start(self):
+        self.started = True
+
+    def progress(self) -> SolveProgress:
+        return SolveProgress(
+            running=True,
+            percent=0.0,
+            message="Optimizing seatrade assignments…",
+            log_text="",
+            timed_out=False,
+        )
+
+    def result(self):
+        return None
+
+
+@pytest.fixture
+def no_cbc_solve(monkeypatch):
+    """Swap SolveRun for a no-solve fake so clicking Assign starts no real solve."""
+    import app.tabs.assignments_tab as assignments_tab
+
+    monkeypatch.setattr(assignments_tab, "SolveRun", _NoSolveRun)
+
 
 @pytest.fixture
 def sample_mixed_assignment_df():

@@ -1,0 +1,90 @@
+"""Seatrade Setup tab pre-solve workflows: regenerate, resize, Assign guards — no CBC solve."""
+
+from pathlib import Path
+
+import pytest
+from streamlit.testing.v1 import AppTest
+
+APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
+
+
+def _slider(at, label_substring):
+    return next(s for s in at.slider if label_substring.lower() in s.label.lower())
+
+
+def _button(at, label_substring):
+    return next(b for b in at.button if label_substring.lower() in b.label.lower())
+
+
+class TestRegenerateSeatrades:
+    @pytest.mark.usefixtures("no_cbc_solve")
+    def test_regenerate_seatrades_then_assign_starts_run(self):
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at.run()
+
+        _button(at, "Update Seatrade Simulation Settings").click()
+        at.run()  # re-seeds all data from the updated config
+        _button(at, "Assign Seatrades").click()
+        at.run()
+
+        assert not at.exception
+        assert "solve_run" in at.session_state
+        assert at.session_state["solve_run"].started is True
+
+
+class TestSimulationSliders:
+    def test_seatrade_slider_resizes_offerings(self):
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at.run()
+
+        _slider(at, "Number of seatrades").set_value(4)
+        at.run()
+        _button(at, "Update Seatrade Simulation Settings").click()
+        at.run()
+
+        assert not at.exception
+        assert len(at.session_state["seatrade_preferences"]) == 4
+
+    def test_invalid_seatrade_capacity_warns_no_crash(self):
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at.run()
+        seatrades_before = at.session_state["seatrade_preferences"]
+
+        _slider(at, "Camper capacity per seatrade (min)").set_value(20)
+        _slider(at, "Camper capacity per seatrade (max)").set_value(10)
+        at.run()
+        _button(at, "Update Seatrade Simulation Settings").click()
+        at.run()
+
+        assert not at.exception
+        assert any("strictly less than" in t.value for t in at.toast)
+        assert at.session_state["seatrade_preferences"].equals(seatrades_before)
+
+
+class TestAssignGuards:
+    def test_assign_missing_data_prompts(self):
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at.run()
+
+        del at.session_state["camper_identity"]
+        _button(at, "Assign Seatrades").click()
+        at.run()
+
+        assert not at.exception
+        assert any("Missing camper or seatrade data" in t.value for t in at.toast)
+        assert "solve_run" not in at.session_state
+
+    def test_assign_mismatched_data_cross_reference_error(self):
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at.run()
+
+        # A camper in preferences that identity doesn't know → cross-reference fails.
+        bad_prefs = at.session_state["camper_preferences"].copy()
+        bad_prefs.iloc[0, bad_prefs.columns.get_loc("camper")] = "GHOST_CAMPER"
+        at.session_state["camper_preferences"] = bad_prefs
+        _button(at, "Assign Seatrades").click()
+        at.run()
+
+        assert not at.exception
+        assert any("Cross-reference validation failed" in t.value for t in at.toast)
+        assert "solve_run" not in at.session_state
