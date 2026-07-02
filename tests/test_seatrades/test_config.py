@@ -20,6 +20,8 @@ class TestOptimizationConfig:
         assert config.preference_weight == 3
         assert config.cabins_weight == 2
         assert config.sparsity_weight == 1
+        assert config.age_weight == 1
+        assert config.age_balance == 0.5
         assert config.max_seatrades_per_fleet is None
         assert config.force_same_fleet_all_week is False
 

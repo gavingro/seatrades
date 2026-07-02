@@ -19,6 +19,12 @@ class OptimizationConfig:
     preference_weight: int = 3
     cabins_weight: int = 2
     sparsity_weight: int = 1
+    # Soft age-grouping penalty. age_weight defaults ON at a low weight (like
+    # sparsity_weight): the always-present age data nudges the solver toward tighter
+    # age spread. age_balance splits emphasis between the session level (per
+    # block_seatrade) and the fleet level (per block); 0.5 = balanced.
+    age_weight: int = 1
+    age_balance: float = 0.5
     max_seatrades_per_fleet: Optional[int] = None
     # When True (default), campers_min is a conditional minimum: a session runs with a
     # count in [min, max] or doesn't run (0 campers). When False, restores the legacy

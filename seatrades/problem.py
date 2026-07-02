@@ -351,6 +351,62 @@ class SchedulingProblem:
                     f"Ensure_{block}_has_less_than_{config.max_seatrades_per_fleet}_seatrades",
                 )
 
+    def _group_range_var(
+        self,
+        problem: pulp.LpProblem,
+        label: str,
+        memberships: list[tuple[int, pulp.LpAffineExpression]],
+        big_m: int,
+    ) -> pulp.LpAffineExpression:
+        """Auxiliary range = maxAge - minAge for one age group, linearized.
+
+        ``memberships`` pairs each candidate camper's age with its 0/1 membership
+        expression for this group. Two continuous aux vars are pinned to reality:
+        ``maxAge >= age*membership`` drives max down to the true max under minimization,
+        ``minAge <= age + M*(1 - membership)`` drives min up to the true min. The final
+        ``minAge <= maxAge`` pins an empty / not-running group to range 0. These links
+        only define the aux vars — they forbid no assignment.
+        """
+        max_age = pulp.LpVariable(f"maxAge_{label}", lowBound=0)
+        min_age = pulp.LpVariable(f"minAge_{label}", lowBound=0)
+        for age, membership in memberships:
+            problem += max_age >= age * membership
+            problem += min_age <= age + big_m * (1 - membership)
+        problem += min_age <= max_age
+        return max_age - min_age
+
+    def _add_age_penalty(
+        self, problem: pulp.LpProblem, camper_assignments: VarDict, config: OptimizationConfig
+    ) -> pulp.LpAffineExpression:
+        """Soft age-grouping penalty: mean per-group age range, over sessions and blocks.
+
+        Each level is normalized by its group count (mean range, not sum) so the two are
+        in comparable units and ``age_balance``'s midpoint is meaningful. Adds only
+        definitional linking constraints; returns the objective term.
+        """
+        ages = self.cabin_camper_prefs["age"].to_dict()
+        big_m = int(self.cabin_camper_prefs["age"].max())
+
+        session_ranges = []
+        for s in self.seatrades_full:
+            # Only preference-eligible campers can occupy this session; the rest are
+            # pinned to 0 by the preference constraint and would add dead links.
+            eligible = [c for c, prefs in self.camper_prefs.items() if seatrade_name(s) in prefs]
+            memberships = [(ages[c], camper_assignments[c][s]) for c in eligible]
+            session_ranges.append(self._group_range_var(problem, f"session_{s}", memberships, big_m))
+
+        block_ranges = []
+        for block in self.blocks:
+            memberships = [
+                (ages[c], pulp.lpSum(camper_assignments[c][f"{block}_{s}"] for s in self.seatrades))
+                for c in self.campers
+            ]
+            block_ranges.append(self._group_range_var(problem, f"block_{block}", memberships, big_m))
+
+        session_term = pulp.lpSum(session_ranges) / len(self.seatrades_full)
+        fleet_term = pulp.lpSum(block_ranges) / len(self.blocks)
+        return config.age_weight * (config.age_balance * session_term + (1 - config.age_balance) * fleet_term)
+
     def _add_objective(
         self,
         problem: pulp.LpProblem,
@@ -359,7 +415,7 @@ class SchedulingProblem:
         seatrade_assignment: VarDict,
         config: OptimizationConfig,
     ) -> None:
-        """Minimize preference penalty, with optional cabin-distribution and sparsity terms."""
+        """Minimize preference penalty, with optional cabin, sparsity, and age-grouping terms."""
         objective = 0
         for c, preferences in self.camper_prefs.items():
             for block in self.blocks:
@@ -373,4 +429,6 @@ class SchedulingProblem:
             for block in self.blocks:
                 for s in self.seatrades:
                     objective += config.sparsity_weight * seatrade_assignment[block][s]
+        if config.age_weight:
+            objective += self._add_age_penalty(problem, camper_assignments, config)
         problem += objective
