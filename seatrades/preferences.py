@@ -59,6 +59,11 @@ _CHECK_MESSAGES = {
     "greater_than_or_equal_to": 'has out-of-range values in column "{column}"',
 }
 
+# Pandera's check name for a required column absent from the DataFrame. Its
+# failure carries the column name in `failure_case`, not `column`, so it is
+# pulled out and excluded from the value-failure loop below.
+_MISSING_COLUMN_CHECK = "column_in_dataframe"
+
 
 def validate_schema(
     schema: type[DataFrameModel],
@@ -77,13 +82,13 @@ def validate_schema(
         fc = e.failure_cases
 
         # Missing-column failures carry the column name in `failure_case`, not `column`.
-        missing_cols = fc.loc[fc["check"] == "column_in_dataframe", "failure_case"].dropna().unique()
+        missing_cols = fc.loc[fc["check"] == _MISSING_COLUMN_CHECK, "failure_case"].dropna().unique()
         for name in missing_cols:
             errors.append(f'"{label}" is missing required column "{name}"')
 
         # Value failures: one message per column. When a column trips several checks,
         # the highest-priority template wins so the user sees the root cause once.
-        value_fc = fc[fc["check"] != "column_in_dataframe"]
+        value_fc = fc[fc["check"] != _MISSING_COLUMN_CHECK]
         for col in value_fc["column"].dropna().unique():
             col_rows = value_fc[value_fc["column"] == col]
             checks = [str(c) for c in col_rows["check"]]
