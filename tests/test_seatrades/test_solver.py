@@ -61,6 +61,7 @@ class TestSolverRun:
                 "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
                 "camper": ["Alice", "Bob", "Carol", "Dave"],
                 "gender": ["F", "M", "F", "M"],
+                "age": [13, 14, 15, 16],
                 "seatrade_1": ["Canoeing and Kayaking", "High Ropes", "Laser Tag", "Giant Swing"],
                 "seatrade_2": ["High Ropes", "Canoeing and Kayaking", "Giant Swing", "Laser Tag"],
                 "seatrade_3": ["Laser Tag", "Giant Swing", "Canoeing and Kayaking", "High Ropes"],
@@ -90,6 +91,7 @@ class TestSolverRun:
                 "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
                 "camper": ["Alice", "Bob", "Carol", "Dave"],
                 "gender": ["F", "M", "F", "M"],
+                "age": [13, 14, 15, 16],
                 "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
                 "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
                 "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
@@ -122,6 +124,7 @@ class TestSolverRun:
                 "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
                 "camper": ["Alex", "Bob", "Alex", "Dave"],
                 "gender": ["F", "M", "F", "M"],
+                "age": [13, 14, 15, 16],
                 "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
                 "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
                 "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
@@ -157,6 +160,7 @@ class TestBestiesConstraint:
             "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
             "camper": ["Alice", "Bob", "Carol", "Dave"],
             "gender": ["F", "M", "F", "M"],
+            "age": [13, 14, 15, 16],
             "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
             "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
             "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
@@ -214,6 +218,7 @@ class TestFriendsFrenemiesConstraints:
             "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
             "camper": ["Alice", "Bob", "Carol", "Dave"],
             "gender": ["F", "M", "F", "M"],
+            "age": [13, 14, 15, 16],
             "seatrade_1": ["Archery", "Archery", "Sailing", "Archery"],
             "seatrade_2": ["Sailing", "Sailing", "Archery", "Climbing"],
             "seatrade_3": ["Climbing", "Climbing", "Climbing", "Sailing"],
@@ -323,6 +328,7 @@ class TestSameFleetAllWeek:
             "cabin": ["C0", "C0", "C1", "C1", "C2", "C2", "C3", "C3"],
             "camper": ["C0_0", "C0_1", "C1_0", "C1_1", "C2_0", "C2_1", "C3_0", "C3_1"],
             "gender": ["M", "M", "F", "F", "M", "M", "F", "F"],
+            "age": [13, 14, 13, 14, 15, 16, 15, 16],
             "seatrade_1": ["P", "P", "Q", "Q", "U", "U", "T", "T"],
             "seatrade_2": ["U", "U", "R", "R", "P", "P", "U", "U"],
             "seatrade_3": ["T", "T", "U", "U", "R", "R", "R", "R"],
@@ -405,6 +411,7 @@ class TestSeededRosterSolves:
             "cabin": ["Puffin", "Puffin", "Tillikum", "Tillikum", "Orca", "Narwhal"],
             "camper": ["Alice", "Bob", "Carlos", "Dana", "Eve", "Frank"],
             "gender": ["female", "female", "male", "male", "female", "male"],
+            "age": [13, 14, 13, 14, 15, 16],
         }
     )
     # Alice&Bob (same cabin) share ≥2 → besties; Carlos&Dana (same cabin) share ≥1 →
@@ -515,6 +522,7 @@ class TestStatusCodeMapping:
                 "cabin": ["Cabin1", "Cabin1"],
                 "camper": ["Alice", "Bob"],
                 "gender": ["F", "M"],
+                "age": [13, 14],
                 "seatrade_1": ["Archery", "Archery"],
                 "seatrade_2": ["Archery", "Archery"],
                 "seatrade_3": ["Archery", "Archery"],
@@ -543,6 +551,7 @@ class TestStatusCodeMapping:
                 "cabin": ["Cabin1", "Cabin1"],
                 "camper": ["Alice", "Bob"],
                 "gender": ["F", "M"],
+                "age": [13, 14],
                 "seatrade_1": ["Archery", "Archery"],
                 "seatrade_2": ["Archery", "Archery"],
                 "seatrade_3": ["Archery", "Archery"],
@@ -577,6 +586,7 @@ class TestConditionalMinCapacity:
             "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
             "camper": ["Alice", "Bob", "Carol", "Dave"],
             "gender": ["F", "F", "M", "M"],
+            "age": [13, 14, 15, 16],
             "seatrade_1": ["pick1", "pick2", "pick3", "pick4"],
             "seatrade_2": ["pick2", "pick3", "pick4", "pick1"],
             "seatrade_3": ["pick3", "pick4", "pick1", "pick2"],
@@ -623,3 +633,148 @@ class TestConditionalMinCapacity:
         solution = run(problem, config)
 
         assert solution.status.state == SolverState.INFEASIBLE
+
+
+class TestAgeGroupingPenalty:
+    """The soft age penalty tightens age spread when weighted, never forces infeasibility.
+
+    Both cabins are age-mixed (a 13 and a 16). At age_weight=0 the cabins_weight goal
+    packs each cabin's pair into one shared session — a wide age range. A high age_weight
+    with age_balance=1 pays a tiny preference/cohesion cost to split the odd-aged camper
+    out, collapsing session ranges. This binds the constraint by making the tight schedule
+    worse-but-valid, never by infeasibility.
+    """
+
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "camper": ["Alice", "Bob", "Carol", "Dave"],
+            "gender": ["F", "F", "F", "F"],
+            "age": [13, 16, 13, 16],
+            "seatrade_1": ["Archery", "Archery", "Archery", "Archery"],
+            "seatrade_2": ["Sailing", "Sailing", "Sailing", "Sailing"],
+            "seatrade_3": ["Climbing", "Climbing", "Climbing", "Climbing"],
+            "seatrade_4": ["Kayaking", "Kayaking", "Kayaking", "Kayaking"],
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+            "campers_min": [0, 0, 0, 0],
+            "campers_max": [10, 10, 10, 10],
+        }
+    )
+
+    def _config(self, age_weight, age_balance=0.5):
+        return OptimizationConfig(
+            age_weight=age_weight,
+            age_balance=age_balance,
+            solver=pulp.apis.PULP_CBC_CMD(msg=0),
+        )
+
+    def _max_session_age_range(self, solution):
+        ages = solution.cabin_camper_prefs["age"]
+        spreads = [
+            int(ages.loc[solution.assignments.index[solution.assignments[s] == 1]].agg(lambda a: a.max() - a.min()))
+            for s in solution.assignments.columns
+            if solution.assignments[s].sum() >= 1
+        ]
+        return max(spreads)
+
+    def test_high_age_weight_tightens_session_spread(self):
+        problem = SchedulingProblem(self._joined, self._setup)
+
+        loose = run(problem, self._config(age_weight=0))
+        tight = run(problem, self._config(age_weight=100, age_balance=1.0))
+
+        assert loose.status.state == SolverState.OPTIMAL
+        assert tight.status.state == SolverState.OPTIMAL
+        # Baseline packs the mixed-age cabin together (range spans the 13–16 gap)...
+        assert self._max_session_age_range(loose) >= 3
+        # ...and the weighted solve splits it, collapsing the widest session range.
+        assert self._max_session_age_range(tight) < self._max_session_age_range(loose)
+
+    def test_soft_penalty_never_infeasible(self):
+        """Even an overwhelming age_weight only nudges the objective — it stays solvable."""
+        problem = SchedulingProblem(self._joined, self._setup)
+
+        solution = run(problem, self._config(age_weight=1000, age_balance=0.5))
+
+        assert solution.status.state == SolverState.OPTIMAL
+
+
+class TestAgeGroupingBalanceSelectsLevel:
+    """age_balance routes the penalty: 0 tightens blocks, 1 tightens sessions.
+
+    A young and an old cabin *share* each preference group, so the sparsity goal packs
+    them into the same block — mixing ages block-wide (range 3) at baseline. Separating
+    them into age-pure blocks costs sparsity (the shared seatrades then run in two blocks),
+    a worse-but-valid schedule the block-level penalty is willing to buy. The session-level
+    penalty is indifferent to blocks, so it leaves the block spread loose.
+    """
+
+    _pref_p = ["Archery", "Sailing", "Diving", "Rowing"]
+    _pref_q = ["Climbing", "Kayaking", "Surfing", "Fishing"]
+
+    @classmethod
+    def _roster(cls):
+        rows = []
+        for cabin, age, prefs in [
+            ("Y1", 13, cls._pref_p),
+            ("O1", 16, cls._pref_p),
+            ("Y2", 13, cls._pref_q),
+            ("O2", 16, cls._pref_q),
+        ]:
+            for i in range(2):
+                rows.append(
+                    {
+                        "cabin": cabin,
+                        "camper": f"{cabin}{i}",
+                        "gender": "F",
+                        "age": age,
+                        "seatrade_1": prefs[0],
+                        "seatrade_2": prefs[1],
+                        "seatrade_3": prefs[2],
+                        "seatrade_4": prefs[3],
+                    }
+                )
+        joined = pd.DataFrame(rows)
+        setup = pd.DataFrame({"seatrade": cls._pref_p + cls._pref_q, "campers_min": [0] * 8, "campers_max": [20] * 8})
+        return SchedulingProblem(joined, setup)
+
+    def _config(self, age_weight, age_balance):
+        return OptimizationConfig(age_weight=age_weight, age_balance=age_balance, solver=pulp.apis.PULP_CBC_CMD(msg=0))
+
+    def _max_block_age_range(self, solution, problem):
+        ages = solution.cabin_camper_prefs["age"]
+        spreads = []
+        for block in problem.blocks:
+            cols = [f"{block}_{s}" for s in problem.seatrades]
+            members = solution.assignments.index[solution.assignments[cols].sum(axis=1) >= 1]
+            if len(members):
+                block_ages = ages.loc[members]
+                spreads.append(int(block_ages.max() - block_ages.min()))
+        return max(spreads)
+
+    def test_block_focus_tightens_block_spread(self):
+        problem = self._roster()
+
+        loose = run(problem, self._config(age_weight=0, age_balance=0.0))
+        tight = run(problem, self._config(age_weight=200, age_balance=0.0))
+
+        assert loose.status.state == SolverState.OPTIMAL
+        assert tight.status.state == SolverState.OPTIMAL
+        # Baseline packs a young + old cabin into each block (spans the 13–16 gap)...
+        assert self._max_block_age_range(loose, problem) >= 3
+        # ...and block-weighted grouping separates them into age-pure blocks.
+        assert self._max_block_age_range(tight, problem) < self._max_block_age_range(loose, problem)
+
+    def test_session_focus_leaves_block_spread_loose(self):
+        """age_balance=1 optimizes sessions only — it does not tighten block spread."""
+        problem = self._roster()
+
+        session_focus = run(problem, self._config(age_weight=200, age_balance=1.0))
+
+        assert session_focus.status.state == SolverState.OPTIMAL
+        # Session-level tightening leaves at least one block age-mixed (blocks are not its concern).
+        assert self._max_block_age_range(session_focus, problem) >= 3

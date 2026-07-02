@@ -69,6 +69,7 @@ class TestSchedulingProblemInit:
                 "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
                 "camper": ["Zoe", "Alice", "Mona", "Bob"],
                 "gender": ["F", "F", "F", "M"],
+                "age": [13, 14, 15, 16],
                 "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
                 "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
                 "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
@@ -460,3 +461,89 @@ class TestSchedulingProblemConstraintGroups:
         )
 
         assert problem.objective is not None
+
+    def test_age_penalty_term_creates_aux_vars_and_links(self, scheduling_problem, default_config):
+        sp = scheduling_problem
+        problem = pulp.LpProblem("test_age")
+        vars_ = self._make_vars(sp)
+
+        term = sp._age_penalty_term(problem, vars_["camper_assignments"], default_config.age_balance)
+
+        # Two aux continuous vars (maxAge, minAge) per session group and per block group.
+        var_names = [v.name for v in problem.variables()]
+        assert any(name.startswith("maxAge_") for name in var_names)
+        assert any(name.startswith("minAge_") for name in var_names)
+        # Session links only for preference-eligible campers; block links over all campers.
+        # Per group: 2 links per candidate camper + 1 (minAge <= maxAge).
+        session_links = sum(
+            2 * sum(1 for _c, prefs in sp.camper_prefs.items() if seatrade_name(s) in prefs) + 1
+            for s in sp.seatrades_full
+        )
+        block_links = len(sp.blocks) * (2 * len(sp.campers) + 1)
+        assert len(problem.constraints) == session_links + block_links
+        assert term is not None
+
+    def test_age_weight_zero_builds_no_age_penalty(self, scheduling_problem):
+        """age_weight=0 reproduces the baseline: no age aux vars, no age links in the model."""
+        problem = scheduling_problem.build(OptimizationConfig(age_weight=0))
+
+        var_names = [v.name for v in problem.variables()]
+        assert not any(name.startswith("maxAge_") or name.startswith("minAge_") for name in var_names)
+
+    def test_empty_group_contributes_zero_age_range(self, scheduling_problem, default_config):
+        """An empty / not-running session pins to range 0 — no negative-penalty farming."""
+        problem = scheduling_problem.build(default_config)
+        problem.solve(pulp.apis.PULP_CBC_CMD(msg=0))
+
+        values = {v.name: v.value() for v in problem.variables()}
+        session_ranges = [
+            values[f"maxAge_session_{s}"] - values[f"minAge_session_{s}"] for s in scheduling_problem.seatrades_full
+        ]
+        # No group yields a negative range (the minAge <= maxAge pin holds).
+        assert all(r >= -1e-6 for r in session_ranges)
+        # 4 campers across 16 sessions leaves most sessions empty → range exactly 0.
+        assert any(abs(r) < 1e-6 for r in session_ranges)
+
+    def test_session_age_links_only_for_preference_eligible_campers(self, default_config):
+        # 5 seatrades but 4 preferences each → every camper is ineligible for exactly one.
+        joined = pd.DataFrame(
+            {
+                "cabin": ["Cabin1", "Cabin2"],
+                "camper": ["Alice", "Bob"],
+                "gender": ["F", "M"],
+                "age": [13, 16],
+                "seatrade_1": ["Archery", "Sailing"],
+                "seatrade_2": ["Sailing", "Climbing"],
+                "seatrade_3": ["Climbing", "Kayaking"],
+                "seatrade_4": ["Kayaking", "Diving"],
+            }
+        )
+        setup = pd.DataFrame(
+            {
+                "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking", "Diving"],
+                "campers_min": [0] * 5,
+                "campers_max": [10] * 5,
+            }
+        )
+        sp = SchedulingProblem(joined, setup)
+        problem = pulp.LpProblem("test_age_eligibility")
+        vars_ = self._make_vars(sp)
+        camper_assignments = vars_["camper_assignments"]
+
+        sp._age_penalty_term(problem, camper_assignments, default_config.age_balance)
+
+        def in_session_links(session, assignment_var):
+            """Whether assignment_var appears in the linking constraints of one session group."""
+            group_vars = {f"maxAge_session_{session}", f"minAge_session_{session}"}
+            return any(
+                assignment_var.name in {v.name for v in con.keys()} and {v.name for v in con.keys()} & group_vars
+                for con in problem.constraints.values()
+            )
+
+        # Alice (id 0) does not prefer Diving; Bob (id 1) does not prefer Archery — so they
+        # are absent from those session groups' links...
+        assert not in_session_links("1a_Diving", camper_assignments[0]["1a_Diving"])
+        assert not in_session_links("1a_Archery", camper_assignments[1]["1a_Archery"])
+        # ...but present in the session groups they are eligible for.
+        assert in_session_links("1a_Archery", camper_assignments[0]["1a_Archery"])
+        assert in_session_links("1a_Diving", camper_assignments[1]["1a_Diving"])

@@ -16,9 +16,15 @@ PREF_COLS = [f"seatrade_{i}" for i in range(1, NUM_PREFERENCES + 1)]
 
 @dataclass
 class OptimizationConfig:
-    preference_weight: int = 3
-    cabins_weight: int = 2
-    sparsity_weight: int = 1
+    preference_weight: int = 4
+    cabins_weight: int = 3
+    sparsity_weight: int = 2
+    # Soft age-grouping penalty. age_weight defaults ON at a low weight (like
+    # sparsity_weight): the always-present age data nudges the solver toward tighter
+    # age spread. age_balance splits emphasis between the session level (per
+    # block_seatrade) and the fleet level (per block); 0.5 = balanced.
+    age_weight: int = 1
+    age_balance: float = 0.5
     max_seatrades_per_fleet: Optional[int] = None
     # When True (default), campers_min is a conditional minimum: a session runs with a
     # count in [min, max] or doesn't run (0 campers). When False, restores the legacy
@@ -37,7 +43,7 @@ class OptimizationConfig:
 
     def __post_init__(self) -> None:
         if self.solver is None:
-            self.solver = pulp.apis.PULP_CBC_CMD(timeLimit=60, gapRel=0.10, logPath=self.log_path)
+            self.solver = pulp.apis.PULP_CBC_CMD(timeLimit=120, gapRel=0.10, logPath=self.log_path)
 
 
 @dataclass
@@ -46,6 +52,11 @@ class CamperSimulationConfig:
     num_preferences: int = 4
     camper_per_cabin_min: int = 8
     camper_per_cabin_max: int = 12
+    # Bounds on each cabin's *base* age, drawn uniformly per cabin. Per-camper jitter
+    # (normal spread) rides on top and may land just outside these bounds.
+    base_age_min: int = 13
+    base_age_max: int = 16
+    age_spread: float = 0.7
 
 
 @dataclass
@@ -69,11 +80,12 @@ class SeatradesConfig(DataFrameModel):
 
 
 class CamperIdentity(DataFrameModel):
-    """Camper identity data — cabin, name, gender."""
+    """Camper identity data — cabin, name, gender, age."""
 
     cabin: str = Field(ignore_na=False)
     camper: str = Field(ignore_na=False)
     gender: str = Field(ignore_na=False)
+    age: int = Field(ge=1, coerce=True, ignore_na=False)
 
 
 RELATIONSHIP_TYPES = ["friends", "besties", "frenemies"]

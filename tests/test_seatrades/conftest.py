@@ -20,6 +20,7 @@ def joined_campers_df():
             "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
             "camper": ["Alice", "Bob", "Carol", "Dave"],
             "gender": ["F", "M", "F", "M"],
+            "age": [13, 14, 15, 16],
             "seatrade_1": ["Archery", "Climbing", "Sailing", "Archery"],
             "seatrade_2": ["Sailing", "Archery", "Archery", "Climbing"],
             "seatrade_3": ["Climbing", "Sailing", "Climbing", "Sailing"],
@@ -113,7 +114,7 @@ def sample_assignment_solution():
         campers=["Alice", "Bob", "Carol", "Dave"],
         seatrades_full=["1a_Archery", "1a_Sailing", "1a_Climbing", "2b_Archery", "2b_Sailing", "2b_Climbing"],
         cabin_camper_prefs=pd.DataFrame(
-            {"cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"]},
+            {"cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"], "age": [13, 14, 15, 16]},
             index=camper_ids,
         ),
         camper_prefs=pd.Series(

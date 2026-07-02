@@ -17,11 +17,14 @@ from seatrades.config import (
 class TestOptimizationConfig:
     def test_defaults(self):
         config = OptimizationConfig()
-        assert config.preference_weight == 3
-        assert config.cabins_weight == 2
-        assert config.sparsity_weight == 1
+        assert config.preference_weight == 4
+        assert config.cabins_weight == 3
+        assert config.sparsity_weight == 2
+        assert config.age_weight == 1
+        assert config.age_balance == 0.5
         assert config.max_seatrades_per_fleet is None
         assert config.force_same_fleet_all_week is False
+        assert config.solver.timeLimit == 120
 
     def test_force_same_fleet_all_week_opt_in(self):
         assert OptimizationConfig(force_same_fleet_all_week=True).force_same_fleet_all_week is True
@@ -51,6 +54,9 @@ class TestCamperSimulationConfig:
         assert config.num_preferences == 4
         assert config.camper_per_cabin_min == 8
         assert config.camper_per_cabin_max == 12
+        assert config.base_age_min == 13
+        assert config.base_age_max == 16
+        assert config.age_spread == 0.7
 
     def test_custom_values(self):
         config = CamperSimulationConfig(
@@ -58,11 +64,17 @@ class TestCamperSimulationConfig:
             num_preferences=3,
             camper_per_cabin_min=6,
             camper_per_cabin_max=10,
+            base_age_min=10,
+            base_age_max=14,
+            age_spread=1.5,
         )
         assert config.num_cabins == 12
         assert config.num_preferences == 3
         assert config.camper_per_cabin_min == 6
         assert config.camper_per_cabin_max == 10
+        assert config.base_age_min == 10
+        assert config.base_age_max == 14
+        assert config.age_spread == 1.5
 
 
 class TestSeatradeSimulationConfig:
@@ -114,6 +126,7 @@ class TestCamperIdentity:
                 "cabin": ["Puffin", "Tillikum"],
                 "camper": ["Alice", "Bob"],
                 "gender": ["female", "male"],
+                "age": [13, 15],
             }
         )
         validated = CamperIdentity.validate(df)
@@ -124,10 +137,70 @@ class TestCamperIdentity:
             {
                 "cabin": ["Puffin"],
                 "camper": ["Alice"],
+                "age": [13],
             }
         )
         with pytest.raises(SchemaError):
             CamperIdentity.validate(df)
+
+    def test_missing_age_column_fails(self):
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin"],
+                "camper": ["Alice"],
+                "gender": ["female"],
+            }
+        )
+        with pytest.raises(SchemaError):
+            CamperIdentity.validate(df)
+
+    def test_null_age_fails(self):
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin"],
+                "camper": ["Alice"],
+                "gender": ["female"],
+                "age": [None],
+            }
+        )
+        with pytest.raises(SchemaError):
+            CamperIdentity.validate(df)
+
+    def test_non_numeric_age_fails(self):
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin"],
+                "camper": ["Alice"],
+                "gender": ["female"],
+                "age": ["not-a-number"],
+            }
+        )
+        with pytest.raises(SchemaError):
+            CamperIdentity.validate(df)
+
+    def test_non_positive_age_fails(self):
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin", "Tillikum"],
+                "camper": ["Alice", "Bob"],
+                "gender": ["female", "male"],
+                "age": [0, -3],
+            }
+        )
+        with pytest.raises(SchemaError):
+            CamperIdentity.validate(df)
+
+    def test_numeric_string_age_coerced(self):
+        df = pd.DataFrame(
+            {
+                "cabin": ["Puffin"],
+                "camper": ["Alice"],
+                "gender": ["female"],
+                "age": ["13"],
+            }
+        )
+        validated = CamperIdentity.validate(df)
+        assert validated["age"].iloc[0] == 13
 
 
 class TestCamperPreferences:

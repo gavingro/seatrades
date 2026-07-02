@@ -179,15 +179,18 @@ The scheduler solves a mixed-integer linear programming problem with these const
 
 ### Objective Goals (user-facing)
 
-The three objective weights are competing goals the Scheduling Captain balances. Each has a plain-language name and a real-world meaning the UI must convey:
+The objective weights are competing goals the Scheduling Captain balances. Each has a plain-language name and a real-world meaning the UI must convey:
 
 | Weight (`config`) | User-facing goal | What raising it does | Real-world meaning |
 |---|---|---|---|
 | `preference_weight` | **Camper top choices** | More campers get their #1–2 ranked seatrades | Camper happiness |
 | `cabins_weight` | **Cabin togetherness** | Cabinmates share more of their seatrades | Cabin cohesion / supervision |
 | `sparsity_weight` | **Fewer seatrades to staff** | Run fewer distinct seatrades | Staffing load — fewer seatrades = fewer staff needed to operate |
+| `age_weight` | **Keep similar ages together** | Tighter age spread within each session and each block | Age-appropriate peers in an activity and on Fleet Time |
 
 These are presented as "importance" sliders with a one-line tradeoff description each, not as raw weights. `sparsity_weight`'s real driver is **staffing**, not session fullness — frame it that way.
+
+**Age grouping** penalizes each group's age *range* (`maxAge − minAge`), summed over two levels and each normalized by its group count (mean range, not sum, so the levels are comparable): the *session* level (one `(block, seatrade)`) and the *fleet* level (one `block`, which by complementarity also covers Fleet Time). An advanced `age_balance` (0–1, default 0.5) splits `age_weight`'s pull between them — 0 favors fleet-wide, 1 favors per-seatrade. Range is outlier-sensitive by design: one odd-aged camper is cheap for the solver to move out. The penalty is soft and can never cause infeasibility.
 
 Note the tension: `cabins_weight` (soft, encourages cabinmates together) pushes opposite to the hard cabin cap (max k campers from one cabin per seatrade). The UI must not present these as the same idea.
 

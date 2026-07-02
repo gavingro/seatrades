@@ -51,6 +51,17 @@ class OptimizationConfigForm:
                     "them. Raising it eases staffing but may cost top picks or cabin togetherness."
                 ),
             )
+            age_weight = st.slider(
+                "Keep similar ages together",
+                min_value=0,
+                max_value=5,
+                value=OptimizationConfig().age_weight,
+                help=(
+                    "How hard to group campers of similar age within each seatrade session and each "
+                    "fleet block. Raising it tightens age clusters but may cost top picks or cabin "
+                    "togetherness."
+                ),
+            )
 
             # --- Advanced: hard limits and power-user knobs ---
             with st.expander("Advanced settings (hard limits & solver controls)"):
@@ -69,6 +80,18 @@ class OptimizationConfigForm:
                     help=(
                         "Hard cap on how many distinct seatrades can run in one fleet. This is an "
                         "absolute rule, not a preference — unlike the 'Fewer seatrades to staff' goal."
+                    ),
+                )
+                age_balance = st.slider(
+                    "Age grouping: favor fleet-wide ↔ favor seatrade",
+                    min_value=0.0,
+                    max_value=1.0,
+                    step=0.1,
+                    value=OptimizationConfig().age_balance,
+                    help=(
+                        "Where the 'Keep similar ages together' effort goes. Left (0) favors "
+                        "fleet-wide (block) age grouping; right (1) favors per-seatrade (session) "
+                        "grouping; the midpoint balances the two."
                     ),
                 )
                 force_same_fleet_all_week = st.checkbox(
@@ -110,6 +133,8 @@ class OptimizationConfigForm:
                 preference_weight=preference_weight,
                 cabins_weight=cabins_weight,
                 sparsity_weight=sparsity_weight,
+                age_weight=age_weight,
+                age_balance=age_balance,
                 max_seatrades_per_fleet=max_seatrades_per_fleet,
                 force_same_fleet_all_week=force_same_fleet_all_week,
                 solver=pulp.apis.PULP_CBC_CMD(

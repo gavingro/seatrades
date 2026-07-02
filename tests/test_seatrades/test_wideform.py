@@ -23,6 +23,7 @@ def longform_assigned():
         {
             "camper": "Alice",
             "cabin": "Cabin1",
+            "age": 13,
             "block": "1a",
             "seatrade": "Archery",
             "assignment": 1.0,
@@ -31,17 +32,35 @@ def longform_assigned():
         {
             "camper": "Alice",
             "cabin": "Cabin1",
+            "age": 13,
             "block": "2b",
             "seatrade": "Sailing",
             "assignment": 1.0,
             "preference": 2,
         },
-        {"camper": "Bob", "cabin": "Cabin1", "block": "1b", "seatrade": "Climbing", "assignment": 1.0, "preference": 1},
-        {"camper": "Bob", "cabin": "Cabin1", "block": "2a", "seatrade": "Archery", "assignment": 1.0, "preference": 3},
+        {
+            "camper": "Bob",
+            "cabin": "Cabin1",
+            "age": 14,
+            "block": "1b",
+            "seatrade": "Climbing",
+            "assignment": 1.0,
+            "preference": 1,
+        },
+        {
+            "camper": "Bob",
+            "cabin": "Cabin1",
+            "age": 14,
+            "block": "2a",
+            "seatrade": "Archery",
+            "assignment": 1.0,
+            "preference": 3,
+        },
         # Cabin2 campers
         {
             "camper": "Carol",
             "cabin": "Cabin2",
+            "age": 15,
             "block": "1a",
             "seatrade": "Sailing",
             "assignment": 1.0,
@@ -50,13 +69,30 @@ def longform_assigned():
         {
             "camper": "Carol",
             "cabin": "Cabin2",
+            "age": 15,
             "block": "2b",
             "seatrade": "Archery",
             "assignment": 1.0,
             "preference": 2,
         },
-        {"camper": "Dave", "cabin": "Cabin2", "block": "1b", "seatrade": "Archery", "assignment": 1.0, "preference": 1},
-        {"camper": "Dave", "cabin": "Cabin2", "block": "2a", "seatrade": "Sailing", "assignment": 1.0, "preference": 2},
+        {
+            "camper": "Dave",
+            "cabin": "Cabin2",
+            "age": 16,
+            "block": "1b",
+            "seatrade": "Archery",
+            "assignment": 1.0,
+            "preference": 1,
+        },
+        {
+            "camper": "Dave",
+            "cabin": "Cabin2",
+            "age": 16,
+            "block": "2a",
+            "seatrade": "Sailing",
+            "assignment": 1.0,
+            "preference": 2,
+        },
     ]
     return pd.DataFrame(rows)
 
@@ -70,16 +106,23 @@ class TestWideformShape:
         assert len(result) == 4  # Alice, Bob, Carol, Dave
 
     def test_column_order(self, longform_assigned):
-        """Wide-form columns: cabin, camper, Seatrade 1a, Seatrade 1b, Seatrade 2a, Seatrade 2b."""
+        """Wide-form columns: cabin, camper, age, Seatrade 1a, Seatrade 1b, Seatrade 2a, Seatrade 2b."""
         result = wrangle_assignments_to_wideform(longform_assigned)
         assert result.columns.tolist() == [
             "cabin",
             "camper",
+            "age",
             "Seatrade 1a",
             "Seatrade 1b",
             "Seatrade 2a",
             "Seatrade 2b",
         ]
+
+    def test_age_column_shows_each_campers_age(self, longform_assigned):
+        """Each camper's age appears in the per-camper output."""
+        result = wrangle_assignments_to_wideform(longform_assigned)
+        ages_by_camper = result.set_index("camper")["age"].to_dict()
+        assert ages_by_camper == {"Alice": 13, "Bob": 14, "Carol": 15, "Dave": 16}
 
 
 class TestWideformBlanks:
