@@ -16,8 +16,14 @@ from seatrades.results import (
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
+from seatrades.scoring import score
 from seatrades.solve_run import SolveRun
-from seatrades.visualization import display_assignments, display_optimality_donut
+from seatrades.visualization import (
+    display_assignments,
+    display_optimality_donut,
+    display_preference_detail,
+    display_quality_summary,
+)
 
 # session_state key holding the active SolveRun. Its presence *is* "a solve is in
 # flight" — the single source of truth for the concurrency guard (no separate flag).
@@ -103,6 +109,24 @@ class AssignmentsTab:
                 st.altair_chart(results_chart)
                 st.caption(f"Blocks: {BLOCK_DECODER_CAPTION}")
                 st.caption("Color = camper satisfaction (green = 1st choice pick → red = lower ranked choices). ")
+
+                # Schedule Quality — the report card. One slot: Overview summary or a
+                # single metric's drill-down, never both. Only reached on an optimal solve.
+                st.divider()
+                st.subheader("Schedule Quality")
+                scorecard = score(solution)
+                quality_options: list[Literal["Overview", "Preference"]] = ["Overview", "Preference"]
+                quality_view = st.selectbox(
+                    "Area",
+                    options=quality_options,
+                    index=0,
+                    key="quality_view_selector",
+                )
+                if quality_view == "Overview":
+                    st.altair_chart(display_quality_summary(scorecard))
+                else:
+                    preference_metric = next(m for m in scorecard.metrics if m.name == quality_view)
+                    st.altair_chart(display_preference_detail(preference_metric))
 
                 # Assignment Data — the take-away/export view.
                 longform_df = wrangle_assignments_to_longform(solution)

@@ -6,11 +6,110 @@ import json
 import pytest
 
 from seatrades.results import SolverState, SolverStatus
+from seatrades.scoring import score
 from seatrades.visualization import (
+    METRIC_ORDER,
     SATISFACTION_RANGE,
     display_assignments,
     display_optimality_donut,
+    display_preference_detail,
+    display_quality_summary,
+    normalize_to_band,
 )
+
+
+def _flatten(spec):
+    """All layer encoding dicts (chart may or may not be layered)."""
+    if "layer" in spec:
+        return [layer.get("encoding", {}) for layer in spec["layer"]]
+    return [spec.get("encoding", {})]
+
+
+class TestDisplayQualitySummary:
+    """The six-metric overview: normalized 0–100 on an ordinal x, raw value in the tooltip."""
+
+    def test_x_uses_the_canonical_metric_order(self, sample_assignment_solution):
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        x_sorts = [enc["x"].get("sort") for enc in _flatten(spec) if "x" in enc]
+        assert METRIC_ORDER in x_sorts
+
+    def test_y_encodes_the_normalized_position(self, sample_assignment_solution):
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        y_fields = [enc["y"].get("field") for enc in _flatten(spec) if "y" in enc]
+        assert "normalized" in y_fields
+
+    def test_tooltip_carries_the_raw_value_not_the_position(self, sample_assignment_solution):
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        tooltip_fields = []
+        for enc in _flatten(spec):
+            for entry in enc.get("tooltip", []):
+                tooltip_fields.append(entry.get("field"))
+        assert "raw_value" in tooltip_fields
+
+    def test_rendered_as_area_for_v1(self, sample_assignment_solution):
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        marks = [spec["mark"]] if "mark" in spec else [layer.get("mark") for layer in spec.get("layer", [])]
+        mark_types = [mark.get("type") if isinstance(mark, dict) else mark for mark in marks]
+        assert "area" in mark_types
+
+
+def _preference_metric(solution):
+    return next(metric for metric in score(solution).metrics if metric.name == "Preference")
+
+
+class TestDisplayPreferenceDetail:
+    """The Preference drill-down: camper counts per CPR, with the CPR-5 split visible."""
+
+    def test_x_encodes_cpr(self, sample_assignment_solution):
+        spec = display_preference_detail(_preference_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["x"]["field"] == "cpr"
+
+    def test_y_is_a_camper_count(self, sample_assignment_solution):
+        spec = display_preference_detail(_preference_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["y"]["aggregate"] == "count"
+
+    def test_cpr_five_is_split_by_cause(self, sample_assignment_solution):
+        """Colour encodes the cause so the CPR-5 bar splits into 1+4 vs 2+3."""
+        spec = display_preference_detail(_preference_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["color"]["field"] == "cause"
+
+
+class TestNormalizeToBand:
+    """The pure render-time band: raw metric value → 0–100, uniformly up-is-good."""
+
+    def test_in_band_value_maps_within_the_band(self):
+        """A single in-band observation normalizes linearly inside [low_anchor, high_anchor]."""
+        # midpoint of [0.6, 0.95]
+        result = normalize_to_band(
+            0.775, low_anchor=0.6, high_anchor=0.95, higher_is_better=True, observed_min=0.775, observed_max=0.775
+        )
+        assert result == pytest.approx(50.0)
+
+    def test_out_of_band_observation_expands_domain_to_itself(self):
+        """An observation above high_anchor becomes the new top endpoint (maps to 100)."""
+        result = normalize_to_band(
+            1.2, low_anchor=0.6, high_anchor=0.95, higher_is_better=True, observed_min=1.2, observed_max=1.2
+        )
+        assert result == 100.0
+
+    def test_band_never_contracts_below_the_anchors(self):
+        """A narrow observed range inside the band still normalizes against the full band, not itself."""
+        # observed range [0.7, 0.8] is narrower than [0.6, 0.95]; domain must stay the band.
+        result = normalize_to_band(
+            0.7, low_anchor=0.6, high_anchor=0.95, higher_is_better=True, observed_min=0.7, observed_max=0.8
+        )
+        assert result == pytest.approx(28.5714, abs=1e-3)  # (0.7-0.6)/0.35*100
+
+    def test_down_is_bad_metric_is_flipped(self):
+        """higher_is_better=False inverts the axis so a lower raw value scores higher."""
+        low_value = normalize_to_band(
+            2.0, low_anchor=1.0, high_anchor=5.0, higher_is_better=False, observed_min=2.0, observed_max=2.0
+        )
+        assert low_value == 75.0  # linear 25, flipped
+        up_is_good = normalize_to_band(
+            2.0, low_anchor=1.0, high_anchor=5.0, higher_is_better=True, observed_min=2.0, observed_max=2.0
+        )
+        assert up_is_good == 25.0
 
 
 class TestDisplayAssignmentsFailureGuard:

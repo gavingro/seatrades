@@ -102,6 +102,23 @@ class TestDoneView:
         assert log_areas, "solver log not shown in the done view"
         assert log_areas[0].value == at.session_state["solver_log"]
 
+    def test_schedule_quality_defaults_to_overview(self, solved_solution):
+        """The Schedule Quality section opens on the Overview summary plot, no error."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        assert not at.exception
+        quality = at.selectbox(key="quality_view_selector")
+        assert quality.value == "Overview"
+
+    def test_switching_to_preference_detail_does_not_crash(self, solved_solution):
+        """Selecting Preference swaps the slot to the detail chart without error."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        at.selectbox(key="quality_view_selector").set_value("Preference").run()
+
+        assert not at.exception
+        assert at.selectbox(key="quality_view_selector").value == "Preference"
+
     def test_error_status_renders_finished_abnormally_warning(self, solved_solution):
         """A seeded ERROR solution surfaces the crash copy, not the tables, no exception."""
         error_solution = dataclasses.replace(

@@ -10,6 +10,16 @@ from seatrades.results import (
     SolverState,
     wrangle_assignments_to_longform,
 )
+from seatrades.scoring import QualityMetric, Scorecard
+
+# Fixed, deliberate ordinal x-order for the summary comparison plot. Only Preference
+# exists in v1; the rest are placeholders the later metric slices fill in.
+METRIC_ORDER = ["Preference", "Cohesion", "Sparsity", "Age spread", "Fair within", "Fair between"]
+
+# CPR causes ordered good (greens) → bad (reds) so the detail bars read good-vs-bad at
+# a glance and the CPR-5 bar visibly splits its two causes (1+4 vs 2+3).
+CPR_CAUSE_ORDER = ["1+2", "1+3", "2+2", "1+4", "2+3", "2+4"]
+CPR_CAUSE_RANGE = ["#1a9850", "#66bd63", "#a6d96a", "#fc8d59", "#f46d43", "#d73027"]
 
 # Satisfaction scale: top choice (green) → low/unranked (red). "Unranked" is a
 # camper assigned a seatrade they never ranked (the UNMATCHED_PREFERENCE sentinel).
@@ -22,6 +32,100 @@ UNASSIGNED_COLOR = "#99C2DF"
 # Optimality donut: filled arc (proof-of-optimum) vs. the remaining gap track.
 OPTIMALITY_FILL_COLOR = SATISFACTION_RANGE[0]  # reuse the top-pick green — "as good as proven"
 OPTIMALITY_TRACK_COLOR = "#3a3f44"  # muted track that reads on the dark app theme
+
+
+def normalize_to_band(
+    raw: float,
+    low_anchor: float,
+    high_anchor: float,
+    higher_is_better: bool,
+    observed_min: float,
+    observed_max: float,
+) -> float:
+    """Map a raw metric value to a 0–100 position on a uniformly up-is-good axis.
+
+    The reference band ``[low_anchor, high_anchor]`` is the default domain and a
+    floor on axis width: the effective domain is
+    ``[min(low_anchor, observed_min), max(high_anchor, observed_max)]`` — it only
+    ever expands to swallow an out-of-band observation, never contracts inside the
+    anchors. Down-is-bad metrics (``higher_is_better=False``) are flipped so a lower
+    raw value scores higher. Raw values are kept separate (tooltips), never shown here.
+
+    Because the domain depends on which scenarios are on screen, this is a
+    render-time concern — it lives here, not in the measurement layer (scoring.py).
+    """
+    effective_low = min(low_anchor, observed_min)
+    effective_high = max(high_anchor, observed_max)
+    width = effective_high - effective_low
+    if width == 0:
+        # Degenerate zero-width band (only if anchors coincide and observation sits on them).
+        return 50.0
+    position = (raw - effective_low) / width * 100
+    return 100 - position if not higher_is_better else position
+
+
+def display_quality_summary(scorecard: Scorecard) -> alt.Chart:
+    """The summary comparison plot: every Quality Metric on one up-is-good 0–100 axis.
+
+    Metrics sit on an ordinal x in the fixed ``METRIC_ORDER``; y is each metric's
+    raw value normalized against its reference band; the tooltip carries the *raw*
+    value (never the position). One scenario for v1, so each metric's observed
+    min/max is just its own raw value.
+    """
+    rows = []
+    for metric in scorecard.metrics:
+        rows.append(
+            {
+                "name": metric.name,
+                "raw_value": metric.raw_value,
+                "normalized": normalize_to_band(
+                    metric.raw_value,
+                    metric.low_anchor,
+                    metric.high_anchor,
+                    metric.higher_is_better,
+                    observed_min=metric.raw_value,
+                    observed_max=metric.raw_value,
+                ),
+            }
+        )
+    summary_df = pd.DataFrame(rows)
+
+    # TODO: switch to mark_line when we support overlaying multiple scenarios (area
+    # fills get muddy + exaggerate axis-order bias).
+    return (
+        alt.Chart(summary_df)
+        .mark_area(opacity=0.5, line=True, point=True)
+        .encode(
+            x=alt.X("name:N", sort=METRIC_ORDER, title=None),
+            y=alt.Y("normalized:Q", scale=alt.Scale(domain=[0, 100]), title="Quality (up is good)"),
+            tooltip=[alt.Tooltip("name:N", title="Metric"), alt.Tooltip("raw_value:Q", title="Raw value")],
+        )
+        .properties(title={"text": "Schedule Quality", "fontSize": 20, "anchor": "start"})
+    )
+
+
+def display_preference_detail(metric: QualityMetric) -> alt.Chart:
+    """The Preference drill-down: how many campers landed at each CPR (3–6).
+
+    x = CPR, y = camper count. Bars are coloured by ``cause`` (the two ranks that
+    summed to the CPR), which does double duty: greens for good CPRs (≤4) vs reds
+    for bad (≥5), and it splits the CPR-5 bar into its 1+4 and 2+3 causes.
+    """
+    return (
+        alt.Chart(metric.detail)
+        .mark_bar(stroke="black", strokeWidth=0.2)
+        .encode(
+            x=alt.X("cpr:O", title="Combined Preference Rank (3 = best, 6 = worst)"),
+            y=alt.Y("count():Q", title="Campers"),
+            color=alt.Color(
+                "cause:N",
+                scale=alt.Scale(domain=CPR_CAUSE_ORDER, range=CPR_CAUSE_RANGE),
+                legend=alt.Legend(title="Rank pair (block #1 + block #2)"),
+            ),
+            tooltip=[alt.Tooltip("cause:N", title="Rank pair"), alt.Tooltip("count():Q", title="Campers")],
+        )
+        .properties(title={"text": "Preference — campers with a good schedule", "fontSize": 20, "anchor": "start"})
+    )
 
 
 def display_optimality_donut(optimality: float) -> alt.Chart:
