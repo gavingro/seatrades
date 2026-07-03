@@ -18,7 +18,7 @@ def click_assign(at: AppTest) -> None:
     buttons[0].click().run()
 
 
-def poll_until_solution(at: AppTest, timeout_seconds: float, interval_seconds: float = 2) -> None:
+def poll_until_solution(at: AppTest, timeout_seconds: float, interval_seconds: float = 2.0) -> None:
     """Re-run the app until the async solve finalizes ``assigned_solution``.
 
     The solve is async (ADR-0004): clicking Assign starts a background SolveRun the
@@ -35,11 +35,11 @@ def poll_until_solution(at: AppTest, timeout_seconds: float, interval_seconds: f
     assert at.session_state["assigned_solution"] is not None, "solve did not finish within timeout"
 
 
-def find_slider(at, label_substring):
+def find_slider(at: AppTest, label_substring: str):
     """Return the first slider whose label contains ``label_substring`` (case-insensitive)."""
     return next(s for s in at.slider if label_substring.lower() in s.label.lower())
 
 
-def find_button(at, label_substring):
+def find_button(at: AppTest, label_substring: str):
     """Return the first button whose label contains ``label_substring`` (case-insensitive)."""
     return next(b for b in at.button if label_substring.lower() in b.label.lower())
