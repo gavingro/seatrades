@@ -1,6 +1,7 @@
 """Altair chart specs for seatrade assignment results."""
 
 import altair as alt
+import pandas as pd
 
 from seatrades.blocks import block_label
 from seatrades.results import (
@@ -17,6 +18,56 @@ SATISFACTION_RANGE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"]
 
 # Neutral fill for cells a camper is not assigned, so the grid stays visible on a dark app theme.
 UNASSIGNED_COLOR = "#99C2DF"
+
+# Optimality donut: filled arc (proof-of-optimum) vs. the remaining gap track.
+OPTIMALITY_FILL_COLOR = "#1a9850"  # same green as a top-pick — "as good as proven"
+OPTIMALITY_TRACK_COLOR = "#3a3f44"  # muted track that reads on the dark app theme
+
+
+def display_optimality_donut(optimality: float) -> alt.Chart:
+    """Render the solver optimality as a donut gauge (N/100) with the percent in its center.
+
+    ``optimality`` is the 0.0–1.0 fraction from ``SolverStatus.optimality`` (1.0 = provably
+    optimal). This is the *solver's* proof-of-optimum, not schedule goodness — the caption
+    at the call site says so. Pure Altair, no Streamlit.
+    """
+    pct = round(optimality * 100)
+    segments = pd.DataFrame(
+        {
+            "segment": ["optimal", "gap"],
+            "value": [optimality, 1.0 - optimality],
+            "order": [0, 1],
+        }
+    )
+    arc = (
+        alt.Chart(segments)
+        .mark_arc(innerRadius=55, outerRadius=80)
+        .encode(
+            theta=alt.Theta("value:Q", stack=True),
+            color=alt.Color(
+                "segment:N",
+                scale=alt.Scale(
+                    domain=["optimal", "gap"],
+                    range=[OPTIMALITY_FILL_COLOR, OPTIMALITY_TRACK_COLOR],
+                ),
+                legend=None,
+            ),
+            order=alt.Order("order:Q"),
+        )
+    )
+    center_text = (
+        alt.Chart(pd.DataFrame({"label": [f"{pct}%"]}))
+        .mark_text(fontSize=32, fontWeight="bold", color="white")
+        .encode(text="label:N")
+    )
+    return (arc + center_text).properties(
+        title={
+            "text": "Solver Optimality",
+            "subtitleColor": "white",
+            "fontSize": 20,
+            "anchor": "start",
+        }
+    )
 
 
 def _satisfaction_label(preference: int) -> str:

@@ -17,7 +17,7 @@ from seatrades.results import (
     wrangle_assignments_to_wideform,
 )
 from seatrades.solve_run import SolveRun
-from seatrades.visualization import display_assignments
+from seatrades.visualization import display_assignments, display_optimality_donut
 
 # session_state key holding the active SolveRun. Its presence *is* "a solve is in
 # flight" — the single source of truth for the concurrency guard (no separate flag).
@@ -87,15 +87,24 @@ class AssignmentsTab:
                 st.warning(assignment_failure_warning(st.session_state["assigned_solution"].status))
             else:
                 solution = st.session_state["assigned_solution"]
-                optimality = solution.status.optimality
-                st.success(
-                    f"Every camper is assigned. Schedule is {optimality:.0%} optimal based on optimization preferences."
+
+                # Verdict — did it work? Confirmation + the Solver Optimality headline.
+                st.success("Every camper is assigned.")
+                st.altair_chart(display_optimality_donut(solution.status.optimality))
+                st.caption(
+                    "This measures the *solver's* proof-of-optimum (how close it got to the "
+                    "mathematical optimum), **not** how good the schedule is for campers."
                 )
+
+                # The Schedule — here's the artifact, before any report card.
+                st.divider()
+                st.subheader("The Schedule")
                 results_chart = display_assignments(solution)
                 st.altair_chart(results_chart)
                 st.caption(f"Blocks: {BLOCK_DECODER_CAPTION}")
                 st.caption("Color = camper satisfaction (green = 1st choice pick → red = lower ranked choices). ")
 
+                # Assignment Data — the take-away/export view.
                 longform_df = wrangle_assignments_to_longform(solution)
 
                 st.divider()

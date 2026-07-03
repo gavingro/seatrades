@@ -6,7 +6,7 @@ import json
 import pytest
 
 from seatrades.results import SolverState, SolverStatus
-from seatrades.visualization import display_assignments
+from seatrades.visualization import display_assignments, display_optimality_donut
 
 
 class TestDisplayAssignmentsFailureGuard:
@@ -80,3 +80,34 @@ class TestDisplayAssignmentsLegibility:
         """Block facet columns show compact labels (e.g. '1st·AM'), not raw codes alone."""
         spec = display_assignments(sample_assignment_solution).to_dict()
         assert "1st·AM" in json.dumps(spec, ensure_ascii=False)
+
+
+class TestOptimalityDonut:
+    """The Solver Optimality headline: a donut showing the solver's proof-of-optimum N/100."""
+
+    def test_returns_chart(self):
+        """A normal optimality fraction produces a chart."""
+        assert display_optimality_donut(0.98) is not None
+
+    def test_is_a_donut_arc(self):
+        """The gauge is drawn as an arc/donut, not bars or a line."""
+        spec = display_optimality_donut(0.98).to_dict()
+        mark_types = [layer.get("mark", {}).get("type") for layer in spec["layer"]]
+        assert "arc" in mark_types
+
+    def test_shows_percent_in_center(self):
+        """The rounded percent (e.g. '98%') is printed as the headline number."""
+        spec = display_optimality_donut(0.98).to_dict()
+        assert "98%" in json.dumps(spec)
+
+    def test_rounds_percent_to_whole_number(self):
+        """A fractional percent is rounded for a clean headline (0.975 → '98%', never '97.5%')."""
+        spec = display_optimality_donut(0.975).to_dict()
+        assert "98%" in json.dumps(spec)
+        assert "97.5" not in json.dumps(spec)
+
+    def test_arc_size_is_data_driven(self):
+        """The filled arc encodes the optimality value, so 0.5 and 0.98 render different sweeps."""
+        spec = display_optimality_donut(0.98).to_dict()
+        arc_layer = next(layer for layer in spec["layer"] if layer.get("mark", {}).get("type") == "arc")
+        assert arc_layer["encoding"]["theta"]["field"] == "value"

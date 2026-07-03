@@ -50,6 +50,13 @@ class TestAppSmoke:
         assert at.session_state["optimization_success"] is True
         assert at.success, "expected a success message after solving"
 
+        # The done view renders as ordered sections (Verdict + donut → Schedule → Export).
+        # AppTest can't introspect Altair contents, so no-exception above is the donut's
+        # smoke coverage; here we assert the new section headers landed.
+        subheaders = [s.value for s in at.subheader]
+        assert "The Schedule" in subheaders
+        assert "Assignment Data" in subheaders
+
         # The final CBC log is retained and viewable after the solve concludes.
         assert at.session_state["solver_log"], "solver log not retained after solve"
         log_areas = [area for area in at.text_area if area.label == "Solver Logs"]
