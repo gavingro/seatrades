@@ -1,9 +1,24 @@
-"""Shared AppTest widget lookups for the app-integration tests."""
+"""Shared AppTest helpers (widget lookups and solve polling) for the app-integration tests."""
 
 import time
+from pathlib import Path
+
+from streamlit.testing.v1 import AppTest
+
+# The app under test, resolved from this file's location (no external input).
+APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
+# A real CBC solve finishes in well under a minute locally; 180s is generous headroom.
+SOLVE_TIMEOUT_SECONDS = 180
 
 
-def poll_until_solution(at, timeout_seconds, interval_seconds=2):
+def click_assign(at: AppTest) -> None:
+    """Click the "Assign Seatrades" button, starting the async solve."""
+    buttons = [button for button in at.button if "Assign" in button.label]
+    assert buttons, "Assign Seatrades button not found"
+    buttons[0].click().run()
+
+
+def poll_until_solution(at: AppTest, timeout_seconds: float, interval_seconds: float = 2) -> None:
     """Re-run the app until the async solve finalizes ``assigned_solution``.
 
     The solve is async (ADR-0004): clicking Assign starts a background SolveRun the

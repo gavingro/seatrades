@@ -12,16 +12,15 @@ timers, so the test polls completion itself — re-running the app until the sol
 finalizes its result into session_state.
 """
 
-from pathlib import Path
-
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from tests.test_app.helpers import poll_until_solution
-
-APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
-# A real CBC solve on the default simulated week; finishes in ~10s locally.
-SOLVE_TIMEOUT_SECONDS = 180
+from tests.test_app.helpers import (
+    APP_SCRIPT,
+    SOLVE_TIMEOUT_SECONDS,
+    click_assign,
+    poll_until_solution,
+)
 
 
 @pytest.mark.slow
@@ -40,9 +39,7 @@ class TestAppSmoke:
         assert not at.exception
 
         # Start the async solve.
-        assign = [button for button in at.button if "Assign" in button.label]
-        assert assign, "Assign Seatrades button not found"
-        assign[0].click().run()
+        click_assign(at)
         assert not at.exception
 
         # Poll the fragment to completion: each at.run() re-polls progress(); the

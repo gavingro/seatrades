@@ -14,8 +14,6 @@ camper-slots; 12 campers cannot fit (pigeonhole), so the model is infeasible
 regardless of preferences or fleet split. CBC presolve proves this instantly.
 """
 
-from pathlib import Path
-
 import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
@@ -23,10 +21,12 @@ from streamlit.testing.v1 import AppTest
 from seatrades import preferences
 from seatrades.config import PREF_COLS
 from seatrades.results import SolverState
-from tests.test_app.helpers import poll_until_solution
-
-APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
-SOLVE_TIMEOUT_SECONDS = 180
+from tests.test_app.helpers import (
+    APP_SCRIPT,
+    SOLVE_TIMEOUT_SECONDS,
+    click_assign,
+    poll_until_solution,
+)
 
 # 4 seatrades — the minimum a camper needs to fill four unique ranked preferences.
 _SEATRADES = ["Archery", "Crafts", "Climbing", "Sailing"]
@@ -72,9 +72,7 @@ class TestInfeasibleSolveOutcome:
         at.session_state["introduced"] = True  # skip the welcome dialog
 
         # Start the real async solve.
-        assign = [button for button in at.button if "Assign" in button.label]
-        assert assign, "Assign Seatrades button not found"
-        assign[0].click().run()
+        click_assign(at)
         assert not at.exception
 
         # Poll the fragment to completion (assigned_solution is None until finalized).
