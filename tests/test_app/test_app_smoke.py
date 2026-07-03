@@ -12,11 +12,12 @@ timers, so the test polls completion itself — re-running the app until the sol
 finalizes its result into session_state.
 """
 
-import time
 from pathlib import Path
 
 import pytest
 from streamlit.testing.v1 import AppTest
+
+from tests.test_app.helpers import poll_until_solution
 
 APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
 # A real CBC solve on the default simulated week; finishes in ~10s locally.
@@ -45,16 +46,10 @@ class TestAppSmoke:
         assert not at.exception
 
         # Poll the fragment to completion: each at.run() re-polls progress(); the
-        # finalizing tick fills assigned_solution (None until the solve finishes —
-        # the key exists from startup, so poll on the value, not key presence).
-        deadline = time.time() + SOLVE_TIMEOUT_SECONDS
-        while at.session_state["assigned_solution"] is None and time.time() < deadline:
-            time.sleep(2)
-            at.run()
-            assert not at.exception
+        # finalizing tick fills assigned_solution.
+        poll_until_solution(at, SOLVE_TIMEOUT_SECONDS)
 
         # Confirm the solve finished cleanly with a usable schedule.
-        assert at.session_state["assigned_solution"] is not None, "solve did not finish within timeout"
         assert at.session_state["optimization_success"] is True
         assert at.success, "expected a success message after solving"
 
