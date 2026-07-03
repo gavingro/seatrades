@@ -98,6 +98,24 @@ Run tests directly from the venv — no need to activate it first:
 .venv/bin/pytest
 ```
 
+### Fast loop vs. slow tests
+
+The default `.venv/bin/pytest` is already the **fast loop**: `pyproject.toml` sets
+`addopts = "... -m 'not slow'"`, so every `@pytest.mark.slow` test (the ones that run
+a real CBC solve end-to-end — minutes, not seconds) is deselected by default. Iterate
+on this; you get the full non-solve suite, including the headless `AppTest` integration
+tests, in seconds.
+
+Only pay for the slow tests when it matters — **before pushing** (and CI runs them for you):
+```bash
+.venv/bin/pytest            # fast loop — slow tests deselected; use while iterating
+.venv/bin/pytest -m slow    # the real-solve tests; run before you push
+.venv/bin/pytest -m ''      # everything (fast + slow), overriding the default filter
+```
+CI runs both selections, so a green fast loop plus one `-m slow` pass before pushing
+matches what CI will check. When you add a test that runs a real solve (or is otherwise
+expensive), mark it `@pytest.mark.slow` so the fast loop stays fast.
+
 ### Behavior vs. visual verification
 
 Two layers, two tools — see [ADR 0007](adr/0007-agent-visual-verification.md) for the why.
