@@ -6,7 +6,11 @@ import json
 import pytest
 
 from seatrades.results import SolverState, SolverStatus
-from seatrades.visualization import display_assignments, display_optimality_donut
+from seatrades.visualization import (
+    SATISFACTION_RANGE,
+    display_assignments,
+    display_optimality_donut,
+)
 
 
 class TestDisplayAssignmentsFailureGuard:
@@ -111,3 +115,10 @@ class TestOptimalityDonut:
         spec = display_optimality_donut(0.98).to_dict()
         arc_layer = next(layer for layer in spec["layer"] if layer.get("mark", {}).get("type") == "arc")
         assert arc_layer["encoding"]["theta"]["field"] == "value"
+
+    def test_fill_is_the_top_pick_green(self):
+        """The filled arc reuses the top-pick satisfaction green — visually 'as good as proven'."""
+        spec = display_optimality_donut(0.98).to_dict()
+        arc_layer = next(layer for layer in spec["layer"] if layer.get("mark", {}).get("type") == "arc")
+        fill_color = arc_layer["encoding"]["color"]["scale"]["range"][0]
+        assert fill_color == SATISFACTION_RANGE[0]

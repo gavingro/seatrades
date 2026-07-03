@@ -20,7 +20,7 @@ SATISFACTION_RANGE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"]
 UNASSIGNED_COLOR = "#99C2DF"
 
 # Optimality donut: filled arc (proof-of-optimum) vs. the remaining gap track.
-OPTIMALITY_FILL_COLOR = "#1a9850"  # same green as a top-pick — "as good as proven"
+OPTIMALITY_FILL_COLOR = SATISFACTION_RANGE[0]  # reuse the top-pick green — "as good as proven"
 OPTIMALITY_TRACK_COLOR = "#3a3f44"  # muted track that reads on the dark app theme
 
 
@@ -63,7 +63,6 @@ def display_optimality_donut(optimality: float) -> alt.Chart:
     return (arc + center_text).properties(
         title={
             "text": "Solver Optimality",
-            "subtitleColor": "white",
             "fontSize": 20,
             "anchor": "start",
         }
