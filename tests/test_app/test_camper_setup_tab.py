@@ -5,15 +5,9 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from tests.test_app.helpers import find_button, find_slider
+
 APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
-
-
-def _slider(at, label_substring):
-    return next(s for s in at.slider if label_substring.lower() in s.label.lower())
-
-
-def _button(at, label_substring):
-    return next(b for b in at.button if label_substring.lower() in b.label.lower())
 
 
 class TestRegenerateCampers:
@@ -22,9 +16,9 @@ class TestRegenerateCampers:
         at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
         at.run()
 
-        _button(at, "Simulate Campers").click()
+        find_button(at, "Simulate Campers").click()
         at.run()
-        _button(at, "Assign Seatrades").click()
+        find_button(at, "Assign Seatrades").click()
         at.run()
 
         assert not at.exception
@@ -36,7 +30,7 @@ class TestRegenerateCampers:
         at.run()
 
         at.session_state["assigned_solution"] = object()  # a prior schedule
-        _button(at, "Simulate Campers").click()
+        find_button(at, "Simulate Campers").click()
         at.run()
 
         assert not at.exception
@@ -48,9 +42,9 @@ class TestSimulationSliders:
         at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
         at.run()
 
-        _slider(at, "Number of cabins").set_value(3)
+        find_slider(at, "Number of cabins").set_value(3)
         at.run()
-        _button(at, "Simulate Campers").click()
+        find_button(at, "Simulate Campers").click()
         at.run()
 
         assert not at.exception
@@ -61,10 +55,10 @@ class TestSimulationSliders:
         at.run()
         roster_before = at.session_state["camper_identity"]
 
-        _slider(at, "Campers per cabin (min)").set_value(20)
-        _slider(at, "Campers per cabin (max)").set_value(10)
+        find_slider(at, "Campers per cabin (min)").set_value(20)
+        find_slider(at, "Campers per cabin (max)").set_value(10)
         at.run()
-        _button(at, "Simulate Campers").click()
+        find_button(at, "Simulate Campers").click()
         at.run()
 
         assert not at.exception
@@ -79,13 +73,13 @@ class TestOptimizationConfigReachesRun:
         at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
         at.run()
 
-        _slider(at, "keep similar ages together").set_value(5)
+        find_slider(at, "keep similar ages together").set_value(5)
         next(c for c in at.checkbox if "same fleet" in c.label.lower()).check()
         at.run()
-        _button(at, "Submit").click()
+        find_button(at, "Submit").click()
         at.run()
 
-        _button(at, "Assign Seatrades").click()
+        find_button(at, "Assign Seatrades").click()
         at.run()
 
         assert not at.exception

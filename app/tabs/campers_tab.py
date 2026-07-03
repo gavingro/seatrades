@@ -3,7 +3,12 @@
 import pandas as pd
 import streamlit as st
 
-from app.components import clear_optimization_results, show_validation_error, try_join_and_validate
+from app.components import (
+    clear_camper_roster,
+    clear_optimization_results,
+    show_validation_error,
+    try_join_and_validate,
+)
 from seatrades.config import CamperIdentity, CamperPreferences, CamperSimulationConfig
 from seatrades.preferences import ValidationError, join_and_validate, read_csv_for_schema, validate_schema
 from seatrades.simulation import (
@@ -38,10 +43,7 @@ def _update_camper_simulation_config(camper_simulation_config: CamperSimulationC
         st.toast(f"Updating Camper Simulation Configuration.\n\n{camper_simulation_config}")
     st.session_state["camper_simulation_config"] = camper_simulation_config
     clear_optimization_results()
-    # Relationships reference specific campers; drop them so they're re-seeded for the new roster.
-    for key in ("camper_identity", "camper_preferences", "camper_relationships"):
-        if key in st.session_state:
-            del st.session_state[key]
+    clear_camper_roster(st.session_state)
 
 
 class CamperSimulationConfigTab:

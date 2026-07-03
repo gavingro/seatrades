@@ -3,7 +3,12 @@
 import pandas as pd
 import streamlit as st
 
-from app.components import clear_optimization_results, show_validation_error, try_join_and_validate
+from app.components import (
+    clear_camper_roster,
+    clear_optimization_results,
+    show_validation_error,
+    try_join_and_validate,
+)
 from seatrades.config import SeatradesConfig, SeatradeSimulationConfig
 from seatrades.preferences import ValidationError, read_csv_for_schema, validate_schema
 from seatrades.simulation import SEATRADE_EXAMPLES
@@ -102,14 +107,8 @@ def _update_seatrade_simulation_config(
     st.session_state["seatrade_simulation_config"] = seatrade_simulation_config
     clear_optimization_results()
     # New seatrades invalidate camper preferences (which pick seatrade names), so the
-    # roster is re-simulated. Relationships reference specific campers, so drop them too
-    # or the stale pairs fail cross-reference validation against the fresh roster.
-    for key in (
-        "seatrade_preferences",
-        "cabin_camper_prefs",
-        "camper_preferences",
-        "camper_identity",
-        "camper_relationships",
-    ):
+    # whole camper roster is re-simulated alongside the seatrade offerings and join.
+    for key in ("seatrade_preferences", "cabin_camper_prefs"):
         if key in st.session_state:
             del st.session_state[key]
+    clear_camper_roster(st.session_state)
