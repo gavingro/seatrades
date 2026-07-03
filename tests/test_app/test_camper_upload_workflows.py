@@ -87,8 +87,10 @@ class TestMalformedUpload:
         at.run()
 
         assert not at.exception
+        # The translated, human-readable detail surfaces — not just a generic banner.
         assert any('missing or empty values in column "seatrade_4"' in md.value for md in at.markdown)
         assert any("Continuing without updating Camper Preferences." in t.value for t in at.toast)
+        # The malformed upload was rejected: the previous preferences are untouched.
         assert at.session_state["camper_preferences"].equals(prefs_before)
         # App stays usable for a retry — the uploader is still on the page.
         assert any(uploader.key == "prefs_uploader" for uploader in at.file_uploader)
