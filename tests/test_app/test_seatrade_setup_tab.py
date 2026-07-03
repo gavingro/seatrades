@@ -1,13 +1,9 @@
 """Seatrade Setup tab pre-solve workflows: regenerate, resize, Assign guards — no CBC solve."""
 
-from pathlib import Path
-
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from tests.test_app.helpers import PRESOLVE_TIMEOUT_SECONDS, find_button, find_slider
-
-APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
+from tests.test_app.helpers import APP_SCRIPT, PRESOLVE_TIMEOUT_SECONDS, find_button, find_slider
 
 
 class TestRegenerateSeatrades:

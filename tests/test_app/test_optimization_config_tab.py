@@ -1,24 +1,14 @@
 """Optimization config form tests — the same-fleet toggle flows into OptimizationConfig."""
 
-from pathlib import Path
-
 from streamlit.testing.v1 import AppTest
 
-from tests.test_app.helpers import PRESOLVE_TIMEOUT_SECONDS
-
-APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
-
-
-def _same_fleet_checkbox(at):
-    return next(c for c in at.checkbox if "same fleet" in c.label.lower())
-
-
-def _submit(at):
-    return next(b for b in at.button if b.label == "Submit")
-
-
-def _slider(at, label_substring):
-    return next(s for s in at.slider if label_substring.lower() in s.label.lower())
+from tests.test_app.helpers import (
+    APP_SCRIPT,
+    PRESOLVE_TIMEOUT_SECONDS,
+    find_button,
+    find_checkbox,
+    find_slider,
+)
 
 
 class TestAgeSliders:
@@ -26,9 +16,9 @@ class TestAgeSliders:
         at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
-        _slider(at, "keep similar ages together").set_value(4)
+        find_slider(at, "keep similar ages together").set_value(4)
         at.run()
-        _submit(at).click()
+        find_button(at, "Submit").click()
         at.run()
 
         assert at.session_state["optimization_config"].age_weight == 4
@@ -37,9 +27,9 @@ class TestAgeSliders:
         at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
-        _slider(at, "favor fleet-wide").set_value(0.9)
+        find_slider(at, "favor fleet-wide").set_value(0.9)
         at.run()
-        _submit(at).click()
+        find_button(at, "Submit").click()
         at.run()
 
         assert at.session_state["optimization_config"].age_balance == 0.9
@@ -50,7 +40,7 @@ class TestSameFleetToggle:
         at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
-        _submit(at).click()
+        find_button(at, "Submit").click()
         at.run()
 
         assert at.session_state["optimization_config"].force_same_fleet_all_week is False
@@ -59,9 +49,9 @@ class TestSameFleetToggle:
         at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
-        _same_fleet_checkbox(at).check()
+        find_checkbox(at, "same fleet").check()
         at.run()
-        _submit(at).click()
+        find_button(at, "Submit").click()
         at.run()
 
         assert at.session_state["optimization_config"].force_same_fleet_all_week is True

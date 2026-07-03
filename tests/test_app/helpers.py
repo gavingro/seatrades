@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
+from streamlit.testing.v1.element_tree import Button, Checkbox, Slider
 
 # The app under test, resolved from this file's location (no external input).
 APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
@@ -38,11 +39,16 @@ def poll_until_solution(at: AppTest, timeout_seconds: float, interval_seconds: f
     assert at.session_state["assigned_solution"] is not None, "solve did not finish within timeout"
 
 
-def find_slider(at: AppTest, label_substring: str):
+def find_slider(at: AppTest, label_substring: str) -> Slider:
     """Return the first slider whose label contains ``label_substring`` (case-insensitive)."""
     return next(s for s in at.slider if label_substring.lower() in s.label.lower())
 
 
-def find_button(at: AppTest, label_substring: str):
+def find_button(at: AppTest, label_substring: str) -> Button:
     """Return the first button whose label contains ``label_substring`` (case-insensitive)."""
     return next(b for b in at.button if label_substring.lower() in b.label.lower())
+
+
+def find_checkbox(at: AppTest, label_substring: str) -> Checkbox:
+    """Return the first checkbox whose label contains ``label_substring`` (case-insensitive)."""
+    return next(c for c in at.checkbox if label_substring.lower() in c.label.lower())

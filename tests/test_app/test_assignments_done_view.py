@@ -8,7 +8,6 @@ test, so these stay fast and carry no ``slow`` marker.
 """
 
 import dataclasses
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -22,9 +21,7 @@ from seatrades.config import (
 )
 from seatrades.problem import SchedulingProblem
 from seatrades.results import SolverState, SolverStatus
-from tests.test_app.helpers import PRESOLVE_TIMEOUT_SECONDS
-
-APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
+from tests.test_app.helpers import APP_SCRIPT, PRESOLVE_TIMEOUT_SECONDS
 
 
 @pytest.fixture(scope="session")

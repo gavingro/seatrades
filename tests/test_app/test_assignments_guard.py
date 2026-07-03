@@ -5,15 +5,11 @@ fake SolveRun seeded into session_state, so the guard is exercised without a rea
 solve. Asserting through the rendered button keeps the test on observable behavior.
 """
 
-from pathlib import Path
-
 from streamlit.testing.v1 import AppTest
 
 from app.tabs.assignments_tab import ACTIVE_RUN_KEY
 from seatrades.solve_run import SolveProgress
-from tests.test_app.helpers import PRESOLVE_TIMEOUT_SECONDS
-
-APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
+from tests.test_app.helpers import APP_SCRIPT, PRESOLVE_TIMEOUT_SECONDS
 
 
 class _RunningRun:

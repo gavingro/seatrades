@@ -1,13 +1,15 @@
 """Camper Setup tab pre-solve workflows: regenerate, resize, guard — no CBC solve."""
 
-from pathlib import Path
-
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from tests.test_app.helpers import PRESOLVE_TIMEOUT_SECONDS, find_button, find_slider
-
-APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
+from tests.test_app.helpers import (
+    APP_SCRIPT,
+    PRESOLVE_TIMEOUT_SECONDS,
+    find_button,
+    find_checkbox,
+    find_slider,
+)
 
 
 class TestRegenerateCampers:
@@ -74,7 +76,7 @@ class TestOptimizationConfigReachesRun:
         at.run()
 
         find_slider(at, "keep similar ages together").set_value(5)
-        next(c for c in at.checkbox if "same fleet" in c.label.lower()).check()
+        find_checkbox(at, "same fleet").check()
         at.run()
         find_button(at, "Submit").click()
         at.run()
