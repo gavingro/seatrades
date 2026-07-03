@@ -4,6 +4,8 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
+from tests.test_app.helpers import PRESOLVE_TIMEOUT_SECONDS
+
 APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
 
 
@@ -21,7 +23,7 @@ def _slider(at, label_substring):
 
 class TestAgeSliders:
     def test_age_weight_slider_feeds_config(self):
-        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
         _slider(at, "keep similar ages together").set_value(4)
@@ -32,7 +34,7 @@ class TestAgeSliders:
         assert at.session_state["optimization_config"].age_weight == 4
 
     def test_age_balance_slider_feeds_config(self):
-        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
         _slider(at, "favor fleet-wide").set_value(0.9)
@@ -45,7 +47,7 @@ class TestAgeSliders:
 
 class TestSameFleetToggle:
     def test_unchecked_yields_flag_false(self):
-        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
         _submit(at).click()
@@ -54,7 +56,7 @@ class TestSameFleetToggle:
         assert at.session_state["optimization_config"].force_same_fleet_all_week is False
 
     def test_checked_yields_flag_true(self):
-        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
         _same_fleet_checkbox(at).check()

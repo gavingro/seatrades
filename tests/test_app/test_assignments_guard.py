@@ -11,6 +11,7 @@ from streamlit.testing.v1 import AppTest
 
 from app.tabs.assignments_tab import ACTIVE_RUN_KEY
 from seatrades.solve_run import SolveProgress
+from tests.test_app.helpers import PRESOLVE_TIMEOUT_SECONDS
 
 APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
 
@@ -33,7 +34,7 @@ class _RunningRun:
 
 class TestAssignGuard:
     def test_assign_disabled_while_a_run_is_active(self):
-        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.session_state[ACTIVE_RUN_KEY] = _RunningRun()
         at.run()
 
@@ -43,7 +44,7 @@ class TestAssignGuard:
         assert assign[0].disabled, "Assign button should be disabled while a solve runs"
 
     def test_assign_enabled_when_idle(self):
-        at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
         assert not at.exception

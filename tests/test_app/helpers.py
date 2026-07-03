@@ -9,6 +9,9 @@ from streamlit.testing.v1 import AppTest
 APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
 # A real CBC solve finishes in well under a minute locally; 180s is generous headroom.
 SOLVE_TIMEOUT_SECONDS = 180
+# Pre-solve interactions (uploads, form edits, seeded views) never run CBC, so a
+# short timeout is plenty; shared by every test that drives the app without solving.
+PRESOLVE_TIMEOUT_SECONDS = 60
 
 
 def click_assign(at: AppTest) -> None:

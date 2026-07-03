@@ -22,6 +22,7 @@ from seatrades.config import (
 )
 from seatrades.problem import SchedulingProblem
 from seatrades.results import SolverState, SolverStatus
+from tests.test_app.helpers import PRESOLVE_TIMEOUT_SECONDS
 
 APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
 
@@ -59,7 +60,7 @@ def solved_solution():
 
 def _seed_done_view(solution, success, log="Cbc0010I solved\nDone"):
     """Seed a finished solve into a fresh AppTest and render the done view."""
-    at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
+    at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
     # Pre-seed the config objects so _initial_page_setup skips its _update_* handlers;
     # those call clear_optimization_results(), which would wipe the seeded solution.
     at.session_state["optimization_config"] = OptimizationConfig()
