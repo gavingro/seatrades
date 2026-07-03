@@ -20,6 +20,7 @@ from tests.test_app.helpers import (
     SOLVE_TIMEOUT_SECONDS,
     click_assign,
     find_button,
+    find_seatrade_uploader,
     find_slider,
     poll_until_solution,
 )
@@ -27,13 +28,11 @@ from tests.test_app.helpers import (
 # A deterministic 4-camper / 2-cabin week known to solve OPTIMAL under the default
 # config (mirrors the roster in test_assignments_done_view.py), expressed as the
 # three CSVs a Captain would upload.
-_SEATRADE_CSV = (
-    "seatrade,campers_min,campers_max\nArchery,0,10\nSailing,0,10\nClimbing,0,10\nKayaking,0,10\n"
-).encode()
-_IDENTITY_CSV = (
+SEATRADE_CSV = ("seatrade,campers_min,campers_max\nArchery,0,10\nSailing,0,10\nClimbing,0,10\nKayaking,0,10\n").encode()
+IDENTITY_CSV = (
     "cabin,camper,gender,age\nCabin1,Alice,F,13\nCabin1,Bob,M,14\nCabin2,Carol,F,15\nCabin2,Dave,M,16\n"
 ).encode()
-_PREFERENCES_CSV = (
+PREFERENCES_CSV = (
     "camper,seatrade_1,seatrade_2,seatrade_3,seatrade_4\n"
     "Alice,Archery,Sailing,Climbing,Kayaking\n"
     "Bob,Climbing,Archery,Sailing,Kayaking\n"
@@ -92,14 +91,12 @@ class TestUploadAssignExport:
         at.run()
         assert not at.exception
 
-        # Replace the simulated defaults by uploading through the real widgets. The
-        # seatrade uploader has no key, so select it by its distinctive label.
-        seatrade_uploader = next(u for u in at.file_uploader if "this weeks seatrades" in u.label.lower())
-        seatrade_uploader.upload("seatrades.csv", _SEATRADE_CSV)
+        # Replace the simulated defaults by uploading through the real widgets.
+        find_seatrade_uploader(at).upload("seatrades.csv", SEATRADE_CSV)
         at.run()
-        at.file_uploader(key="identity_uploader").upload("identity.csv", _IDENTITY_CSV)
+        at.file_uploader(key="identity_uploader").upload("identity.csv", IDENTITY_CSV)
         at.run()
-        at.file_uploader(key="prefs_uploader").upload("prefs.csv", _PREFERENCES_CSV)
+        at.file_uploader(key="prefs_uploader").upload("prefs.csv", PREFERENCES_CSV)
         at.run()
         assert not at.exception
 

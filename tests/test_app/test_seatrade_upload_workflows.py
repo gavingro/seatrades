@@ -9,16 +9,11 @@ and leaves the prior offerings untouched.
 
 from streamlit.testing.v1 import AppTest
 
-from tests.test_app.helpers import APP_SCRIPT, PRESOLVE_TIMEOUT_SECONDS
+from tests.test_app.helpers import APP_SCRIPT, PRESOLVE_TIMEOUT_SECONDS, find_seatrade_uploader
 
-_VALID_SEATRADE_CSV = (
+VALID_SEATRADE_CSV = (
     "seatrade,campers_min,campers_max\nArchery,0,10\nSailing,0,10\nClimbing,0,10\nKayaking,0,10\n"
 ).encode()
-
-
-def _seatrade_uploader(at: AppTest):
-    """The Seatrade Setup uploader has no key; select it by its distinctive label."""
-    return next(u for u in at.file_uploader if "this weeks seatrades" in u.label.lower())
 
 
 class TestValidSeatradeUpload:
@@ -26,7 +21,7 @@ class TestValidSeatradeUpload:
         at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
         at.run()
 
-        _seatrade_uploader(at).upload("seatrades.csv", _VALID_SEATRADE_CSV)
+        find_seatrade_uploader(at).upload("seatrades.csv", VALID_SEATRADE_CSV)
         at.run()
 
         assert not at.exception
@@ -49,7 +44,7 @@ class TestMalformedSeatradeUpload:
         # All columns present but campers_min is non-numeric — reaches the schema's
         # coerce check, exercising the pandera→plain-language translation (ADR 0006).
         bad_min_csv = b"seatrade,campers_min,campers_max\nArchery,lots,10\n"
-        _seatrade_uploader(at).upload("bad.csv", bad_min_csv)
+        find_seatrade_uploader(at).upload("bad.csv", bad_min_csv)
         at.run()
 
         assert not at.exception
@@ -67,7 +62,7 @@ class TestMalformedSeatradeUpload:
         # No campers_max column at all — caught by read_csv_for_schema's usecols guard
         # before the schema runs, translated to a missing-column message.
         no_max_column_csv = b"seatrade,campers_min\nArchery,0\n"
-        _seatrade_uploader(at).upload("bad.csv", no_max_column_csv)
+        find_seatrade_uploader(at).upload("bad.csv", no_max_column_csv)
         at.run()
 
         assert not at.exception

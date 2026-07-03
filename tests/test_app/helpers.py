@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
-from streamlit.testing.v1.element_tree import Button, Checkbox, Slider
+from streamlit.testing.v1.element_tree import Button, Checkbox, FileUploader, Slider
 
 # The app under test, resolved from this file's location (no external input).
 APP_SCRIPT = str(Path(__file__).resolve().parents[2] / "app.py")
@@ -52,3 +52,8 @@ def find_button(at: AppTest, label_substring: str) -> Button:
 def find_checkbox(at: AppTest, label_substring: str) -> Checkbox:
     """Return the first checkbox whose label contains ``label_substring`` (case-insensitive)."""
     return next(c for c in at.checkbox if label_substring.lower() in c.label.lower())
+
+
+def find_seatrade_uploader(at: AppTest) -> FileUploader:
+    """Return the Seatrade Setup uploader, which (unlike the camper/friends ones) has no key."""
+    return next(u for u in at.file_uploader if "this weeks seatrades" in u.label.lower())
