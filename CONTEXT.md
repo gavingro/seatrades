@@ -157,6 +157,34 @@ flowchart LR
 6. `wrangle_assignments_to_longform(solution)` / `wrangle_assignments_to_wideform(longform_df)` → formatted DataFrames
 ```
 
+## Scoring
+
+**Scoring** is the post-hoc measurement of a schedule's *goodness*, computed from an `AssignmentSolution` **after** the solve. It is deliberately separate from three neighbouring ideas that must not be conflated:
+
+- **Objective** — what CBC optimizes *during* the solve (the soft weights). Some Quality Metrics echo an objective goal; others (fairness) have no objective counterpart. Overlap is coincidental, not a rule.
+- **Optimality** — the solver's gap (`SolverStatus.optimality`, `1 − gap`): how close CBC *proved* it got to the mathematical optimum. A headline single number, **not** a goodness measure. On small rosters it's ~100% almost always.
+- **Scoring** — human-interpretable schedule goodness, measured after the fact.
+
+### Quality Metric
+
+One axis of schedule goodness (there are 6). A Quality Metric is an *area* of goodness (e.g. "camper preference satisfaction", "age spread"), not a single number.
+
+### Rollup Score
+
+The single number that represents a Quality Metric's area. The metric's detailed view decomposes this rollup. Every rollup is framed **up-is-good** (higher = better schedule), regardless of whether the underlying raw quantity is naturally better-when-lower (e.g. age spread, variance).
+
+### Anchor / Reference Band
+
+A **Reference Band** is a curated per-metric *expected range*, bounded by two **Anchors**: the `low_anchor` (maps to the bottom of the axis) and `high_anchor` (maps to the top). Anchors are hand-tuned domain knowledge — the "normal" range we expect scores to fall in — not theoretical best/worst.
+
+For a shared-scale comparison view, rollup scores are normalized behind the scenes against the band. The band is the **default axis domain** and a **floor on axis width**, so a single scenario never renders on a flat/meaningless scale. When an observed value falls **outside** the band (a genuinely great or poor scenario), the band **expands** to make that outlier the new endpoint and everything renormalizes; the band only ever grows, never contracts inside the anchors. Tooltips always show the **raw** metric value, never the normalized position.
+
+Scoring is measured over **seatrade sessions**, generally ignoring Fleet Time unless a metric evaluates it directly (see age spread, which measures both a per-session and a per-block/Fleet-Time level).
+
+### Design principle: MECE, no composite
+
+The 6 Quality Metrics are meant to be **orthogonal** — mutually exclusive, collectively exhaustive areas of goodness. Level and equity are deliberately separate: a uniformly-miserable cabin scores *perfectly fair* (variance 0) on the fairness metrics, and that is **correct** — the preference metric is what exposes the low level. The suite is **not** rolled up into one overall goodness number. The scheduler weighs the trade-offs themselves; Scoring hands them the instruments rather than deciding for them. (This is separate from the *solver optimality* headline, which is a single number but measures the gap, not goodness.)
+
 ## Optimization Problem
 
 The scheduler balances two user-facing categories of settings:

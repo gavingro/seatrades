@@ -1,8 +1,23 @@
 """Reusable Streamlit UI components for the Seatrades app."""
 
+from typing import Any, MutableMapping
+
 import streamlit as st
 
 from seatrades.preferences import ValidationError, join_and_validate
+
+# The camper roster is simulated as a unit: identity, the preferences derived from
+# it, and the relationships that reference specific campers. Regenerating any input
+# must drop all three together — leaving a stale key fails cross-reference validation
+# against the fresh roster on the next re-seed.
+CAMPER_ROSTER_KEYS = ("camper_identity", "camper_preferences", "camper_relationships")
+
+
+def clear_camper_roster(session_state: MutableMapping[Any, Any]) -> None:
+    """Drop every camper-roster key so they re-seed together on the next run."""
+    for key in CAMPER_ROSTER_KEYS:
+        if key in session_state:
+            del session_state[key]
 
 
 def show_validation_error(label: str, error: ValidationError):

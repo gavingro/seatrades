@@ -24,10 +24,15 @@ source .venv/bin/activate
 Run tests directly from the venv — no need to activate it first.
 
 ```bash
-.venv/bin/pytest                    # full suite
+.venv/bin/pytest                    # fast loop — slow (real-solve) tests deselected by default
 .venv/bin/pytest tests/test_foo.py  # single file
 .venv/bin/pytest -k "test_bar"      # single test
+.venv/bin/pytest -m slow            # the slow real-solve tests; run before pushing
 ```
+
+The default run skips `@pytest.mark.slow` tests (real CBC solves) so the loop stays
+fast — iterate on it, then run `-m slow` before you push. CI runs both. See "Fast loop
+vs. slow tests" in `docs/CONTRIBUTING.md`.
 
 ## Seeing the app
 
