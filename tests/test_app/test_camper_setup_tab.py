@@ -53,7 +53,7 @@ class TestSimulationSliders:
     def test_invalid_camper_config_warns_no_crash(self):
         at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
         at.run()
-        roster_before = at.session_state["camper_identity"]
+        roster_before = at.session_state["camper_identity"].copy()
 
         find_slider(at, "Campers per cabin (min)").set_value(20)
         find_slider(at, "Campers per cabin (max)").set_value(10)

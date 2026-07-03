@@ -1,8 +1,13 @@
-"""Fixtures for assignments_tab tests."""
+"""Shared fixtures for the app-integration (AppTest) tests."""
+
+from typing import Optional
 
 import pandas as pd
 import pytest
 
+from seatrades.config import OptimizationConfig
+from seatrades.problem import SchedulingProblem
+from seatrades.results import AssignmentSolution
 from seatrades.solve_run import SolveProgress
 
 
@@ -11,15 +16,16 @@ class _NoSolveRun:
 
     Lets pre-solve tests click "Assign" and assert on the resulting run/config without
     paying for a real solve. Reports ``running=True`` so the poll fragment renders and
-    never finalizes.
+    never finalizes. ``problem``/``config``/``started`` are public test spies — the real
+    SolveRun keeps problem/config private — so leave them public for the assertions.
     """
 
-    def __init__(self, problem, config):
+    def __init__(self, problem: SchedulingProblem, config: OptimizationConfig) -> None:
         self.problem = problem
         self.config = config
         self.started = False
 
-    def start(self):
+    def start(self) -> None:
         self.started = True
 
     def progress(self) -> SolveProgress:
@@ -31,7 +37,7 @@ class _NoSolveRun:
             timed_out=False,
         )
 
-    def result(self):
+    def result(self) -> Optional[AssignmentSolution]:
         return None
 
 

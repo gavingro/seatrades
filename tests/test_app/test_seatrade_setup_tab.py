@@ -42,7 +42,7 @@ class TestSimulationSliders:
     def test_invalid_seatrade_capacity_warns_no_crash(self):
         at = AppTest.from_file(APP_SCRIPT, default_timeout=60)
         at.run()
-        seatrades_before = at.session_state["seatrade_preferences"]
+        seatrades_before = at.session_state["seatrade_preferences"].copy()
 
         find_slider(at, "Camper capacity per seatrade (min)").set_value(20)
         find_slider(at, "Camper capacity per seatrade (max)").set_value(10)
