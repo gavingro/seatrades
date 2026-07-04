@@ -7,6 +7,8 @@ import pytest
 
 from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 from seatrades.scoring import (
+    COHESION_HIGH_ANCHOR,
+    COHESION_LOW_ANCHOR,
     PREFERENCE_HIGH_ANCHOR,
     PREFERENCE_LOW_ANCHOR,
     Scorecard,
@@ -34,8 +36,101 @@ def _one_camper_solution(prefs: list[str], assigned: tuple[str, str]) -> Assignm
     )
 
 
+def _roster_solution(campers: list[tuple[str, str, list[tuple[str, str]]]]) -> AssignmentSolution:
+    """Build a solution from ``(name, cabin, [(block, seatrade), ...])`` rows.
+
+    Each camper is assigned exactly the ``(block, seatrade)`` sessions listed; any block
+    they have no session in is Fleet Time (no assignment row). Lets a test place chosen
+    cabinmates in chosen sessions to pin Cohesion exactly. Preferences are irrelevant to
+    Cohesion, so a placeholder ranking is used.
+    """
+    columns = sorted({f"{block}_{seatrade}" for _, _, sessions in campers for block, seatrade in sessions})
+    camper_ids = pd.Index(range(len(campers)), name="camper_id")
+    rows = []
+    for _, _, sessions in campers:
+        assigned = {f"{block}_{seatrade}" for block, seatrade in sessions}
+        rows.append({col: (1.0 if col in assigned else 0.0) for col in columns})
+    names = [name for name, _, _ in campers]
+    cabins = [cabin for _, cabin, _ in campers]
+    return AssignmentSolution(
+        assignments=pd.DataFrame(rows, index=camper_ids, columns=columns),
+        status=SolverStatus(state=SolverState.OPTIMAL),
+        cabins=list(dict.fromkeys(cabins)),
+        campers=names,
+        seatrades_full=columns,
+        cabin_camper_prefs=pd.DataFrame({"cabin": cabins, "age": [12] * len(campers)}, index=camper_ids),
+        camper_prefs=pd.Series([["placeholder"]] * len(campers), index=camper_ids),
+        camper_names=pd.Series(names, index=camper_ids),
+    )
+
+
 def _preference(card: Scorecard):
     return card.metric("Preference")
+
+
+def _cohesion(card: Scorecard):
+    return card.metric("Cohesion")
+
+
+class TestCohesionRawValue:
+    def test_stranded_roster_scores_zero(self, sample_assignment_solution):
+        """Fixture campers never share a seatrade session with a cabinmate → 0.0 share."""
+        assert _cohesion(score(sample_assignment_solution)).raw_value == 0.0
+
+    def test_cabinmates_in_same_session_both_share(self):
+        """Two cabinmates in the same (block, seatrade) both count as sharing → 1.0."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery")]),
+                ("Bea", "Cabin1", [("1a", "Archery")]),
+            ]
+        )
+        assert _cohesion(score(solution)).raw_value == 1.0
+
+    def test_fleet_time_copresence_does_not_count(self):
+        """Cabinmates who share only a Fleet-Time block (no seatrade row) do not share → 0.0."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery")]),  # block 2 = Fleet Time
+                ("Bea", "Cabin1", [("1a", "Sailing")]),  # different seatrade, block 2 = Fleet Time
+            ]
+        )
+        assert _cohesion(score(solution)).raw_value == 0.0
+
+    def test_same_seatrade_different_block_does_not_count(self):
+        """Same seatrade in different blocks is not the same session → 0.0."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery")]),
+                ("Bea", "Cabin1", [("2b", "Archery")]),
+            ]
+        )
+        assert _cohesion(score(solution)).raw_value == 0.0
+
+
+class TestCohesionAnchors:
+    def test_cohesion_metric_carries_its_anchors(self, sample_assignment_solution):
+        """Cohesion ships its reference band + up-is-good orientation."""
+        cohesion = _cohesion(score(sample_assignment_solution))
+        assert cohesion.low_anchor == COHESION_LOW_ANCHOR
+        assert cohesion.high_anchor == COHESION_HIGH_ANCHOR
+        assert cohesion.higher_is_better is True
+
+
+class TestCohesionDetail:
+    def test_one_row_per_camper_with_cohort_size(self):
+        """detail is per-camper: solo camper → cohort_size 1, shared camper → 2."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery")]),
+                ("Bea", "Cabin1", [("1a", "Archery")]),
+                ("Cy", "Cabin2", [("1a", "Sailing")]),
+            ]
+        )
+        detail = _cohesion(score(solution)).detail
+        assert len(detail) == 3
+        sizes = dict(zip(detail["camper"], detail["cohort_size"], strict=True))
+        assert sizes == {"Ann": 2, "Bea": 2, "Cy": 1}
 
 
 class TestScore:

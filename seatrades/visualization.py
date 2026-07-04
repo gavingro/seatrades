@@ -132,6 +132,49 @@ def display_preference_detail(metric: QualityMetric) -> alt.Chart:
     )
 
 
+def display_cohesion_detail(metric: QualityMetric) -> alt.Chart:
+    """The Cohesion drill-down: how many campers landed in each same-cabin cohort size.
+
+    x = the largest same-cabin cohort a camper shares a seatrade session with, counting
+    themselves (1 = solo, 2 = with one cabinmate, …); y = camper count.
+    """
+    return (
+        alt.Chart(metric.detail)
+        .mark_bar(stroke="black", strokeWidth=0.2)
+        .encode(
+            x=alt.X("cohort_size:O", title="Cabinmates in same session (1 = solo)"),
+            y=alt.Y("count():Q", title="Campers"),
+            tooltip=[
+                alt.Tooltip("cohort_size:O", title="Cabin group size"),
+                alt.Tooltip("count():Q", title="Campers"),
+            ],
+        )
+        .properties(title={"text": "Cohesion — campers with a cabinmate", "fontSize": 20, "anchor": "start"})
+    )
+
+
+# Name → detail-chart builder. Single source for "which metrics have a drill-down"; the
+# selectbox options are derived from the scorecard, so this keeps options and charts from
+# drifting. Add a metric's builder here when its detail chart is ready.
+_DETAIL_BUILDERS = {
+    "Preference": display_preference_detail,
+    "Cohesion": display_cohesion_detail,
+}
+
+
+def display_metric_detail(metric: QualityMetric) -> alt.Chart:
+    """Dispatch a Quality Metric to its detail chart via ``_DETAIL_BUILDERS``.
+
+    Raises ``KeyError`` for a metric whose detail chart is not wired up yet, so an
+    unrenderable selectbox option fails loudly instead of drawing the wrong chart.
+    """
+    try:
+        builder = _DETAIL_BUILDERS[metric.name]
+    except KeyError:
+        raise KeyError(f"No detail chart registered for Quality Metric {metric.name!r}") from None
+    return builder(metric)
+
+
 def display_optimality_donut(optimality: float) -> alt.Chart:
     """Render the solver optimality as a donut gauge (N/100) with the percent in its center.
 

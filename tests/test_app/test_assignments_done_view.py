@@ -119,6 +119,15 @@ class TestDoneView:
         assert not at.exception
         assert at.selectbox(key="quality_view_selector").value == "Preference"
 
+    def test_switching_to_cohesion_detail_does_not_crash(self, solved_solution):
+        """Cohesion is offered as an option and its detail chart renders without error."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        at.selectbox(key="quality_view_selector").set_value("Cohesion").run()
+
+        assert not at.exception
+        assert at.selectbox(key="quality_view_selector").value == "Cohesion"
+
     def test_error_status_renders_finished_abnormally_warning(self, solved_solution):
         """A seeded ERROR solution surfaces the crash copy, not the tables, no exception."""
         error_solution = dataclasses.replace(

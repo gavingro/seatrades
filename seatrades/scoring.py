@@ -49,7 +49,7 @@ def score(solution: AssignmentSolution) -> Scorecard:
     """Measure a solved schedule's goodness. Deterministic: one solution in, one Scorecard out."""
     longform = wrangle_assignments_to_longform(solution)
     return Scorecard(
-        metrics=[_preference_metric(longform)],
+        metrics=[_preference_metric(longform), _cohesion_metric(longform)],
         optimality=solution.status.optimality,
     )
 
@@ -78,6 +78,46 @@ def _camper_cprs(longform: pd.DataFrame) -> pd.DataFrame:
     detail = grouped.agg(cpr="sum", ranks=list).reset_index()
     detail["cause"] = detail["ranks"].map(lambda ranks: f"{min(ranks)}+{max(ranks)}")
     return detail.drop(columns="ranks")
+
+
+# Cohesion reference band — placeholder anchors, calibrated later in the
+# anchor-calibration slice against real mock-data distributions.
+COHESION_LOW_ANCHOR = 0.5
+COHESION_HIGH_ANCHOR = 0.9
+
+# A camper "shares" if their largest same-cabin cohort in any one session is ≥ 2 (self + a
+# cabinmate). Solo (self only) is cohort size 1.
+SHARED_COHORT_MIN = 2
+
+
+def _cabin_cohorts(longform: pd.DataFrame) -> pd.DataFrame:
+    """Largest same-cabin cohort size per camper across their seatrade sessions.
+
+    One row per camper (keyed by cabin+camper, since names alone can collide) with
+    ``cohort_size`` = the most same-cabin campers sharing any one of the camper's
+    ``(block, seatrade)`` sessions, counting the camper themselves (solo → 1). Only
+    assigned seatrade rows appear in ``longform``, so Fleet Time co-presence never
+    counts — it is not a seatrade session.
+    """
+    assigned = longform[longform["assignment"] == 1.0]
+    session_cohort = assigned.groupby(["block", "seatrade", "cabin"], sort=False)["camper"].transform("size")
+    per_session = assigned.assign(cohort_size=session_cohort)
+    detail = per_session.groupby(["cabin", "camper"], sort=False)["cohort_size"].max().reset_index()
+    return detail
+
+
+def _cohesion_metric(longform: pd.DataFrame) -> QualityMetric:
+    """The Cohesion metric — "how many campers are with a cabinmate?"."""
+    cohorts = _cabin_cohorts(longform)
+    fraction_shared = (cohorts["cohort_size"] >= SHARED_COHORT_MIN).mean()
+    return QualityMetric(
+        name="Cohesion",
+        raw_value=float(fraction_shared),
+        low_anchor=COHESION_LOW_ANCHOR,
+        high_anchor=COHESION_HIGH_ANCHOR,
+        higher_is_better=True,
+        detail=cohorts,
+    )
 
 
 def _preference_metric(longform: pd.DataFrame) -> QualityMetric:

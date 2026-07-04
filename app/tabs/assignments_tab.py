@@ -20,8 +20,8 @@ from seatrades.scoring import score
 from seatrades.solve_run import SolveRun
 from seatrades.visualization import (
     display_assignments,
+    display_metric_detail,
     display_optimality_donut,
-    display_preference_detail,
     display_quality_summary,
 )
 
@@ -115,7 +115,9 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Schedule Quality")
                 scorecard = score(solution)
-                quality_options: list[Literal["Overview", "Preference"]] = ["Overview", "Preference"]
+                # Single-source the options from the scorecard so adding a metric can't
+                # leave an option without a detail chart (or vice versa).
+                quality_options = ["Overview", *(metric.name for metric in scorecard.metrics)]
                 quality_view = st.selectbox(
                     "Area",
                     options=quality_options,
@@ -125,7 +127,7 @@ class AssignmentsTab:
                 if quality_view == "Overview":
                     st.altair_chart(display_quality_summary(scorecard))
                 else:
-                    st.altair_chart(display_preference_detail(scorecard.metric(quality_view)))
+                    st.altair_chart(display_metric_detail(scorecard.metric(quality_view)))
 
                 # Assignment Data — the take-away/export view.
                 longform_df = wrangle_assignments_to_longform(solution)

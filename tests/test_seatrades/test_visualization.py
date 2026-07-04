@@ -11,6 +11,8 @@ from seatrades.visualization import (
     METRIC_ORDER,
     SATISFACTION_RANGE,
     display_assignments,
+    display_cohesion_detail,
+    display_metric_detail,
     display_optimality_donut,
     display_preference_detail,
     display_quality_summary,
@@ -57,6 +59,10 @@ def _preference_metric(solution):
     return score(solution).metric("Preference")
 
 
+def _cohesion_metric(solution):
+    return score(solution).metric("Cohesion")
+
+
 class TestDisplayPreferenceDetail:
     """The Preference drill-down: camper counts per CPR, with the CPR-5 split visible."""
 
@@ -77,6 +83,35 @@ class TestDisplayPreferenceDetail:
         """Colour encodes the cause so the CPR-5 bar splits into 1+4 vs 2+3."""
         spec = display_preference_detail(_preference_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["color"]["field"] == "cause"
+
+
+class TestDisplayCohesionDetail:
+    """The Cohesion drill-down: camper counts per same-cabin cohort size (1 = solo)."""
+
+    def test_x_encodes_cohort_size(self, sample_assignment_solution):
+        spec = display_cohesion_detail(_cohesion_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["x"]["field"] == "cohort_size"
+
+    def test_y_is_a_camper_count(self, sample_assignment_solution):
+        spec = display_cohesion_detail(_cohesion_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["y"]["aggregate"] == "count"
+
+
+class TestDisplayMetricDetail:
+    """The name→builder dispatcher: one coherent 'add a metric' seam."""
+
+    def test_routes_preference_to_its_builder(self, sample_assignment_solution):
+        metric = _preference_metric(sample_assignment_solution)
+        assert display_metric_detail(metric).to_dict() == display_preference_detail(metric).to_dict()
+
+    def test_routes_cohesion_to_its_builder(self, sample_assignment_solution):
+        metric = _cohesion_metric(sample_assignment_solution)
+        assert display_metric_detail(metric).to_dict() == display_cohesion_detail(metric).to_dict()
+
+    def test_raises_for_a_metric_with_no_detail_chart(self, sample_assignment_solution):
+        unwired = dataclasses.replace(_preference_metric(sample_assignment_solution), name="Sparsity")
+        with pytest.raises(KeyError):
+            display_metric_detail(unwired)
 
 
 class TestNormalizeToBand:
