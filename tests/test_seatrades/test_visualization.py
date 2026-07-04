@@ -27,6 +27,13 @@ def _flatten(spec):
     return [spec.get("encoding", {})]
 
 
+def _summary_metric_names(spec):
+    """The metric names carried in a chart spec's inline data (Altair inlines small frames)."""
+    data = spec.get("data", {})
+    rows: list[dict] = data.get("values") or next(iter(spec.get("datasets", {}).values()), [])
+    return {row["name"] for row in rows if "name" in row}
+
+
 class TestDisplayQualitySummary:
     """The six-metric overview: normalized 0–100 on an ordinal x, raw value in the tooltip."""
 
@@ -53,6 +60,19 @@ class TestDisplayQualitySummary:
         marks = [spec["mark"]] if "mark" in spec else [layer.get("mark") for layer in spec.get("layer", [])]
         mark_types = [mark.get("type") if isinstance(mark, dict) else mark for mark in marks]
         assert "area" in mark_types
+
+    def test_every_built_metric_is_a_known_order_name(self, sample_assignment_solution):
+        """Every metric score() builds must be a METRIC_ORDER name, so the summary plot
+        places it deliberately. Guards the name↔order drift the KeyError dispatch can't:
+        an unlisted name doesn't error, it just sorts silently to the end of the axis.
+        """
+        names = [metric.name for metric in score(sample_assignment_solution).metrics]
+        assert set(names) <= set(METRIC_ORDER)
+
+    def test_cohesion_is_plotted_on_the_summary(self, sample_assignment_solution):
+        """Cohesion shows on the Overview summary plot (issue #93 acceptance criterion)."""
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        assert "Cohesion" in _summary_metric_names(spec)
 
 
 def _preference_metric(solution):
