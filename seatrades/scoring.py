@@ -37,11 +37,19 @@ class Scorecard:
     metrics: list[QualityMetric]
     optimality: float
 
+    def metric(self, name: str) -> QualityMetric:
+        """The Quality Metric with this name; raises KeyError if there is none."""
+        for metric in self.metrics:
+            if metric.name == name:
+                return metric
+        raise KeyError(f"No Quality Metric named {name!r}")
+
 
 def score(solution: AssignmentSolution) -> Scorecard:
     """Measure a solved schedule's goodness. Deterministic: one solution in, one Scorecard out."""
+    longform = wrangle_assignments_to_longform(solution)
     return Scorecard(
-        metrics=[_preference_metric(solution)],
+        metrics=[_preference_metric(longform)],
         optimality=solution.status.optimality,
     )
 
@@ -52,17 +60,19 @@ PREFERENCE_LOW_ANCHOR = 0.6
 PREFERENCE_HIGH_ANCHOR = 0.95
 
 # A "good" schedule is CPR ≤ 4; bad is CPR ≥ 5. Exact complements.
+# Quirk: CPR ≤ 4 is only reachable as 1+2 or 1+3, so "good" ⇔ the camper got their #1
+# pick in one block. 1+4 (got your #1 *and* your #4) sums to CPR 5 = bad — intentional,
+# not an off-by-one.
 GOOD_CPR_MAX = 4
 
 
-def _camper_cprs(solution: AssignmentSolution) -> pd.DataFrame:
+def _camper_cprs(longform: pd.DataFrame) -> pd.DataFrame:
     """Combined Preference Rank per camper: sum of their two assigned block ranks.
 
     One row per camper (keyed by cabin+camper, since names alone can collide) with
     ``cpr`` (3–6). Assigned rows carry a 1–4 preference by the top-2 guarantee and
     the preference-only constraint, so the two-block sum lands in 3–6.
     """
-    longform = wrangle_assignments_to_longform(solution)
     assigned = longform[longform["assignment"] == 1.0]
     grouped = assigned.groupby(["cabin", "camper"], sort=False)["preference"]
     detail = grouped.agg(cpr="sum", ranks=list).reset_index()
@@ -70,9 +80,9 @@ def _camper_cprs(solution: AssignmentSolution) -> pd.DataFrame:
     return detail.drop(columns="ranks")
 
 
-def _preference_metric(solution: AssignmentSolution) -> QualityMetric:
+def _preference_metric(longform: pd.DataFrame) -> QualityMetric:
     """The Preference metric — "how many campers got a good schedule?"."""
-    cprs = _camper_cprs(solution)
+    cprs = _camper_cprs(longform)
     fraction_good = (cprs["cpr"] <= GOOD_CPR_MAX).mean()
     return QualityMetric(
         name="Preference",

@@ -115,7 +115,11 @@ def display_preference_detail(metric: QualityMetric) -> alt.Chart:
         alt.Chart(metric.detail)
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
-            x=alt.X("cpr:O", title="Combined Preference Rank (3 = best, 6 = worst)"),
+            x=alt.X(
+                "cpr:O",
+                scale=alt.Scale(domain=[3, 4, 5, 6]),
+                title="Combined Preference Rank (3 = best, 6 = worst)",
+            ),
             y=alt.Y("count():Q", title="Campers"),
             color=alt.Color(
                 "cause:N",

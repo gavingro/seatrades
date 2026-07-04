@@ -54,7 +54,7 @@ class TestDisplayQualitySummary:
 
 
 def _preference_metric(solution):
-    return next(metric for metric in score(solution).metrics if metric.name == "Preference")
+    return score(solution).metric("Preference")
 
 
 class TestDisplayPreferenceDetail:
@@ -63,6 +63,11 @@ class TestDisplayPreferenceDetail:
     def test_x_encodes_cpr(self, sample_assignment_solution):
         spec = display_preference_detail(_preference_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["x"]["field"] == "cpr"
+
+    def test_x_shows_all_cpr_buckets(self, sample_assignment_solution):
+        """All four CPR buckets (3–6) stay on the axis even when one has zero campers."""
+        spec = display_preference_detail(_preference_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["x"]["scale"]["domain"] == [3, 4, 5, 6]
 
     def test_y_is_a_camper_count(self, sample_assignment_solution):
         spec = display_preference_detail(_preference_metric(sample_assignment_solution)).to_dict()

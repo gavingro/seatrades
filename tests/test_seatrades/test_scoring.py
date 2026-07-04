@@ -3,9 +3,15 @@
 import dataclasses
 
 import pandas as pd
+import pytest
 
 from seatrades.results import AssignmentSolution, SolverState, SolverStatus
-from seatrades.scoring import Scorecard, score
+from seatrades.scoring import (
+    PREFERENCE_HIGH_ANCHOR,
+    PREFERENCE_LOW_ANCHOR,
+    Scorecard,
+    score,
+)
 
 
 def _one_camper_solution(prefs: list[str], assigned: tuple[str, str]) -> AssignmentSolution:
@@ -29,7 +35,7 @@ def _one_camper_solution(prefs: list[str], assigned: tuple[str, str]) -> Assignm
 
 
 def _preference(card: Scorecard):
-    return next(metric for metric in card.metrics if metric.name == "Preference")
+    return card.metric("Preference")
 
 
 class TestScore:
@@ -46,6 +52,27 @@ class TestScore:
         assert card.optimality == solution.status.optimality  # 1 - 0.02
         metric_names = [metric.name for metric in card.metrics]
         assert "Preference" in metric_names
+
+    def test_preference_metric_carries_its_anchors(self, sample_assignment_solution):
+        """The Preference metric ships its reference band + orientation, not just the raw value."""
+        preference = _preference(score(sample_assignment_solution))
+
+        assert preference.low_anchor == PREFERENCE_LOW_ANCHOR
+        assert preference.high_anchor == PREFERENCE_HIGH_ANCHOR
+        assert preference.higher_is_better is True
+
+
+class TestScorecardMetric:
+    def test_metric_looks_up_by_name(self, sample_assignment_solution):
+        """Scorecard.metric returns the metric with a matching name."""
+        card = score(sample_assignment_solution)
+        assert card.metric("Preference").name == "Preference"
+
+    def test_metric_raises_for_unknown_name(self, sample_assignment_solution):
+        """An unknown metric name is a KeyError, not a silent None."""
+        card = score(sample_assignment_solution)
+        with pytest.raises(KeyError):
+            card.metric("Nonexistent")
 
 
 class TestPreferenceRawValue:

@@ -125,8 +125,7 @@ class AssignmentsTab:
                 if quality_view == "Overview":
                     st.altair_chart(display_quality_summary(scorecard))
                 else:
-                    preference_metric = next(m for m in scorecard.metrics if m.name == quality_view)
-                    st.altair_chart(display_preference_detail(preference_metric))
+                    st.altair_chart(display_preference_detail(scorecard.metric(quality_view)))
 
                 # Assignment Data — the take-away/export view.
                 longform_df = wrangle_assignments_to_longform(solution)
