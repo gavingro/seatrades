@@ -142,7 +142,7 @@ def display_cohesion_detail(metric: QualityMetric) -> alt.Chart:
         alt.Chart(metric.detail)
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
-            x=alt.X("cohort_size:O", title="Cabinmates in same session (1 = solo)"),
+            x=alt.X("cohort_size:O", title="Cabin group size in a session (1 = solo)"),
             y=alt.Y("count():Q", title="Campers"),
             tooltip=[
                 alt.Tooltip("cohort_size:O", title="Cabin group size"),
