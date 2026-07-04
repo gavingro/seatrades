@@ -122,7 +122,8 @@ def _cohesion_metric(longform: pd.DataFrame) -> QualityMetric:
 
 # Sparsity reference band — placeholder anchors, calibrated later in the
 # anchor-calibration slice against real mock-data distributions. Down-is-bad: fewer
-# running seatrades is better. Bounded above by the catalog (seatrades × 4 blocks).
+# running seatrades is better. (The raw count's own ceiling is the catalog —
+# seatrades × 4 blocks — which is where a calibrated high_anchor would come from.)
 SPARSITY_LOW_ANCHOR = 8.0
 SPARSITY_HIGH_ANCHOR = 24.0
 
@@ -143,7 +144,7 @@ def _sparsity_metric(longform: pd.DataFrame) -> QualityMetric:
     """The Sparsity metric — "how few seatrades do we have to staff?".
 
     Raw value is the count of running seatrades across all four blocks — the thing being
-    rewarded, so it stays a raw count (not a rate). Fewer is better → down-is-bad.
+    measured, so it stays a raw count (not a rate). Fewer is better → down-is-bad.
     """
     running = _running_seatrades(longform)
     return QualityMetric(
