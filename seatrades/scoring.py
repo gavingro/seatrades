@@ -49,7 +49,7 @@ def score(solution: AssignmentSolution) -> Scorecard:
     """Measure a solved schedule's goodness. Deterministic: one solution in, one Scorecard out."""
     longform = wrangle_assignments_to_longform(solution)
     return Scorecard(
-        metrics=[_preference_metric(longform), _cohesion_metric(longform)],
+        metrics=[_preference_metric(longform), _cohesion_metric(longform), _sparsity_metric(longform)],
         optimality=solution.status.optimality,
     )
 
@@ -117,6 +117,42 @@ def _cohesion_metric(longform: pd.DataFrame) -> QualityMetric:
         high_anchor=COHESION_HIGH_ANCHOR,
         higher_is_better=True,
         detail=cohorts,
+    )
+
+
+# Sparsity reference band — placeholder anchors, calibrated later in the
+# anchor-calibration slice against real mock-data distributions. Down-is-bad: fewer
+# running seatrades is better. Bounded above by the catalog (seatrades × 4 blocks).
+SPARSITY_LOW_ANCHOR = 8.0
+SPARSITY_HIGH_ANCHOR = 24.0
+
+
+def _running_seatrades(longform: pd.DataFrame) -> pd.DataFrame:
+    """The running seatrade sessions: one row per ``(block, seatrade)`` with ≥ 1 camper.
+
+    A session runs when at least one camper is assigned to it, so an empty seatrade (0
+    campers in that block) never appears. Only assigned seatrade rows are in ``longform``,
+    so Fleet Time is not a session here. One row per running session lets the detail
+    countplot tally them per block.
+    """
+    assigned = longform[longform["assignment"] == 1.0]
+    return assigned[["block", "seatrade"]].drop_duplicates().reset_index(drop=True)
+
+
+def _sparsity_metric(longform: pd.DataFrame) -> QualityMetric:
+    """The Sparsity metric — "how few seatrades do we have to staff?".
+
+    Raw value is the count of running seatrades across all four blocks — the thing being
+    rewarded, so it stays a raw count (not a rate). Fewer is better → down-is-bad.
+    """
+    running = _running_seatrades(longform)
+    return QualityMetric(
+        name="Sparsity",
+        raw_value=float(len(running)),
+        low_anchor=SPARSITY_LOW_ANCHOR,
+        high_anchor=SPARSITY_HIGH_ANCHOR,
+        higher_is_better=False,
+        detail=running,
     )
 
 

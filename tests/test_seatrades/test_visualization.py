@@ -16,6 +16,7 @@ from seatrades.visualization import (
     display_optimality_donut,
     display_preference_detail,
     display_quality_summary,
+    display_sparsity_detail,
     normalize_to_band,
 )
 
@@ -83,6 +84,10 @@ def _cohesion_metric(solution):
     return score(solution).metric("Cohesion")
 
 
+def _sparsity_metric(solution):
+    return score(solution).metric("Sparsity")
+
+
 class TestDisplayPreferenceDetail:
     """The Preference drill-down: camper counts per CPR, with the CPR-5 split visible."""
 
@@ -117,6 +122,18 @@ class TestDisplayCohesionDetail:
         assert spec["encoding"]["y"]["aggregate"] == "count"
 
 
+class TestDisplaySparsityDetail:
+    """The Sparsity drill-down: running-seatrade count per block."""
+
+    def test_x_encodes_block(self, sample_assignment_solution):
+        spec = display_sparsity_detail(_sparsity_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["x"]["field"] == "block"
+
+    def test_y_is_a_running_seatrade_count(self, sample_assignment_solution):
+        spec = display_sparsity_detail(_sparsity_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["y"]["aggregate"] == "count"
+
+
 class TestDisplayMetricDetail:
     """The name→builder dispatcher: one coherent 'add a metric' seam."""
 
@@ -128,8 +145,12 @@ class TestDisplayMetricDetail:
         metric = _cohesion_metric(sample_assignment_solution)
         assert display_metric_detail(metric).to_dict() == display_cohesion_detail(metric).to_dict()
 
+    def test_routes_sparsity_to_its_builder(self, sample_assignment_solution):
+        metric = _sparsity_metric(sample_assignment_solution)
+        assert display_metric_detail(metric).to_dict() == display_sparsity_detail(metric).to_dict()
+
     def test_raises_for_a_metric_with_no_detail_chart(self, sample_assignment_solution):
-        unwired = dataclasses.replace(_preference_metric(sample_assignment_solution), name="Sparsity")
+        unwired = dataclasses.replace(_preference_metric(sample_assignment_solution), name="Age spread")
         with pytest.raises(KeyError):
             display_metric_detail(unwired)
 

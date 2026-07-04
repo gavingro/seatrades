@@ -11,6 +11,8 @@ from seatrades.scoring import (
     COHESION_LOW_ANCHOR,
     PREFERENCE_HIGH_ANCHOR,
     PREFERENCE_LOW_ANCHOR,
+    SPARSITY_HIGH_ANCHOR,
+    SPARSITY_LOW_ANCHOR,
     Scorecard,
     score,
 )
@@ -72,6 +74,10 @@ def _cohesion(card: Scorecard):
     return card.metric("Cohesion")
 
 
+def _sparsity(card: Scorecard):
+    return card.metric("Sparsity")
+
+
 class TestCohesionRawValue:
     def test_stranded_roster_scores_zero(self, sample_assignment_solution):
         """Fixture campers never share a seatrade session with a cabinmate → 0.0 share."""
@@ -131,6 +137,53 @@ class TestCohesionDetail:
         assert len(detail) == 3
         sizes = dict(zip(detail["camper"], detail["cohort_size"], strict=True))
         assert sizes == {"Ann": 2, "Bea": 2, "Cy": 1}
+
+
+class TestSparsityRawValue:
+    def test_counts_every_running_session(self, sample_assignment_solution):
+        """Fixture runs all 6 (block, seatrade) sessions (each has ≥1 camper) → count 6."""
+        assert _sparsity(score(sample_assignment_solution)).raw_value == 6.0
+
+    def test_empty_session_does_not_count(self):
+        """A seatrade with 0 campers in a block is not running. One camper touches only 2 of
+        the 8 (block, seatrade) columns → count 2, the other 6 empty columns don't count."""
+        solution = _one_camper_solution(prefs=["A", "B", "C", "D"], assigned=("A", "C"))
+        assert _sparsity(score(solution)).raw_value == 2.0
+
+    def test_counts_across_all_blocks(self):
+        """The same seatrade running in two different blocks is two running sessions."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery")]),
+                ("Bea", "Cabin1", [("2b", "Archery")]),
+            ]
+        )
+        assert _sparsity(score(solution)).raw_value == 2.0
+
+
+class TestSparsityAnchors:
+    def test_sparsity_metric_carries_its_anchors_flipped(self, sample_assignment_solution):
+        """Sparsity ships its reference band and is down-is-bad (fewer seatrades = better)."""
+        sparsity = _sparsity(score(sample_assignment_solution))
+        assert sparsity.low_anchor == SPARSITY_LOW_ANCHOR
+        assert sparsity.high_anchor == SPARSITY_HIGH_ANCHOR
+        assert sparsity.higher_is_better is False
+
+
+class TestSparsityDetail:
+    def test_one_row_per_running_session_with_block(self):
+        """detail is per running session so the countplot can tally per block:
+        two 1a sessions + one 2b session → 3 rows carrying their block."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery")]),
+                ("Bea", "Cabin1", [("1a", "Sailing")]),
+                ("Cy", "Cabin2", [("2b", "Archery")]),
+            ]
+        )
+        detail = _sparsity(score(solution)).detail
+        assert len(detail) == 3
+        assert sorted(detail["block"]) == ["1a", "1a", "2b"]
 
 
 class TestScore:
