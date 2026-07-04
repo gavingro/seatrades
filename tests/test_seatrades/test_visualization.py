@@ -167,6 +167,18 @@ class TestDisplayAgeSpreadDetail:
         assert "seatrade" in tooltip_fields
         assert "block" in tooltip_fields
 
+    def test_per_session_marks_stack_into_the_count(self, sample_assignment_solution):
+        """The per-session grouping (seatrade x block) must ride a stacking channel (detail),
+        not tooltip alone. detail is one row per running session, so count() groups by
+        (spread, seatrade, block) = 1 each; tooltip is not a stacking channel, so putting the
+        fields there alone overplots every session at height 1 and the bars never reach the
+        real per-range count. detail stacks the unit marks so each bar's height is the seatrade
+        count for that range."""
+        spec = display_age_spread_detail(_age_spread_metric(sample_assignment_solution)).to_dict()
+        detail_fields = [entry.get("field") for entry in spec["encoding"]["detail"]]
+        assert "seatrade" in detail_fields
+        assert "block" in detail_fields
+
 
 class TestDisplayMetricDetail:
     """The name→builder dispatcher: one coherent 'add a metric' seam."""

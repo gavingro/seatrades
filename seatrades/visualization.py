@@ -181,6 +181,12 @@ def display_age_spread_detail(metric: QualityMetric) -> alt.Chart:
     x = age range (years), y = count of running seatrades with that range. ``metric.detail``
     is one row per running session; the tooltip carries the seatrade and block so a large
     range can be traced back to the specific seatrade × block session that caused it.
+
+    ``detail`` stacks one unit-height mark per running session, so each bar's height is the
+    real seatrade count for that range. It has to ride a stacking channel: tooltip fields are
+    pulled into the ``count()`` groupby (one group per session) but tooltip does not stack, so
+    the fields there alone would overplot every session at height 1 and no bar would reach its
+    true count.
     """
     return (
         alt.Chart(metric.detail)
@@ -188,6 +194,7 @@ def display_age_spread_detail(metric: QualityMetric) -> alt.Chart:
         .encode(
             x=alt.X("spread:O", title="Age range (years)"),
             y=alt.Y("count():Q", title="Seatrades"),
+            detail=["seatrade:N", "block:N"],
             tooltip=[
                 alt.Tooltip("seatrade:N", title="Seatrade"),
                 alt.Tooltip("block:N", title="Block"),
