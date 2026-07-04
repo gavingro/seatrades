@@ -10,6 +10,7 @@ from seatrades.scoring import score
 from seatrades.visualization import (
     METRIC_ORDER,
     SATISFACTION_RANGE,
+    display_age_spread_detail,
     display_assignments,
     display_cohesion_detail,
     display_metric_detail,
@@ -80,6 +81,11 @@ class TestDisplayQualitySummary:
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
         assert "Sparsity" in _summary_metric_names(spec)
 
+    def test_age_spread_is_plotted_on_the_summary(self, sample_assignment_solution):
+        """Age spread shows on the Overview summary plot (issue #95 acceptance criterion)."""
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        assert "Age spread" in _summary_metric_names(spec)
+
 
 def _preference_metric(solution):
     return score(solution).metric("Preference")
@@ -91,6 +97,10 @@ def _cohesion_metric(solution):
 
 def _sparsity_metric(solution):
     return score(solution).metric("Sparsity")
+
+
+def _age_spread_metric(solution):
+    return score(solution).metric("Age spread")
 
 
 class TestDisplayPreferenceDetail:
@@ -139,6 +149,25 @@ class TestDisplaySparsityDetail:
         assert spec["encoding"]["y"]["aggregate"] == "count"
 
 
+class TestDisplayAgeSpreadDetail:
+    """The Age Spread drill-down: seatrade counts per age range."""
+
+    def test_x_encodes_spread(self, sample_assignment_solution):
+        spec = display_age_spread_detail(_age_spread_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["x"]["field"] == "spread"
+
+    def test_y_is_a_seatrade_count(self, sample_assignment_solution):
+        spec = display_age_spread_detail(_age_spread_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["y"]["aggregate"] == "count"
+
+    def test_tooltip_identifies_the_seatrade_and_block(self, sample_assignment_solution):
+        """Hovering a bar surfaces which seatrade x block has a large range."""
+        spec = display_age_spread_detail(_age_spread_metric(sample_assignment_solution)).to_dict()
+        tooltip_fields = [entry.get("field") for entry in spec["encoding"]["tooltip"]]
+        assert "seatrade" in tooltip_fields
+        assert "block" in tooltip_fields
+
+
 class TestDisplayMetricDetail:
     """The name→builder dispatcher: one coherent 'add a metric' seam."""
 
@@ -154,8 +183,12 @@ class TestDisplayMetricDetail:
         metric = _sparsity_metric(sample_assignment_solution)
         assert display_metric_detail(metric).to_dict() == display_sparsity_detail(metric).to_dict()
 
+    def test_routes_age_spread_to_its_builder(self, sample_assignment_solution):
+        metric = _age_spread_metric(sample_assignment_solution)
+        assert display_metric_detail(metric).to_dict() == display_age_spread_detail(metric).to_dict()
+
     def test_raises_for_a_metric_with_no_detail_chart(self, sample_assignment_solution):
-        unwired = dataclasses.replace(_preference_metric(sample_assignment_solution), name="Age spread")
+        unwired = dataclasses.replace(_preference_metric(sample_assignment_solution), name="Fair within")
         with pytest.raises(KeyError):
             display_metric_detail(unwired)
 

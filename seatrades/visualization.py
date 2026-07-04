@@ -13,7 +13,8 @@ from seatrades.results import (
 from seatrades.scoring import QualityMetric, Scorecard
 
 # Fixed, deliberate ordinal x-order for the summary comparison plot. Preference,
-# Cohesion, and Sparsity are wired; the rest are placeholders later metric slices fill in.
+# Cohesion, Sparsity, and Age spread are wired; the rest are placeholders later metric
+# slices fill in.
 METRIC_ORDER = ["Preference", "Cohesion", "Sparsity", "Age spread", "Fair within", "Fair between"]
 
 # CPR causes ordered good (greens) → bad (reds) so the detail bars read good-vs-bad at
@@ -174,6 +175,29 @@ def display_sparsity_detail(metric: QualityMetric) -> alt.Chart:
     )
 
 
+def display_age_spread_detail(metric: QualityMetric) -> alt.Chart:
+    """The Age Spread drill-down: how many seatrades run at each age range.
+
+    x = age range (years), y = count of running seatrades with that range. ``metric.detail``
+    is one row per running session; the tooltip carries the seatrade and block so a large
+    range can be traced back to the specific seatrade × block session that caused it.
+    """
+    return (
+        alt.Chart(metric.detail)
+        .mark_bar(stroke="black", strokeWidth=0.2)
+        .encode(
+            x=alt.X("spread:O", title="Age range (years)"),
+            y=alt.Y("count():Q", title="Seatrades"),
+            tooltip=[
+                alt.Tooltip("seatrade:N", title="Seatrade"),
+                alt.Tooltip("block:N", title="Block"),
+                alt.Tooltip("spread:Q", title="Age range"),
+            ],
+        )
+        .properties(title={"text": "Age spread — age range per seatrade", "fontSize": 20, "anchor": "start"})
+    )
+
+
 # Name → detail-chart builder. Single source for "which metrics have a drill-down"; the
 # selectbox options are derived from the scorecard, so this keeps options and charts from
 # drifting. Add a metric's builder here when its detail chart is ready.
@@ -181,6 +205,7 @@ _DETAIL_BUILDERS = {
     "Preference": display_preference_detail,
     "Cohesion": display_cohesion_detail,
     "Sparsity": display_sparsity_detail,
+    "Age spread": display_age_spread_detail,
 }
 
 

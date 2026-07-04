@@ -7,6 +7,8 @@ import pytest
 
 from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 from seatrades.scoring import (
+    AGE_SPREAD_HIGH_ANCHOR,
+    AGE_SPREAD_LOW_ANCHOR,
     COHESION_HIGH_ANCHOR,
     COHESION_LOW_ANCHOR,
     PREFERENCE_HIGH_ANCHOR,
@@ -76,6 +78,10 @@ def _cohesion(card: Scorecard):
 
 def _sparsity(card: Scorecard):
     return card.metric("Sparsity")
+
+
+def _age_spread(card: Scorecard):
+    return card.metric("Age spread")
 
 
 class TestCohesionRawValue:
@@ -184,6 +190,40 @@ class TestSparsityDetail:
         detail = _sparsity(score(solution)).detail
         assert len(detail) == 3
         assert sorted(detail["block"]) == ["1a", "1a", "2b"]
+
+
+class TestAgeSpreadRawValue:
+    def test_matches_hand_computed_session_weighted_mean(self, sample_assignment_solution):
+        """Fixture ages: Alice 13, Bob 14, Carol 15, Dave 16. Per-session age range:
+        1a_Archery {Alice,Dave} -> 3, 1a_Sailing {Bob} -> 0, 1a_Climbing {Carol} -> 0,
+        2b_Archery {Carol} -> 0, 2b_Sailing {Alice} -> 0, 2b_Climbing {Bob,Dave} -> 2.
+        Mean over the 6 running sessions (each session weighted equally, not by camper
+        count) = (3+0+0+0+0+2)/6 = 5/6."""
+        assert _age_spread(score(sample_assignment_solution)).raw_value == pytest.approx(5 / 6)
+
+    def test_single_camper_sessions_have_zero_spread(self):
+        """A running session with exactly one camper has age range 0 (max == min)."""
+        solution = _one_camper_solution(prefs=["A", "B", "C", "D"], assigned=("A", "C"))
+        assert _age_spread(score(solution)).raw_value == 0.0
+
+
+class TestAgeSpreadAnchors:
+    def test_age_spread_metric_carries_its_anchors_flipped(self, sample_assignment_solution):
+        """Age Spread ships its reference band and is down-is-bad (narrower range = better)."""
+        age_spread = _age_spread(score(sample_assignment_solution))
+        assert age_spread.low_anchor == AGE_SPREAD_LOW_ANCHOR
+        assert age_spread.high_anchor == AGE_SPREAD_HIGH_ANCHOR
+        assert age_spread.higher_is_better is False
+
+
+class TestAgeSpreadDetail:
+    def test_one_row_per_running_session_with_block_and_spread(self, sample_assignment_solution):
+        """detail is per running session so the countplot/tooltip can identify the
+        seatrade x block with a large range: 1a_Archery (Alice 13, Dave 16) -> spread 3."""
+        detail = _age_spread(score(sample_assignment_solution)).detail
+        assert len(detail) == 6
+        archery_1a = detail[(detail["block"] == "1a") & (detail["seatrade"] == "Archery")]
+        assert list(archery_1a["spread"]) == [3]
 
 
 class TestScore:

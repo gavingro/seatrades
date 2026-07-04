@@ -49,7 +49,12 @@ def score(solution: AssignmentSolution) -> Scorecard:
     """Measure a solved schedule's goodness. Deterministic: one solution in, one Scorecard out."""
     longform = wrangle_assignments_to_longform(solution)
     return Scorecard(
-        metrics=[_preference_metric(longform), _cohesion_metric(longform), _sparsity_metric(longform)],
+        metrics=[
+            _preference_metric(longform),
+            _cohesion_metric(longform),
+            _sparsity_metric(longform),
+            _age_spread_metric(longform),
+        ],
         optimality=solution.status.optimality,
     )
 
@@ -154,6 +159,44 @@ def _sparsity_metric(longform: pd.DataFrame) -> QualityMetric:
         high_anchor=SPARSITY_HIGH_ANCHOR,
         higher_is_better=False,
         detail=running,
+    )
+
+
+# Age Spread reference band — placeholder anchors, calibrated later in the
+# anchor-calibration slice against real mock-data distributions. Down-is-bad: a
+# tighter age range per seatrade is better. Units are years.
+AGE_SPREAD_LOW_ANCHOR = 1.0
+AGE_SPREAD_HIGH_ANCHOR = 4.0
+
+
+def _running_session_age_spreads(longform: pd.DataFrame) -> pd.DataFrame:
+    """The age range (``maxAge − minAge``) of each running seatrade session.
+
+    One row per ``(block, seatrade)`` with ≥ 1 camper, carrying its ``spread``. Only
+    assigned seatrade rows are in ``longform``, so Fleet Time is not a session here.
+    A single-camper session has ``spread`` 0 (max == min).
+    """
+    assigned = longform[longform["assignment"] == 1.0]
+    grouped = assigned.groupby(["block", "seatrade"], sort=False)["age"]
+    spreads = (grouped.max() - grouped.min()).rename("spread")
+    return spreads.reset_index()
+
+
+def _age_spread_metric(longform: pd.DataFrame) -> QualityMetric:
+    """The Age Spread metric — "how age-homogeneous are the seatrades?".
+
+    Raw value is the session-weighted mean age range over running seatrade sessions —
+    each running seatrade contributes its range equally, regardless of camper count.
+    Narrower is better → down-is-bad.
+    """
+    spreads = _running_session_age_spreads(longform)
+    return QualityMetric(
+        name="Age spread",
+        raw_value=float(spreads["spread"].mean()),
+        low_anchor=AGE_SPREAD_LOW_ANCHOR,
+        high_anchor=AGE_SPREAD_HIGH_ANCHOR,
+        higher_is_better=False,
+        detail=spreads,
     )
 
 
