@@ -13,7 +13,7 @@ from seatrades.results import (
 from seatrades.scoring import QualityMetric, Scorecard
 
 # Fixed, deliberate ordinal x-order for the summary comparison plot. Preference,
-# Cohesion, Sparsity, and Age spread are wired; the rest are placeholders later metric
+# Cohesion, Sparsity, and Age spread are wired; the rest are placeholders that later metric
 # slices fill in.
 METRIC_ORDER = ["Preference", "Cohesion", "Sparsity", "Age spread", "Fair within", "Fair between"]
 
@@ -198,7 +198,7 @@ def display_age_spread_detail(metric: QualityMetric) -> alt.Chart:
             tooltip=[
                 alt.Tooltip("seatrade:N", title="Seatrade"),
                 alt.Tooltip("block:N", title="Block"),
-                alt.Tooltip("spread:Q", title="Age range"),
+                alt.Tooltip("spread:O", title="Age range"),
             ],
         )
         .properties(title={"text": "Age spread — age range per seatrade", "fontSize": 20, "anchor": "start"})
