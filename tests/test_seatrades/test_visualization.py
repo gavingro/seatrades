@@ -75,6 +75,11 @@ class TestDisplayQualitySummary:
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
         assert "Cohesion" in _summary_metric_names(spec)
 
+    def test_sparsity_is_plotted_on_the_summary(self, sample_assignment_solution):
+        """Sparsity shows on the Overview summary plot (issue #94 acceptance criterion)."""
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        assert "Sparsity" in _summary_metric_names(spec)
+
 
 def _preference_metric(solution):
     return score(solution).metric("Preference")
