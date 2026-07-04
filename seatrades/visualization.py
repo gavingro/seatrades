@@ -61,7 +61,7 @@ def normalize_to_band(
         # Degenerate zero-width band (only if anchors coincide and observation sits on them).
         return 50.0
     position = (raw - effective_low) / width * 100
-    return 100 - position if not higher_is_better else position
+    return position if higher_is_better else 100 - position
 
 
 def display_quality_summary(scorecard: Scorecard) -> alt.Chart:
