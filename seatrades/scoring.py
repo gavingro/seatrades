@@ -66,11 +66,13 @@ def score(solution: AssignmentSolution) -> Scorecard:
 # simulated mock scenario (seatrades/simulation.py) with the 17-seatrade catalog, swept
 # across optimization configs and RNG seeds at several roster scales.
 #
-# A band [low_anchor, high_anchor] is the *expected/normal* raw range (~p10–p90 of the
-# observed distribution), NOT a theoretical best/worst — visualization.normalize_to_band
-# uses it as the default axis domain and a floor on axis width, expanding only to swallow a
-# genuinely outlying scenario. Anchors are always in raw units with low < high;
-# higher_is_better handles the up/down flip at render time.
+# A band [low_anchor, high_anchor] is the *expected/normal* raw range — for the four portable
+# metrics roughly the p10–p90 of the observed distribution (not a theoretical best/worst); the
+# two roster-dependent metrics instead bracket the feasible operating range, and Sparsity's
+# high_anchor is the catalog staffing ceiling (a deliberate exception — see its per-metric note).
+# visualization.normalize_to_band uses the band as the default axis domain and a floor on axis
+# width, expanding only to swallow a genuinely outlying scenario. Anchors are always in raw units
+# with low < high; higher_is_better handles the up/down flip at render time.
 #
 # Scale note: the four fraction/σ metrics (Preference, Cohesion, Fairness within/between)
 # are roster-portable — bands come from the full sweep and were cross-checked to hold at

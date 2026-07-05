@@ -474,12 +474,15 @@ def _solve_seeded_mock_scenario(seed: int) -> AssignmentSolution:
 
 @pytest.mark.slow
 class TestCalibratedBandsBracketRealScenario:
-    """The calibrated anchors are a *reference band*: a representative real schedule should land
-    inside every metric's [low_anchor, high_anchor], so each renders within-band (never on a
-    flat/degenerate scale — PRD acceptance #3), and future anchor drift is caught. seed=0 is a
-    solver-feasible mock scenario whose six metrics all sit comfortably mid-band; the within-band
-    assertion has margin, so it survives alternate optima. (The ~22-cabin deployment target is
-    infeasible in the current model — see the anchor-calibration notes in scoring.py.)
+    """Anchor-drift guard: on a real solve, every metric's raw value must land inside its
+    calibrated [low_anchor, high_anchor]. If a later edit to the anchors, the simulation, or the
+    solver pushes any metric out of band, this catches it. seed=0 is a solver-feasible mock
+    scenario at 8 cabins whose six metrics all sit strictly inside their bands, with room to
+    spare — the roster-dependent Sparsity/Age-spread bands sit nearest an edge (Sparsity ~1/3 up
+    from its floor), as expected. Pinned to one seed on purpose: random rosters flake INFEASIBLE
+    at this scale (see the reseed gotcha in project memory), so a swept assertion would be less
+    reliable, not more. (The ~22-cabin deployment target is infeasible in the current model — see
+    the anchor-calibration notes in scoring.py.)
     """
 
     def test_every_metric_raw_value_is_within_its_reference_band(self):
