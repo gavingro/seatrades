@@ -13,6 +13,8 @@ from seatrades.visualization import (
     display_age_spread_detail,
     display_assignments,
     display_cohesion_detail,
+    display_fairness_between_detail,
+    display_fairness_within_detail,
     display_metric_detail,
     display_optimality_donut,
     display_preference_detail,
@@ -34,6 +36,16 @@ def _summary_metric_names(spec):
     data = spec.get("data", {})
     rows: list[dict] = data.get("values") or next(iter(spec.get("datasets", {}).values()), [])
     return {row["name"] for row in rows if "name" in row}
+
+
+def _rule_layer_average(spec):
+    """The numeric value baked into a chart's reference-line (``mark_rule``) layer."""
+    for layer in spec.get("layer", []):
+        if layer.get("mark", {}).get("type") == "rule":
+            data = layer.get("data", {})
+            rows = data.get("values") or spec.get("datasets", {}).get(data.get("name"), [])
+            return rows[0]["average"]
+    raise AssertionError("No rule layer found in spec")
 
 
 class TestDisplayQualitySummary:
@@ -86,6 +98,16 @@ class TestDisplayQualitySummary:
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
         assert "Age spread" in _summary_metric_names(spec)
 
+    def test_fair_within_is_plotted_on_the_summary(self, sample_assignment_solution):
+        """Fair within shows on the Overview summary plot (issue #96 acceptance criterion)."""
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        assert "Fair within" in _summary_metric_names(spec)
+
+    def test_fair_between_is_plotted_on_the_summary(self, sample_assignment_solution):
+        """Fair between shows on the Overview summary plot (issue #96 acceptance criterion)."""
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        assert "Fair between" in _summary_metric_names(spec)
+
 
 def _preference_metric(solution):
     return score(solution).metric("Preference")
@@ -101,6 +123,14 @@ def _sparsity_metric(solution):
 
 def _age_spread_metric(solution):
     return score(solution).metric("Age spread")
+
+
+def _fair_within_metric(solution):
+    return score(solution).metric("Fair within")
+
+
+def _fair_between_metric(solution):
+    return score(solution).metric("Fair between")
 
 
 class TestDisplayPreferenceDetail:
@@ -180,6 +210,84 @@ class TestDisplayAgeSpreadDetail:
         assert "block" in detail_fields
 
 
+class TestDisplayFairnessWithinDetail:
+    """The Fairness Within drill-down: cabin counts per within-cabin CPR spread."""
+
+    def test_x_encodes_spread(self, sample_assignment_solution):
+        spec = display_fairness_within_detail(_fair_within_metric(sample_assignment_solution)).to_dict()
+        x_fields = [enc["x"].get("field") for enc in _flatten(spec) if "x" in enc]
+        assert "spread" in x_fields
+
+    def test_y_is_a_cabin_count(self, sample_assignment_solution):
+        spec = display_fairness_within_detail(_fair_within_metric(sample_assignment_solution)).to_dict()
+        y_aggregates = [enc["y"].get("aggregate") for enc in _flatten(spec) if "y" in enc]
+        assert "count" in y_aggregates
+
+    def test_has_a_reference_line_at_the_average(self, sample_assignment_solution):
+        """A rule mark layer draws the average as a reference line."""
+        spec = display_fairness_within_detail(_fair_within_metric(sample_assignment_solution)).to_dict()
+        marks = [layer.get("mark", {}).get("type") for layer in spec.get("layer", [])]
+        assert "rule" in marks
+
+    def test_reference_line_sits_at_the_mean_of_the_plotted_spreads(self, sample_assignment_solution):
+        """The rule's x-position is the mean of the *plotted* per-cabin spreads (the same
+        quantity ``metric.raw_value`` already is here), so it lands inside the bars' range."""
+        metric = _fair_within_metric(sample_assignment_solution)
+        spec = display_fairness_within_detail(metric).to_dict()
+        assert _rule_layer_average(spec) == pytest.approx(metric.detail["spread"].mean())
+
+    def test_cabin_rides_the_stacking_channel(self, sample_assignment_solution):
+        """Cabin name must ride detail (not tooltip alone) so bars reach their true count —
+        the same stacking gotcha as Age Spread."""
+        spec = display_fairness_within_detail(_fair_within_metric(sample_assignment_solution)).to_dict()
+        detail_fields = [entry.get("field") for enc in _flatten(spec) for entry in enc.get("detail", [])]
+        assert "cabin" in detail_fields
+
+    def test_tooltip_identifies_the_cabin(self, sample_assignment_solution):
+        spec = display_fairness_within_detail(_fair_within_metric(sample_assignment_solution)).to_dict()
+        tooltip_fields = [entry.get("field") for enc in _flatten(spec) for entry in enc.get("tooltip", [])]
+        assert "cabin" in tooltip_fields
+
+
+class TestDisplayFairnessBetweenDetail:
+    """The Fairness Between drill-down: cabin counts per cabin mean-CPR."""
+
+    def test_x_encodes_mean_cpr(self, sample_assignment_solution):
+        spec = display_fairness_between_detail(_fair_between_metric(sample_assignment_solution)).to_dict()
+        x_fields = [enc["x"].get("field") for enc in _flatten(spec) if "x" in enc]
+        assert "mean_cpr" in x_fields
+
+    def test_y_is_a_cabin_count(self, sample_assignment_solution):
+        spec = display_fairness_between_detail(_fair_between_metric(sample_assignment_solution)).to_dict()
+        y_aggregates = [enc["y"].get("aggregate") for enc in _flatten(spec) if "y" in enc]
+        assert "count" in y_aggregates
+
+    def test_has_a_reference_line_at_the_average(self, sample_assignment_solution):
+        spec = display_fairness_between_detail(_fair_between_metric(sample_assignment_solution)).to_dict()
+        marks = [layer.get("mark", {}).get("type") for layer in spec.get("layer", [])]
+        assert "rule" in marks
+
+    def test_reference_line_sits_at_the_mean_of_plotted_means_not_the_metric_std(self, sample_assignment_solution):
+        """The rule's x-position is the mean of the *plotted* cabin mean-CPRs -- NOT
+        metric.raw_value, which is the std of those means (the Fairness Between score
+        itself, a different quantity/units from what the x-axis plots). Regression: using
+        raw_value here drew the line miles from the bars (std ~0.2 vs mean-CPR ~3.5-5.5)."""
+        metric = _fair_between_metric(sample_assignment_solution)
+        spec = display_fairness_between_detail(metric).to_dict()
+        assert _rule_layer_average(spec) == pytest.approx(metric.detail["mean_cpr"].mean())
+        assert _rule_layer_average(spec) != pytest.approx(metric.raw_value)
+
+    def test_cabin_rides_the_stacking_channel(self, sample_assignment_solution):
+        spec = display_fairness_between_detail(_fair_between_metric(sample_assignment_solution)).to_dict()
+        detail_fields = [entry.get("field") for enc in _flatten(spec) for entry in enc.get("detail", [])]
+        assert "cabin" in detail_fields
+
+    def test_tooltip_identifies_the_cabin(self, sample_assignment_solution):
+        spec = display_fairness_between_detail(_fair_between_metric(sample_assignment_solution)).to_dict()
+        tooltip_fields = [entry.get("field") for enc in _flatten(spec) for entry in enc.get("tooltip", [])]
+        assert "cabin" in tooltip_fields
+
+
 class TestDisplayMetricDetail:
     """The name→builder dispatcher: one coherent 'add a metric' seam."""
 
@@ -199,8 +307,16 @@ class TestDisplayMetricDetail:
         metric = _age_spread_metric(sample_assignment_solution)
         assert display_metric_detail(metric).to_dict() == display_age_spread_detail(metric).to_dict()
 
+    def test_routes_fair_within_to_its_builder(self, sample_assignment_solution):
+        metric = _fair_within_metric(sample_assignment_solution)
+        assert display_metric_detail(metric).to_dict() == display_fairness_within_detail(metric).to_dict()
+
+    def test_routes_fair_between_to_its_builder(self, sample_assignment_solution):
+        metric = _fair_between_metric(sample_assignment_solution)
+        assert display_metric_detail(metric).to_dict() == display_fairness_between_detail(metric).to_dict()
+
     def test_raises_for_a_metric_with_no_detail_chart(self, sample_assignment_solution):
-        unwired = dataclasses.replace(_preference_metric(sample_assignment_solution), name="Fair within")
+        unwired = dataclasses.replace(_preference_metric(sample_assignment_solution), name="Nonexistent")
         with pytest.raises(KeyError):
             display_metric_detail(unwired)
 

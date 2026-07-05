@@ -12,9 +12,7 @@ from seatrades.results import (
 )
 from seatrades.scoring import QualityMetric, Scorecard
 
-# Fixed, deliberate ordinal x-order for the summary comparison plot. Preference,
-# Cohesion, Sparsity, and Age spread are wired; the rest are placeholders that later metric
-# slices fill in.
+# Fixed, deliberate ordinal x-order for the summary comparison plot.
 METRIC_ORDER = ["Preference", "Cohesion", "Sparsity", "Age spread", "Fair within", "Fair between"]
 
 # CPR causes ordered good (greens) → bad (reds) so the detail bars read good-vs-bad at
@@ -205,6 +203,73 @@ def display_age_spread_detail(metric: QualityMetric) -> alt.Chart:
     )
 
 
+def display_fairness_within_detail(metric: QualityMetric) -> alt.Chart:
+    """The Fairness Within drill-down: how many cabins land at each within-cabin CPR spread.
+
+    x = within-cabin CPR std (binned), y = count of cabins in that bin; a rule layer marks
+    the average (``metric.raw_value``) across cabins on the same quantitative x scale, so it
+    lines up with the bars rather than drawing its own independent axis. ``metric.detail`` is
+    one row per cabin; cabin rides the ``detail`` stacking channel (not tooltip alone) for the
+    same reason as Age Spread: tooltip fields alone are pulled into the ``count()`` groupby but
+    don't stack, so bars would overplot at height 1 instead of reaching their true cabin count.
+    """
+    bars = (
+        alt.Chart(metric.detail)
+        .mark_bar(stroke="black", strokeWidth=0.2)
+        .encode(
+            x=alt.X("spread:Q", bin=alt.Bin(maxbins=10), title="Within-cabin CPR spread (std)"),
+            y=alt.Y("count():Q", title="Cabins"),
+            detail=["cabin:N"],
+            tooltip=[
+                alt.Tooltip("cabin:N", title="Cabin"),
+                alt.Tooltip("spread:Q", title="CPR spread"),
+            ],
+        )
+    )
+    average_line = (
+        alt.Chart(pd.DataFrame({"average": [metric.raw_value]}))
+        .mark_rule(color="white", strokeDash=[4, 4])
+        .encode(x=alt.X("average:Q"))
+    )
+    return (bars + average_line).properties(
+        title={"text": "Fairness within — CPR spread inside each cabin", "fontSize": 20, "anchor": "start"}
+    )
+
+
+def display_fairness_between_detail(metric: QualityMetric) -> alt.Chart:
+    """The Fairness Between drill-down: how many cabins land at each mean CPR.
+
+    x = cabin mean CPR (binned), y = count of cabins in that bin; a rule layer marks the
+    average cabin mean-CPR on the same quantitative x scale, so it lines up with the bars
+    rather than drawing its own independent axis. This average is the mean of ``detail``'s
+    ``mean_cpr`` column (the quantity the histogram bins) — *not* ``metric.raw_value``, which
+    is the std of those means (the Fairness Between score itself, a different quantity/units
+    from what the x-axis plots). ``metric.detail`` is one row per cabin; cabin rides the
+    ``detail`` stacking channel for the same reason as Fairness Within's histogram.
+    """
+    bars = (
+        alt.Chart(metric.detail)
+        .mark_bar(stroke="black", strokeWidth=0.2)
+        .encode(
+            x=alt.X("mean_cpr:Q", bin=alt.Bin(maxbins=10), title="Cabin mean CPR"),
+            y=alt.Y("count():Q", title="Cabins"),
+            detail=["cabin:N"],
+            tooltip=[
+                alt.Tooltip("cabin:N", title="Cabin"),
+                alt.Tooltip("mean_cpr:Q", title="Mean CPR"),
+            ],
+        )
+    )
+    average_line = (
+        alt.Chart(pd.DataFrame({"average": [metric.detail["mean_cpr"].mean()]}))
+        .mark_rule(color="white", strokeDash=[4, 4])
+        .encode(x=alt.X("average:Q"))
+    )
+    return (bars + average_line).properties(
+        title={"text": "Fairness between — cabin mean CPR spread", "fontSize": 20, "anchor": "start"}
+    )
+
+
 # Name → detail-chart builder. Single source for "which metrics have a drill-down"; the
 # selectbox options are derived from the scorecard, so this keeps options and charts from
 # drifting. Add a metric's builder here when its detail chart is ready.
@@ -213,6 +278,8 @@ _DETAIL_BUILDERS = {
     "Cohesion": display_cohesion_detail,
     "Sparsity": display_sparsity_detail,
     "Age spread": display_age_spread_detail,
+    "Fair within": display_fairness_within_detail,
+    "Fair between": display_fairness_between_detail,
 }
 
 

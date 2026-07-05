@@ -54,6 +54,8 @@ def score(solution: AssignmentSolution) -> Scorecard:
             _cohesion_metric(longform),
             _sparsity_metric(longform),
             _age_spread_metric(longform),
+            _fairness_within_metric(longform),
+            _fairness_between_metric(longform),
         ],
         optimality=solution.status.optimality,
     )
@@ -211,4 +213,74 @@ def _preference_metric(longform: pd.DataFrame) -> QualityMetric:
         high_anchor=PREFERENCE_HIGH_ANCHOR,
         higher_is_better=True,
         detail=cprs,
+    )
+
+
+# Fairness Within Cabins reference band — placeholder anchors, need empirical tuning
+# more than the other metrics (per the PRD). Down-is-bad: a tighter within-cabin CPR
+# spread is fairer. Units are CPR std (population, ddof=0).
+FAIRNESS_WITHIN_LOW_ANCHOR = 0.0
+FAIRNESS_WITHIN_HIGH_ANCHOR = 1.0
+
+
+def _within_cabin_cpr_spreads(longform: pd.DataFrame) -> pd.DataFrame:
+    """The within-cabin CPR spread of each cabin: one row per cabin with its ``spread``.
+
+    ``spread`` is the population standard deviation (``ddof=0``) of that cabin's
+    campers' CPRs — population, not sample, std so a 1-camper cabin is 0, not NaN.
+    """
+    cprs = _camper_cprs(longform)
+    spreads = cprs.groupby("cabin", sort=False)["cpr"].std(ddof=0).rename("spread")
+    return spreads.reset_index()
+
+
+def _fairness_within_metric(longform: pd.DataFrame) -> QualityMetric:
+    """The Fairness Within Cabins metric — "inside a cabin, are schedules equally good?".
+
+    Raw value is the within-cabin CPR std, averaged across cabins. Chosen std (outlier-
+    sensitive) over variance (wrong units) or range (too coarse): one camper with a much
+    worse schedule than their bunkmates should show up. Tighter is better → down-is-bad.
+    """
+    spreads = _within_cabin_cpr_spreads(longform)
+    return QualityMetric(
+        name="Fair within",
+        raw_value=float(spreads["spread"].mean()),
+        low_anchor=FAIRNESS_WITHIN_LOW_ANCHOR,
+        high_anchor=FAIRNESS_WITHIN_HIGH_ANCHOR,
+        higher_is_better=False,
+        detail=spreads,
+    )
+
+
+# Fairness Between Cabins reference band — placeholder anchors, need empirical tuning
+# more than the other metrics (per the PRD). Down-is-bad: a tighter spread of cabin
+# mean-CPRs is fairer. Units are CPR std (population, ddof=0).
+FAIRNESS_BETWEEN_LOW_ANCHOR = 0.0
+FAIRNESS_BETWEEN_HIGH_ANCHOR = 1.0
+
+
+def _cabin_mean_cprs(longform: pd.DataFrame) -> pd.DataFrame:
+    """The mean CPR of each cabin: one row per cabin with its ``mean_cpr``.
+
+    Mean, not sum, so a cabin is not penalized merely for having an extra camper.
+    """
+    cprs = _camper_cprs(longform)
+    means = cprs.groupby("cabin", sort=False)["cpr"].mean().rename("mean_cpr")
+    return means.reset_index()
+
+
+def _fairness_between_metric(longform: pd.DataFrame) -> QualityMetric:
+    """The Fairness Between Cabins metric — "across cabins, is any cabin treated worse?".
+
+    Raw value is the population std (``ddof=0``) of the cabin mean-CPRs across cabins —
+    a 1-cabin roster is 0, not NaN. Tighter is better → down-is-bad.
+    """
+    means = _cabin_mean_cprs(longform)
+    return QualityMetric(
+        name="Fair between",
+        raw_value=float(means["mean_cpr"].std(ddof=0)),
+        low_anchor=FAIRNESS_BETWEEN_LOW_ANCHOR,
+        high_anchor=FAIRNESS_BETWEEN_HIGH_ANCHOR,
+        higher_is_better=False,
+        detail=means,
     )

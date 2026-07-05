@@ -11,6 +11,10 @@ from seatrades.scoring import (
     AGE_SPREAD_LOW_ANCHOR,
     COHESION_HIGH_ANCHOR,
     COHESION_LOW_ANCHOR,
+    FAIRNESS_BETWEEN_HIGH_ANCHOR,
+    FAIRNESS_BETWEEN_LOW_ANCHOR,
+    FAIRNESS_WITHIN_HIGH_ANCHOR,
+    FAIRNESS_WITHIN_LOW_ANCHOR,
     PREFERENCE_HIGH_ANCHOR,
     PREFERENCE_LOW_ANCHOR,
     SPARSITY_HIGH_ANCHOR,
@@ -68,6 +72,43 @@ def _roster_solution(campers: list[tuple[str, str, list[tuple[str, str]]]]) -> A
     )
 
 
+# Cause pair per target CPR, both respecting the top-2 guarantee (min(r1, r2) <= 2)
+# and matching the "cause" convention (min+max) used elsewhere in scoring.py.
+_CPR_CAUSE = {3: (1, 2), 4: (1, 3), 5: (2, 3), 6: (2, 4)}
+
+
+def _cabin_fairness_solution(entries: list[tuple[str, str, int]]) -> AssignmentSolution:
+    """Build a solution from ``(name, cabin, target_cpr)`` rows.
+
+    Each camper is given the two block ranks (block 1a, block 2b) that sum to their
+    ``target_cpr`` via ``_CPR_CAUSE``, so a test can pin every camper's CPR exactly —
+    which ``_roster_solution`` (CPR-blind, placeholder prefs) cannot do. Lets Fairness
+    tests place chosen campers, at chosen CPRs, into chosen cabins.
+    """
+    prefs = ["A", "B", "C", "D"]
+    columns = [f"1a_{p}" for p in prefs] + [f"2b_{p}" for p in prefs]
+    camper_ids = pd.Index(range(len(entries)), name="camper_id")
+    rows = []
+    for _, _, cpr in entries:
+        rank_1a, rank_2b = _CPR_CAUSE[cpr]
+        row = {col: 0.0 for col in columns}
+        row[f"1a_{prefs[rank_1a - 1]}"] = 1.0
+        row[f"2b_{prefs[rank_2b - 1]}"] = 1.0
+        rows.append(row)
+    names = [name for name, _, _ in entries]
+    cabins = [cabin for _, cabin, _ in entries]
+    return AssignmentSolution(
+        assignments=pd.DataFrame(rows, index=camper_ids, columns=columns),
+        status=SolverStatus(state=SolverState.OPTIMAL),
+        cabins=list(dict.fromkeys(cabins)),
+        campers=names,
+        seatrades_full=columns,
+        cabin_camper_prefs=pd.DataFrame({"cabin": cabins, "age": [12] * len(entries)}, index=camper_ids),
+        camper_prefs=pd.Series([prefs] * len(entries), index=camper_ids),
+        camper_names=pd.Series(names, index=camper_ids),
+    )
+
+
 def _preference(card: Scorecard):
     return card.metric("Preference")
 
@@ -82,6 +123,14 @@ def _sparsity(card: Scorecard):
 
 def _age_spread(card: Scorecard):
     return card.metric("Age spread")
+
+
+def _fair_within(card: Scorecard):
+    return card.metric("Fair within")
+
+
+def _fair_between(card: Scorecard):
+    return card.metric("Fair between")
 
 
 class TestCohesionRawValue:
@@ -299,3 +348,94 @@ class TestPreferenceDetail:
         solution = _one_camper_solution(prefs=["A", "B", "C", "D"], assigned=("A", "D"))
         detail = _preference(score(solution)).detail
         assert list(detail["cause"]) == ["1+4"]
+
+
+class TestFairnessWithinRawValue:
+    def test_matches_hand_computed_average_of_within_cabin_stds(self, sample_assignment_solution):
+        """Fixture CPRs: Alice 3, Bob 4 (Cabin1); Carol 5, Dave 3 (Cabin2).
+        Cabin1 population std([3, 4]) = 0.5; Cabin2 population std([5, 3]) = 1.0.
+        Averaged across cabins = 0.75."""
+        assert _fair_within(score(sample_assignment_solution)).raw_value == pytest.approx(0.75)
+
+    def test_one_camper_cabin_has_zero_spread(self):
+        """A cabin with a single camper has within-cabin std 0 (population std, not NaN)."""
+        solution = _cabin_fairness_solution(
+            [
+                ("Ann", "Cabin1", 3),
+                ("Bea", "Cabin2", 4),
+            ]
+        )
+        assert _fair_within(score(solution)).raw_value == 0.0
+
+
+class TestFairnessWithinAnchors:
+    def test_fair_within_metric_carries_its_anchors_flipped(self, sample_assignment_solution):
+        """Fairness Within ships its reference band and is down-is-bad (tighter = fairer)."""
+        fair_within = _fair_within(score(sample_assignment_solution))
+        assert fair_within.low_anchor == FAIRNESS_WITHIN_LOW_ANCHOR
+        assert fair_within.high_anchor == FAIRNESS_WITHIN_HIGH_ANCHOR
+        assert fair_within.higher_is_better is False
+
+
+class TestFairnessWithinDetail:
+    def test_one_row_per_cabin_with_spread(self, sample_assignment_solution):
+        """detail is per-cabin: 2 cabins in the fixture -> 2 rows, each carrying its spread."""
+        detail = _fair_within(score(sample_assignment_solution)).detail
+        assert len(detail) == 2
+        spreads = dict(zip(detail["cabin"], detail["spread"], strict=True))
+        assert spreads == pytest.approx({"Cabin1": 0.5, "Cabin2": 1.0})
+
+
+class TestFairnessBetweenRawValue:
+    def test_matches_hand_computed_std_of_cabin_means(self, sample_assignment_solution):
+        """Fixture cabin means: Cabin1 mean([3, 4]) = 3.5, Cabin2 mean([5, 3]) = 4.0.
+        Population std([3.5, 4.0]) = 0.25."""
+        assert _fair_between(score(sample_assignment_solution)).raw_value == pytest.approx(0.25)
+
+    def test_mean_not_sum_ties_differently_sized_cabins(self):
+        """PRD worked example: three cabins of sizes 3/4/3 with cabin means 4.00, 4.00, 5.33
+        (cabins A and B tie at 4.00 despite different sizes, because mean -- not sum -- is
+        used) -> population std([4.00, 4.00, 5.33...]) ~= 0.63."""
+        solution = _cabin_fairness_solution(
+            [
+                ("A1", "CabinA", 4),
+                ("A2", "CabinA", 4),
+                ("A3", "CabinA", 4),
+                ("B1", "CabinB", 3),
+                ("B2", "CabinB", 3),
+                ("B3", "CabinB", 5),
+                ("B4", "CabinB", 5),
+                ("C1", "CabinC", 6),
+                ("C2", "CabinC", 6),
+                ("C3", "CabinC", 4),
+            ]
+        )
+        assert _fair_between(score(solution)).raw_value == pytest.approx(0.63, abs=1e-2)
+
+    def test_one_cabin_roster_has_zero_spread(self):
+        """A single-cabin roster has between-cabin std 0 (population std, not NaN)."""
+        solution = _cabin_fairness_solution(
+            [
+                ("Ann", "Cabin1", 3),
+                ("Bea", "Cabin1", 4),
+            ]
+        )
+        assert _fair_between(score(solution)).raw_value == 0.0
+
+
+class TestFairnessBetweenAnchors:
+    def test_fair_between_metric_carries_its_anchors_flipped(self, sample_assignment_solution):
+        """Fairness Between ships its reference band and is down-is-bad (tighter = fairer)."""
+        fair_between = _fair_between(score(sample_assignment_solution))
+        assert fair_between.low_anchor == FAIRNESS_BETWEEN_LOW_ANCHOR
+        assert fair_between.high_anchor == FAIRNESS_BETWEEN_HIGH_ANCHOR
+        assert fair_between.higher_is_better is False
+
+
+class TestFairnessBetweenDetail:
+    def test_one_row_per_cabin_with_mean_cpr(self, sample_assignment_solution):
+        """detail is per-cabin: 2 cabins in the fixture -> 2 rows, each carrying its mean CPR."""
+        detail = _fair_between(score(sample_assignment_solution)).detail
+        assert len(detail) == 2
+        means = dict(zip(detail["cabin"], detail["mean_cpr"], strict=True))
+        assert means == pytest.approx({"Cabin1": 3.5, "Cabin2": 4.0})

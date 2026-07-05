@@ -183,7 +183,16 @@ Scoring is measured over **seatrade sessions**, generally ignoring Fleet Time un
 
 ### Design principle: MECE, no composite
 
-The 6 Quality Metrics are meant to be **orthogonal** — mutually exclusive, collectively exhaustive areas of goodness. Level and equity are deliberately separate: a uniformly-miserable cabin scores *perfectly fair* (variance 0) on the fairness metrics, and that is **correct** — the preference metric is what exposes the low level. The suite is **not** rolled up into one overall goodness number. The scheduler weighs the trade-offs themselves; Scoring hands them the instruments rather than deciding for them. (This is separate from the *solver optimality* headline, which is a single number but measures the gap, not goodness.)
+The 6 Quality Metrics are meant to be **orthogonal** — mutually exclusive, collectively exhaustive areas of goodness. Level and equity are deliberately separate: a uniformly-miserable cabin scores *perfectly fair* (σ = 0) on the fairness metrics, and that is **correct** — the preference metric is what exposes the low level. The suite is **not** rolled up into one overall goodness number. The scheduler weighs the trade-offs themselves; Scoring hands them the instruments rather than deciding for them. (This is separate from the *solver optimality* headline, which is a single number but measures the gap, not goodness.)
+
+### Fairness Within / Between Cabins
+
+Both fairness metrics are built from the same per-camper CPR (Combined Preference Rank) atom, grouped by cabin, using **population** standard deviation (`ddof=0`) — not pandas' default sample std (`ddof=1`). Population std is deliberate: it makes a 1-camper cabin (Fairness Within) or a 1-cabin roster (Fairness Between) correctly evaluate to `0`, not `NaN`. Std (not variance) is chosen for correct units and outlier sensitivity — one camper with a much worse schedule than their bunkmates should show up.
+
+- **Fairness Within** — for each cabin, the std of its campers' CPR, averaged across cabins.
+- **Fairness Between** — each cabin's *mean* CPR (mean, not sum, so a bigger cabin isn't penalized), then the std of those cabin means across cabins.
+
+Both detail views are true histograms (binned quantitative x), not countplots (discrete x) like Age Spread/Sparsity — the reference line at the average requires a shared quantitative scale with the bars, which an ordinal x-axis cannot provide. The reference line's value is the mean of the *plotted* per-cabin quantity (the same statistic the histogram bins), which for Fairness Within happens to equal `raw_value` (it's already an average-of-per-cabin-spreads) but for Fairness Between is *not* `raw_value` (the std of means) — it is a separately computed mean of cabin means.
 
 ## Optimization Problem
 
