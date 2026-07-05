@@ -203,70 +203,76 @@ def display_age_spread_detail(metric: QualityMetric) -> alt.Chart:
     )
 
 
-def display_fairness_within_detail(metric: QualityMetric) -> alt.Chart:
-    """The Fairness Within drill-down: how many cabins land at each within-cabin CPR spread.
+def _histogram_with_average(
+    detail: pd.DataFrame,
+    field: str,
+    x_title: str,
+    tooltip_title: str,
+    average: float,
+    title: str,
+) -> alt.Chart:
+    """A per-cabin histogram (binned quantitative ``field`` on x, cabin count on y) with a
+    dashed reference line at ``average`` on the bars' shared x scale, so it lines up with them
+    rather than drawing its own independent axis.
 
-    x = within-cabin CPR std (binned), y = count of cabins in that bin; a rule layer marks
-    the average (``metric.raw_value``) across cabins on the same quantitative x scale, so it
-    lines up with the bars rather than drawing its own independent axis. ``metric.detail`` is
-    one row per cabin; cabin rides the ``detail`` stacking channel (not tooltip alone) for the
-    same reason as Age Spread: tooltip fields alone are pulled into the ``count()`` groupby but
-    don't stack, so bars would overplot at height 1 instead of reaching their true cabin count.
+    ``cabin`` rides the ``detail`` stacking channel (not tooltip alone) so bars reach their true
+    cabin count — the same stacking gotcha as Age Spread: tooltip fields alone are pulled into
+    the ``count()`` groupby but don't stack, so bars would overplot at height 1. ``average`` is
+    passed in (not read off the metric) so each caller sources it from the plotted column and
+    the line cannot drift from the bars.
     """
     bars = (
-        alt.Chart(metric.detail)
+        alt.Chart(detail)
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
-            x=alt.X("spread:Q", bin=alt.Bin(maxbins=10), title="Within-cabin CPR spread (std)"),
+            x=alt.X(f"{field}:Q", bin=alt.Bin(maxbins=10), title=x_title),
             y=alt.Y("count():Q", title="Cabins"),
             detail=["cabin:N"],
             tooltip=[
                 alt.Tooltip("cabin:N", title="Cabin"),
-                alt.Tooltip("spread:Q", title="CPR spread"),
+                alt.Tooltip(f"{field}:Q", title=tooltip_title),
             ],
         )
     )
     average_line = (
-        alt.Chart(pd.DataFrame({"average": [metric.raw_value]}))
+        alt.Chart(pd.DataFrame({"average": [average]}))
         .mark_rule(color="white", strokeDash=[4, 4])
         .encode(x=alt.X("average:Q"))
     )
-    return (bars + average_line).properties(
-        title={"text": "Fairness within — CPR spread inside each cabin", "fontSize": 20, "anchor": "start"}
+    return (bars + average_line).properties(title={"text": title, "fontSize": 20, "anchor": "start"})
+
+
+def display_fairness_within_detail(metric: QualityMetric) -> alt.Chart:
+    """The Fairness Within drill-down: how many cabins land at each within-cabin CPR spread.
+
+    The reference line is the mean of the *plotted* per-cabin spreads. That equals
+    ``metric.raw_value`` here (Fairness Within's rollup already is the average-of-spreads), but
+    is computed from the plotted column so it can never drift from the bars.
+    """
+    return _histogram_with_average(
+        metric.detail,
+        field="spread",
+        x_title="Within-cabin CPR spread (std)",
+        tooltip_title="CPR spread",
+        average=metric.detail["spread"].mean(),
+        title="Fairness within — CPR spread inside each cabin",
     )
 
 
 def display_fairness_between_detail(metric: QualityMetric) -> alt.Chart:
     """The Fairness Between drill-down: how many cabins land at each mean CPR.
 
-    x = cabin mean CPR (binned), y = count of cabins in that bin; a rule layer marks the
-    average cabin mean-CPR on the same quantitative x scale, so it lines up with the bars
-    rather than drawing its own independent axis. This average is the mean of ``detail``'s
-    ``mean_cpr`` column (the quantity the histogram bins) — *not* ``metric.raw_value``, which
-    is the std of those means (the Fairness Between score itself, a different quantity/units
-    from what the x-axis plots). ``metric.detail`` is one row per cabin; cabin rides the
-    ``detail`` stacking channel for the same reason as Fairness Within's histogram.
+    The reference line is the mean of the *plotted* cabin mean-CPRs — *not* ``metric.raw_value``,
+    which is the std of those means (the Fairness Between score itself, a different quantity/units
+    from what the x-axis plots).
     """
-    bars = (
-        alt.Chart(metric.detail)
-        .mark_bar(stroke="black", strokeWidth=0.2)
-        .encode(
-            x=alt.X("mean_cpr:Q", bin=alt.Bin(maxbins=10), title="Cabin mean CPR"),
-            y=alt.Y("count():Q", title="Cabins"),
-            detail=["cabin:N"],
-            tooltip=[
-                alt.Tooltip("cabin:N", title="Cabin"),
-                alt.Tooltip("mean_cpr:Q", title="Mean CPR"),
-            ],
-        )
-    )
-    average_line = (
-        alt.Chart(pd.DataFrame({"average": [metric.detail["mean_cpr"].mean()]}))
-        .mark_rule(color="white", strokeDash=[4, 4])
-        .encode(x=alt.X("average:Q"))
-    )
-    return (bars + average_line).properties(
-        title={"text": "Fairness between — cabin mean CPR spread", "fontSize": 20, "anchor": "start"}
+    return _histogram_with_average(
+        metric.detail,
+        field="mean_cpr",
+        x_title="Cabin mean CPR",
+        tooltip_title="Mean CPR",
+        average=metric.detail["mean_cpr"].mean(),
+        title="Fairness between — cabin mean CPR spread",
     )
 
 
