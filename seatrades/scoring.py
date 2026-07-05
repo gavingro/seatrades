@@ -61,9 +61,32 @@ def score(solution: AssignmentSolution) -> Scorecard:
     )
 
 
-# Preference reference band — placeholder anchors, calibrated later in the
-# anchor-calibration slice against real mock-data distributions.
-PREFERENCE_LOW_ANCHOR = 0.6
+# ─── Anchor calibration (issue #97) ──────────────────────────────────────────────
+# The reference bands below were calibrated on 2026-07-05 against real CBC solves of the
+# simulated mock scenario (seatrades/simulation.py) with the 17-seatrade catalog, swept
+# across optimization configs and RNG seeds at several roster scales.
+#
+# A band [low_anchor, high_anchor] is the *expected/normal* raw range (~p10–p90 of the
+# observed distribution), NOT a theoretical best/worst — visualization.normalize_to_band
+# uses it as the default axis domain and a floor on axis width, expanding only to swallow a
+# genuinely outlying scenario. Anchors are always in raw units with low < high;
+# higher_is_better handles the up/down flip at render time.
+#
+# Scale note: the four fraction/σ metrics (Preference, Cohesion, Fairness within/between)
+# are roster-portable — bands come from the full sweep and were cross-checked to hold at
+# large scale. Sparsity (a raw count, ceiling = catalog × 4 blocks) and Age spread (absolute
+# years) are roster-DEPENDENT, so their bands bracket the whole solver-feasible operating
+# range observed across ~8–18 cabins (~80–200 campers). NB: the ~22-cabin deployment target
+# is *provably infeasible* in the current model with a 17-seatrade catalog (CBC: "Problem is
+# infeasible"; the model reliably schedules only ~8–10 real cabins, and even ~12–18 cabins
+# solve only for gender-balanced rosters), so the largest feasible solves are the closest
+# real-scale proxy for the two roster-dependent bands.
+# ─────────────────────────────────────────────────────────────────────────────────
+
+# Preference — fraction of campers with a good schedule (CPR ≤ 4). Observed ~0.38–0.97
+# across the sweep (default-config runs cluster ~0.73–0.94); band brackets the normal range,
+# and a near-perfect or badly-compromised roster extends past the anchors.
+PREFERENCE_LOW_ANCHOR = 0.55
 PREFERENCE_HIGH_ANCHOR = 0.95
 
 # A "good" schedule is CPR ≤ 4; bad is CPR ≥ 5. Exact complements.
@@ -87,10 +110,11 @@ def _camper_cprs(longform: pd.DataFrame) -> pd.DataFrame:
     return detail.drop(columns="ranks")
 
 
-# Cohesion reference band — placeholder anchors, calibrated later in the
-# anchor-calibration slice against real mock-data distributions.
-COHESION_LOW_ANCHOR = 0.5
-COHESION_HIGH_ANCHOR = 0.9
+# Cohesion — fraction of campers sharing a session with ≥1 cabinmate. Runs high and tight
+# (observed ~0.91–1.00): the ≤4-per-cabin cap naturally groups cabinmates, so a stranded
+# camper is the rare, meaningful failure. Band tops out at the natural 1.0 ceiling.
+COHESION_LOW_ANCHOR = 0.85
+COHESION_HIGH_ANCHOR = 1.0
 
 # A camper "shares" if their largest same-cabin cohort in any one session is ≥ 2 (self + a
 # cabinmate). Solo (self only) is cohort size 1.
@@ -127,12 +151,13 @@ def _cohesion_metric(longform: pd.DataFrame) -> QualityMetric:
     )
 
 
-# Sparsity reference band — placeholder anchors, calibrated later in the
-# anchor-calibration slice against real mock-data distributions. Down-is-bad: fewer
-# running seatrades is better. (The raw count's own ceiling is the catalog —
-# seatrades × 4 blocks — which is where a calibrated high_anchor would come from.)
-SPARSITY_LOW_ANCHOR = 8.0
-SPARSITY_HIGH_ANCHOR = 24.0
+# Sparsity — count of running seatrades across the 4 blocks (down-is-bad: fewer is better).
+# high_anchor is the catalog ceiling, seatrades × 4 blocks = 17 × 4 = 68 (per the PRD, the
+# anchor comes from the catalog). The band brackets the whole solver-feasible operating range
+# (~8–18 cabins ran ~30–62); low_anchor 30 keeps the 8-cabin demo (~30–40) inside the band
+# rather than pinned at a misleading 100%, while large rosters sit toward the busy end.
+SPARSITY_LOW_ANCHOR = 30.0
+SPARSITY_HIGH_ANCHOR = 68.0
 
 
 def _running_seatrades(longform: pd.DataFrame) -> pd.DataFrame:
@@ -164,11 +189,12 @@ def _sparsity_metric(longform: pd.DataFrame) -> QualityMetric:
     )
 
 
-# Age Spread reference band — placeholder anchors, calibrated later in the
-# anchor-calibration slice against real mock-data distributions. Down-is-bad: a
-# tighter age range per seatrade is better. Units are years.
-AGE_SPREAD_LOW_ANCHOR = 1.0
-AGE_SPREAD_HIGH_ANCHOR = 4.0
+# Age Spread — session-weighted mean age range in years (down-is-bad: tighter is better).
+# Observed ~1.5–2.6 across the sweep; large rosters sit ~2.4 (fuller sessions widen ranges —
+# the intended trade-off with Sparsity). Band brackets the normal range; a very homogeneous
+# or very mixed camp extends past the anchors.
+AGE_SPREAD_LOW_ANCHOR = 1.5
+AGE_SPREAD_HIGH_ANCHOR = 2.5
 
 
 def _running_session_age_spreads(longform: pd.DataFrame) -> pd.DataFrame:
@@ -216,10 +242,10 @@ def _preference_metric(longform: pd.DataFrame) -> QualityMetric:
     )
 
 
-# Fairness Within Cabins reference band — placeholder anchors, need empirical tuning
-# more than the other metrics (per the PRD). Down-is-bad: a tighter within-cabin CPR
-# spread is fairer. Units are CPR std (population, ddof=0).
-FAIRNESS_WITHIN_LOW_ANCHOR = 0.0
+# Fairness Within Cabins — mean within-cabin CPR σ (down-is-bad: tighter is fairer).
+# Observed ~0.3–1.0 across the sweep (a cabin with identical CPRs → 0 is rare, as is >1.0).
+# Band spans that normal range; 1.0 is a natural upper anchor for σ over the 4 CPR values.
+FAIRNESS_WITHIN_LOW_ANCHOR = 0.3
 FAIRNESS_WITHIN_HIGH_ANCHOR = 1.0
 
 
@@ -252,11 +278,11 @@ def _fairness_within_metric(longform: pd.DataFrame) -> QualityMetric:
     )
 
 
-# Fairness Between Cabins reference band — placeholder anchors, need empirical tuning
-# more than the other metrics (per the PRD). Down-is-bad: a tighter spread of cabin
-# mean-CPRs is fairer. Units are CPR std (population, ddof=0).
-FAIRNESS_BETWEEN_LOW_ANCHOR = 0.0
-FAIRNESS_BETWEEN_HIGH_ANCHOR = 1.0
+# Fairness Between Cabins — σ of cabin mean-CPRs (down-is-bad: tighter is fairer). Runs small
+# and tight (observed ~0.09–0.32): cabin means cluster near the camp mean, so real spread is a
+# fifth of the old 0–1 placeholder. Band brackets the observed normal range.
+FAIRNESS_BETWEEN_LOW_ANCHOR = 0.1
+FAIRNESS_BETWEEN_HIGH_ANCHOR = 0.35
 
 
 def _cabin_mean_cprs(longform: pd.DataFrame) -> pd.DataFrame:

@@ -1,10 +1,17 @@
 """Tests for seatrades/scoring.py — post-hoc schedule goodness measurement."""
 
 import dataclasses
+import random
 
+import numpy as np
 import pandas as pd
+import pulp
 import pytest
 
+from seatrades import solver
+from seatrades.config import CamperSimulationConfig, OptimizationConfig, SeatradeSimulationConfig
+from seatrades.preferences import join_and_validate
+from seatrades.problem import SchedulingProblem
 from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 from seatrades.scoring import (
     AGE_SPREAD_HIGH_ANCHOR,
@@ -21,6 +28,12 @@ from seatrades.scoring import (
     SPARSITY_LOW_ANCHOR,
     Scorecard,
     score,
+)
+from seatrades.simulation import (
+    simulate_camper_identity,
+    simulate_camper_preferences,
+    simulate_camper_relationships,
+    simulate_seatrade_preferences,
 )
 
 
@@ -439,3 +452,42 @@ class TestFairnessBetweenDetail:
         assert len(detail) == 2
         means = dict(zip(detail["cabin"], detail["mean_cpr"], strict=True))
         assert means == pytest.approx({"Cabin1": 3.5, "Cabin2": 4.0})
+
+
+def _solve_seeded_mock_scenario(seed: int) -> AssignmentSolution:
+    """Simulate and solve one seeded mock scenario at the scale the anchors were calibrated
+    against: 8 cabins (the app's demo scale and the largest roster the model schedules
+    reliably) with the 17-seatrade catalog. Reseeds both RNGs so the roster is deterministic
+    — the reseed is load-bearing (see the reseed gotcha in project memory).
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    seatrade_prefs = simulate_seatrade_preferences(SeatradeSimulationConfig(num_seatrades=17))
+    identity = simulate_camper_identity(CamperSimulationConfig())
+    camper_prefs = simulate_camper_preferences(identity, seatrade_prefs)
+    relationships = simulate_camper_relationships(identity, camper_prefs)
+    joined, setup, validated = join_and_validate(identity, camper_prefs, seatrade_prefs, relationships)
+    problem = SchedulingProblem(joined, setup, relationships=validated)
+    config = OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0, gapRel=0.10, timeLimit=120))
+    return solver.run(problem, config)
+
+
+@pytest.mark.slow
+class TestCalibratedBandsBracketRealScenario:
+    """The calibrated anchors are a *reference band*: a representative real schedule should land
+    inside every metric's [low_anchor, high_anchor], so each renders within-band (never on a
+    flat/degenerate scale — PRD acceptance #3), and future anchor drift is caught. seed=0 is a
+    solver-feasible mock scenario whose six metrics all sit comfortably mid-band; the within-band
+    assertion has margin, so it survives alternate optima. (The ~22-cabin deployment target is
+    infeasible in the current model — see the anchor-calibration notes in scoring.py.)
+    """
+
+    def test_every_metric_raw_value_is_within_its_reference_band(self):
+        solution = _solve_seeded_mock_scenario(seed=0)
+        assert solution.status.is_optimal, f"expected OPTIMAL, got {solution.status.state}"
+        scorecard = score(solution)
+        for metric in scorecard.metrics:
+            assert metric.low_anchor <= metric.raw_value <= metric.high_anchor, (
+                f"{metric.name} raw {metric.raw_value:.3f} fell outside its reference band "
+                f"[{metric.low_anchor}, {metric.high_anchor}]"
+            )
