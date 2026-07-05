@@ -66,19 +66,21 @@ def score(solution: AssignmentSolution) -> Scorecard:
 # simulated mock scenario (seatrades/simulation.py) with the 17-seatrade catalog, swept
 # across optimization configs and RNG seeds at several roster scales.
 #
-# A band [low_anchor, high_anchor] is the *expected/normal* raw range — for the four portable
-# metrics roughly the p10–p90 of the observed distribution (not a theoretical best/worst); the
-# two roster-dependent metrics instead bracket the feasible operating range, and Sparsity's
-# high_anchor is the catalog staffing ceiling (a deliberate exception — see its per-metric note).
-# visualization.normalize_to_band uses the band as the default axis domain and a floor on axis
+# A band [low_anchor, high_anchor] is the *expected/normal* raw range, roughly the p10–p90 of the
+# observed distribution — not a theoretical best/worst — except where a metric has a natural
+# ceiling, in which case that anchor sits at the ceiling: Cohesion tops out at 1.0, and Sparsity's
+# high_anchor is the catalog staffing ceiling (17 × 4). A genuine outlier still falls outside the
+# band by design; see each metric's per-metric note. visualization.normalize_to_band uses the band
+# as the default axis domain and a floor on axis
 # width, expanding only to swallow a genuinely outlying scenario. Anchors are always in raw units
 # with low < high; higher_is_better handles the up/down flip at render time.
 #
 # Scale note: the four fraction/σ metrics (Preference, Cohesion, Fairness within/between)
 # are roster-portable — bands come from the full sweep and were cross-checked to hold at
 # large scale. Sparsity (a raw count, ceiling = catalog × 4 blocks) and Age spread (absolute
-# years) are roster-DEPENDENT, so their bands bracket the whole solver-feasible operating
-# range observed across ~8–18 cabins (~80–200 campers). NB: the ~22-cabin deployment target
+# years) are roster-DEPENDENT, so their bands span the normal operating range observed across
+# ~8–18 cabins (~80–200 campers), with genuine outliers still falling past the anchors. NB: the
+# ~22-cabin deployment target
 # is *provably infeasible* in the current model with a 17-seatrade catalog (CBC: "Problem is
 # infeasible"; the model reliably schedules only ~8–10 real cabins, and even ~12–18 cabins
 # solve only for gender-balanced rosters), so the largest feasible solves are the closest
