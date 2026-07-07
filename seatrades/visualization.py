@@ -184,10 +184,12 @@ def display_cohesion_detail(metric: QualityMetric) -> alt.Chart:
     """The Cohesion drill-down: how many camper-sessions landed at each cabin-group size.
 
     x = how many cabinmates a camper is with in a session, counting themselves (1 = solo/
-    stranded, 2 = with one cabinmate, …); y = count of camper-sessions; colour splits each bar
-    by block so a Captain can see which block is stranding campers. ``metric.detail`` is one row
-    per (camper, session), so the solo (x = 1) bar counts every stranding, not just every
-    stranded camper — the level the rollup penalises.
+    stranded, 2 = with one cabinmate, …); y = count of camper-sessions. Good-vs-bad lives on the
+    x-axis (alone = bad), so blocks are *not* colour-coded — a colour scale here reads as "some
+    blocks are good, some bad", which is wrong. Instead each bar is split per block on the neutral
+    ``detail`` stacking channel, so the four blocks stay separate on hover without implying a
+    ranking. ``metric.detail`` is one row per (camper, session), so the solo (x = 1) bar counts
+    every stranding, not just every stranded camper — the level the rollup penalises.
     """
     return (
         alt.Chart(metric.detail)
@@ -195,7 +197,7 @@ def display_cohesion_detail(metric: QualityMetric) -> alt.Chart:
         .encode(
             x=alt.X("cohort_size:O", title="Cabinmates together in a session (1 = alone)"),
             y=alt.Y("count():Q", title="Camper-sessions"),
-            color=alt.Color("block:N", legend=alt.Legend(title="Block")),
+            detail=["block:N"],
             tooltip=[
                 alt.Tooltip("cohort_size:O", title="Cabinmates together"),
                 alt.Tooltip("block:N", title="Block"),

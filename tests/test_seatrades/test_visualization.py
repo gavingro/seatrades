@@ -183,10 +183,15 @@ class TestDisplayCohesionDetail:
         spec = display_cohesion_detail(_cohesion_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["y"]["aggregate"] == "count"
 
-    def test_colored_by_block(self, sample_assignment_solution):
-        """Bars split by block so the Captain sees which block strands campers (comment #2c)."""
+    def test_separated_by_block_without_a_good_bad_colour(self, sample_assignment_solution):
+        """Blocks are split on the neutral detail stacking channel + tooltip, NOT a colour scale —
+        a diverging block colour falsely reads as 'good' vs 'bad' blocks (#99 review)."""
         spec = display_cohesion_detail(_cohesion_metric(sample_assignment_solution)).to_dict()
-        assert spec["encoding"]["color"]["field"] == "block"
+        assert "color" not in spec["encoding"]
+        detail_fields = [entry.get("field") for entry in spec["encoding"]["detail"]]
+        assert "block" in detail_fields
+        tooltip_fields = [entry.get("field") for entry in spec["encoding"]["tooltip"]]
+        assert "block" in tooltip_fields
 
 
 class TestDisplaySparsityDetail:
