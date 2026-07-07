@@ -39,7 +39,7 @@ def _format_raw_value(name: str, value: float) -> str:
     if name == "Cohesion":
         return f"{value:.0%} of sessions"
     if name == "Sparsity":
-        return f"{value:.0f} seatrades"
+        return f"{value:.0%} of possible seatrades"
     if name == "Age spread":
         return f"{value:.1f} yr age range"
     return f"{value:.2f} pick-rank spread"
@@ -67,6 +67,12 @@ GHOST_TEXT_OPACITY = 0.3
 # tooltip; the colour just reads the x-axis level so the eye lands on the right conclusion.
 COHESION_TOGETHERNESS_ORDER = ["Alone", "With a cabinmate"]
 COHESION_TOGETHERNESS_RANGE = ["#d73027", "#1a9850"]
+
+# Sparsity detail: each block's bar is the whole catalog, split into slots that run vs sit idle.
+# Neutral presence-vs-absence, NOT good/bad (fewer running is better, so green would mislead): a
+# solid ink for a running slot, a muted track for an idle one — reads as "which seatrades run where".
+SPARSITY_STATUS_ORDER = ["Assigned", "Not assigned"]
+SPARSITY_STATUS_RANGE = ["#4C78A8", "#3a3f44"]
 
 # Age spread detail: red↔green diverging on the range — 0–1 yr is tight (green), 2 yr is a stretch
 # (yellow), 3 yr or wider is bad (red). Ordinal buckets, so a discrete scale, not a gradient.
@@ -254,25 +260,40 @@ def display_cohesion_detail(metric: QualityMetric) -> alt.Chart:
 
 
 def display_sparsity_detail(metric: QualityMetric) -> alt.Chart:
-    """The Sparsity drill-down: how many seatrades run in each block.
+    """The Sparsity drill-down: which catalog seatrades run in each block.
 
-    x = block, y = count of running seatrades (sessions with ≥ 1 camper). ``metric.detail``
-    is one row per running session, so a plain count per block tallies the sessions.
+    x = block, y = count of seatrades, one stacked unit-segment per catalog seatrade coloured by
+    whether it runs (≥ 1 camper) or sits idle. Each block's full-height bar is the whole catalog,
+    so the ``Assigned`` portion vs the muted ``Not assigned`` portion reads as the staffing load
+    per block — and, seatrade-by-seatrade on hover, which seatrades run where.
+
+    ``metric.detail`` is the full catalog×blocks grid (one row per ``(block, seatrade)`` with an
+    ``assigned`` flag). ``seatrade`` rides the ``detail`` stacking channel — the same gotcha as
+    Age Spread and Cohesion: tooltip fields alone are pulled into the ``count()`` groupby but do
+    not stack, so each seatrade must ride ``detail`` for the bar to reach its true height.
     """
     return (
         alt.Chart(metric.detail)
+        .transform_calculate(status="datum.assigned ? 'Assigned' : 'Not assigned'")
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
             x=alt.X("block:N", title="Block"),
-            y=alt.Y("count():Q", title="Running seatrades"),
+            y=alt.Y("count():Q", title="Seatrades"),
+            color=alt.Color(
+                "status:N",
+                scale=alt.Scale(domain=SPARSITY_STATUS_ORDER, range=SPARSITY_STATUS_RANGE),
+                legend=alt.Legend(title="Seatrade slot"),
+            ),
+            detail=["seatrade:N"],
             tooltip=[
+                alt.Tooltip("seatrade:N", title="Seatrade"),
                 alt.Tooltip("block:N", title="Block"),
-                alt.Tooltip("count():Q", title="Running seatrades"),
+                alt.Tooltip("status:N", title="Slot"),
             ],
         )
         .properties(
             title={
-                "text": "Sparsity — seatrades to staff per block",
+                "text": "Sparsity — which seatrades run in each block",
                 "fontSize": 20,
                 "anchor": "start",
             }

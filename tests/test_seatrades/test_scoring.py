@@ -231,25 +231,15 @@ class TestCohesionDetail:
 
 
 class TestSparsityRawValue:
-    def test_counts_every_running_session(self, sample_assignment_solution):
-        """Fixture runs all 6 (block, seatrade) sessions (each has ≥1 camper) → count 6."""
-        assert _sparsity(score(sample_assignment_solution)).raw_value == 6.0
+    def test_every_grid_slot_running_scores_one(self, sample_assignment_solution):
+        """Fixture staffs all 6 (block, seatrade) slots in its catalog → 6/6 = 1.0."""
+        assert _sparsity(score(sample_assignment_solution)).raw_value == 1.0
 
-    def test_empty_session_does_not_count(self):
-        """A seatrade with 0 campers in a block is not running. One camper touches only 2 of
-        the 8 (block, seatrade) columns → count 2, the other 6 empty columns don't count."""
+    def test_fraction_is_running_over_the_full_catalog_grid(self):
+        """One camper touches 2 of the 4-seatrade × 2-block = 8 grid slots; the other 6 sit idle
+        → 2/8. Empty slots stay in the denominator — that is the whole point of a fraction."""
         solution = _one_camper_solution(prefs=["A", "B", "C", "D"], assigned=("A", "C"))
-        assert _sparsity(score(solution)).raw_value == 2.0
-
-    def test_counts_across_all_blocks(self):
-        """The same seatrade running in two different blocks is two running sessions."""
-        solution = _roster_solution(
-            [
-                ("Ann", "Cabin1", [("1a", "Archery")]),
-                ("Bea", "Cabin1", [("2b", "Archery")]),
-            ]
-        )
-        assert _sparsity(score(solution)).raw_value == 2.0
+        assert _sparsity(score(solution)).raw_value == pytest.approx(0.25)
 
 
 class TestSparsityAnchors:
@@ -262,19 +252,16 @@ class TestSparsityAnchors:
 
 
 class TestSparsityDetail:
-    def test_one_row_per_running_session_with_block(self):
-        """detail is per running session so the countplot can tally per block:
-        two 1a sessions + one 2b session → 3 rows carrying their block."""
-        solution = _roster_solution(
-            [
-                ("Ann", "Cabin1", [("1a", "Archery")]),
-                ("Bea", "Cabin1", [("1a", "Sailing")]),
-                ("Cy", "Cabin2", [("2b", "Archery")]),
-            ]
-        )
+    def test_detail_is_the_full_grid_flagged_run_or_idle(self):
+        """detail carries every (block, seatrade) slot — running and idle — so the countplot can
+        stack the whole catalog per block. One camper of a 4-seatrade × 2-block catalog staffs 2
+        slots → 8 rows, exactly the two staffed ones flagged assigned."""
+        solution = _one_camper_solution(prefs=["A", "B", "C", "D"], assigned=("A", "C"))
         detail = _sparsity(score(solution)).detail
-        assert len(detail) == 3
-        assert sorted(detail["block"]) == ["1a", "1a", "2b"]
+        assert len(detail) == 8
+        assert set(detail.columns) >= {"block", "seatrade", "assigned"}
+        staffed = {(row.block, row.seatrade) for row in detail[detail["assigned"]].itertuples()}
+        assert staffed == {("1a", "A"), ("2b", "C")}
 
 
 class TestAgeSpreadRawValue:

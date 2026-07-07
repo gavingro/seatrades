@@ -203,15 +203,30 @@ class TestDisplayCohesionDetail:
 
 
 class TestDisplaySparsityDetail:
-    """The Sparsity drill-down: running-seatrade count per block."""
+    """The Sparsity drill-down: the catalog stacked per block, run vs idle."""
 
     def test_x_encodes_block(self, sample_assignment_solution):
         spec = display_sparsity_detail(_sparsity_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["x"]["field"] == "block"
 
-    def test_y_is_a_running_seatrade_count(self, sample_assignment_solution):
+    def test_y_is_a_seatrade_count(self, sample_assignment_solution):
         spec = display_sparsity_detail(_sparsity_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["y"]["aggregate"] == "count"
+
+    def test_coloured_by_run_or_idle_status(self, sample_assignment_solution):
+        """Colour splits each block's bar into Assigned vs Not assigned slots."""
+        spec = display_sparsity_detail(_sparsity_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["color"]["field"] == "status"
+        scale = spec["encoding"]["color"]["scale"]
+        by_status = dict(zip(scale["domain"], scale["range"], strict=True))
+        assert by_status == {"Assigned": "#4C78A8", "Not assigned": "#3a3f44"}
+
+    def test_seatrade_stacks_into_the_count(self, sample_assignment_solution):
+        """Each catalog seatrade must ride the stacking channel (detail), not tooltip alone, or
+        the per-block bars flatten to height 1 (the same countplot gotcha as Age Spread)."""
+        spec = display_sparsity_detail(_sparsity_metric(sample_assignment_solution)).to_dict()
+        detail_fields = [entry.get("field") for entry in spec["encoding"]["detail"]]
+        assert "seatrade" in detail_fields
 
 
 @pytest.fixture

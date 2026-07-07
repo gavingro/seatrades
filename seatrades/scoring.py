@@ -50,7 +50,9 @@ def score(solution: AssignmentSolution) -> Scorecard:
 
     Scoring measures only *assigned* seatrade rows, so the assigned-rows filter is applied
     once here and the per-metric helpers take the already-assigned frame as a precondition
-    (empty seatrade cells / Fleet Time never carry an ``assignment == 1.0`` row).
+    (empty seatrade cells / Fleet Time never carry an ``assignment == 1.0`` row). Sparsity is
+    the one exception: it needs the *full* catalog×blocks grid — including the un-run slots —
+    to score staffed sessions as a fraction of the possible, so it takes the unfiltered longform.
     """
     longform = wrangle_assignments_to_longform(solution)
     assigned = longform[longform["assignment"] == 1.0]
@@ -58,7 +60,7 @@ def score(solution: AssignmentSolution) -> Scorecard:
         metrics=[
             _preference_metric(assigned),
             _cohesion_metric(assigned),
-            _sparsity_metric(assigned),
+            _sparsity_metric(longform),
             _age_spread_metric(assigned),
             _fairness_within_metric(assigned),
             _fairness_between_metric(assigned),
@@ -75,19 +77,20 @@ def score(solution: AssignmentSolution) -> Scorecard:
 #
 # A band [low_anchor, high_anchor] is the *expected/normal* raw range, roughly the p10–p90 of the
 # observed distribution — not a theoretical best/worst — except where a metric has a natural
-# ceiling, in which case that anchor sits at the ceiling: Sparsity's high_anchor is the catalog
-# staffing ceiling (17 × 4). A genuine outlier still falls outside the
+# ceiling, in which case that anchor sits at the ceiling: Sparsity's high_anchor is the staffing
+# ceiling — every catalog slot run = 1.0. A genuine outlier still falls outside the
 # band by design; see each metric's per-metric note. visualization.normalize_to_band uses the band
 # as the default axis domain and a floor on axis
 # width, expanding only to swallow a genuinely outlying scenario. Anchors are always in raw units
 # with low < high; higher_is_better handles the up/down flip at render time.
 #
 # Scale note: Preference and the two Fairness σ metrics are roster-portable — bands come from the
-# full sweep and were cross-checked to hold at large scale. Cohesion is also a fraction, but its
-# band was re-derived from seeded 8-cabin solves only (see its note), not the full cross-scale
-# sweep. Sparsity (a raw count, ceiling = catalog × 4 blocks) and Age spread (absolute
-# years) are roster-DEPENDENT, so their bands span the normal operating range observed across
-# ~8–18 cabins (~80–200 campers), with genuine outliers still falling past the anchors. NB: the
+# full sweep and were cross-checked to hold at large scale. Cohesion and Sparsity are also fractions:
+# Cohesion's band was re-derived from seeded 8-cabin solves only (see its note), not the full cross-
+# scale sweep, and Sparsity (running ÷ catalog×blocks, ceiling 1.0) is now catalog-portable but its
+# floor was carried over from the old roster-DEPENDENT count band (the 8-cabin demo end). Age spread
+# (absolute years) stays roster-DEPENDENT, its band spanning the normal operating range observed
+# across ~8–18 cabins (~80–200 campers), with genuine outliers still falling past the anchors. NB: the
 # ~22-cabin deployment target
 # is *provably infeasible* in the current model with a 17-seatrade catalog (CBC: "Problem is
 # infeasible"; the model reliably schedules only ~8–10 real cabins, and even ~12–18 cabins
@@ -171,40 +174,49 @@ def _cohesion_metric(assigned: pd.DataFrame) -> QualityMetric:
     )
 
 
-# Sparsity — count of running seatrades across the 4 blocks (down-is-bad: fewer is better).
-# high_anchor is the catalog ceiling, seatrades × 4 blocks = 17 × 4 = 68 (per the PRD, the
-# anchor comes from the catalog). The band brackets the whole solver-feasible operating range
-# (~8–18 cabins ran ~30–62); low_anchor 30 keeps the 8-cabin demo (~30–40) inside the band
-# rather than pinned at a misleading 100%, while large rosters sit toward the busy end.
-SPARSITY_LOW_ANCHOR = 30.0
-SPARSITY_HIGH_ANCHOR = 68.0
+# Sparsity — fraction of the catalog×blocks grid that runs (down-is-bad: fewer is better).
+# Numerator = running sessions, denominator = distinct seatrades × 4 blocks (mock: 17 × 4 = 68),
+# so the metric is catalog- and roster-portable. high_anchor is the ceiling — every possible slot
+# staffed = 1.0. low_anchor 0.44 (= the old 30-session floor ÷ 68) keeps the 8-cabin demo inside
+# the band rather than pinned at a misleading 100%; large rosters sit toward the busy end. Seeded
+# 8-cabin mock solves ran ~0.50–0.65 (seed 0 = 0.56). Dividing the old raw-count anchors (30, 68)
+# by the 68-slot grid leaves the normalized position unchanged — this is a units change, not a
+# recalibration.
+SPARSITY_LOW_ANCHOR = 0.44
+SPARSITY_HIGH_ANCHOR = 1.0
 
 
-def _running_seatrades(assigned: pd.DataFrame) -> pd.DataFrame:
-    """The running seatrade sessions: one row per ``(block, seatrade)`` with ≥ 1 camper.
+def _catalog_sessions(longform: pd.DataFrame) -> pd.DataFrame:
+    """Every ``(block, seatrade)`` slot in the catalog×blocks grid, flagged run-or-not.
 
-    A session runs when at least one camper is assigned to it, so an empty seatrade (0
-    campers in that block) never appears. Only assigned seatrade rows are present, so Fleet
-    Time is not a session here. One row per running session lets the detail countplot tally
-    them per block.
+    One row per ``(block, seatrade)`` column of the assignment matrix — the *full* grid of
+    every catalog seatrade in every block, so ``len`` is the total possible sessions (the
+    Sparsity denominator: distinct seatrades × blocks). ``assigned`` is True when ≥ 1 camper
+    is in that slot (a running session) and False for the un-run remainder. Takes the unfiltered
+    longform, not the assigned frame, precisely so the un-run slots survive. The detail countplot
+    stacks these per block so a Captain sees which seatrades run in which block.
     """
-    return assigned[["block", "seatrade"]].drop_duplicates().reset_index(drop=True)
+    grid = longform.groupby(["block", "seatrade"], sort=False)["assignment"].max().reset_index()
+    grid["assigned"] = grid["assignment"] == 1.0
+    return grid[["block", "seatrade", "assigned"]]
 
 
-def _sparsity_metric(assigned: pd.DataFrame) -> QualityMetric:
-    """The Sparsity metric — "how few seatrades do we have to staff?".
+def _sparsity_metric(longform: pd.DataFrame) -> QualityMetric:
+    """The Sparsity metric — "how few of the possible seatrades do we have to staff?".
 
-    Raw value is the count of running seatrades across all four blocks — the thing being
-    measured, so it stays a raw count (not a rate). Fewer is better → down-is-bad.
+    Raw value is the fraction of the catalog×blocks grid that runs: running sessions ÷ total
+    possible (distinct seatrades × blocks). A fraction, not a raw count, so it is portable across
+    catalogs and rosters. Fewer running seatrades is better → down-is-bad.
     """
-    running = _running_seatrades(assigned)
+    sessions = _catalog_sessions(longform)
+    fraction_running = sessions["assigned"].mean()
     return QualityMetric(
         name="Sparsity",
-        raw_value=float(len(running)),
+        raw_value=float(fraction_running),
         low_anchor=SPARSITY_LOW_ANCHOR,
         high_anchor=SPARSITY_HIGH_ANCHOR,
         higher_is_better=False,
-        detail=running,
+        detail=sessions,
     )
 
 
