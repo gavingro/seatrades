@@ -185,6 +185,16 @@ Scoring is measured over **seatrade sessions**, generally ignoring Fleet Time un
 
 The 6 Quality Metrics are meant to be **orthogonal** — mutually exclusive, collectively exhaustive areas of goodness. Level and equity are deliberately separate: a uniformly-miserable cabin scores *perfectly fair* (σ = 0) on the fairness metrics, and that is **correct** — the preference metric is what exposes the low level. The suite is **not** rolled up into one overall goodness number. The scheduler weighs the trade-offs themselves; Scoring hands them the instruments rather than deciding for them. (This is separate from the *solver optimality* headline, which is a single number but measures the gap, not goodness.)
 
+### Cohesion
+
+**Cohesion** measures how many campers are never stranded: the fraction of campers who share a
+seatrade session (same seatrade, same block) with ≥1 cabinmate in **every** one of their sessions.
+A camper alone in even one session counts as non-cohesive — with cabinmates one block but solo the
+next is the failure the metric names. This is stricter than an earlier "shares ≥1 session" framing
+(issue #99 review): the rollup is still per-camper, but the detail view is the finer **camper×session**
+grain (one row per camper per session), so the drill-down histogram counts each *stranding* by
+cabin-group size and block, not just each stranded camper.
+
 ### Fairness Within / Between Cabins
 
 Both fairness metrics are built from the same per-camper CPR (Combined Preference Rank) atom, grouped by cabin, using **population** standard deviation (`ddof=0`) — not pandas' default sample std (`ddof=1`). Population std is deliberate: it makes a 1-camper cabin (Fairness Within) or a 1-cabin roster (Fairness Between) correctly evaluate to `0`, not `NaN`. Std (not variance) is chosen for correct units and outlier sensitivity — one camper with a much worse schedule than their bunkmates should show up.

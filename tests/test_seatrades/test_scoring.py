@@ -181,6 +181,23 @@ class TestCohesionRawValue:
         )
         assert _cohesion(score(solution)).raw_value == 0.0
 
+    def test_stranded_in_either_session_is_not_cohesive(self):
+        """A camper with a cabinmate in one session but solo in the other is NOT cohesive.
+
+        Only campers together in *every* session count; being stranded in either block is the
+        failure the metric names. Ann and Bea share both sessions (cohesive); Cy shares block 1a
+        but is solo in 2b (stranded) → 2 of 3 campers cohesive. Under the old "shares ≥1 session"
+        rule all three would count, giving 1.0.
+        """
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery"), ("2b", "Sailing")]),
+                ("Bea", "Cabin1", [("1a", "Archery"), ("2b", "Sailing")]),
+                ("Cy", "Cabin1", [("1a", "Archery"), ("2b", "Rowing")]),
+            ]
+        )
+        assert _cohesion(score(solution)).raw_value == pytest.approx(2 / 3)
+
 
 class TestCohesionAnchors:
     def test_cohesion_metric_carries_its_anchors(self, sample_assignment_solution):
@@ -192,19 +209,26 @@ class TestCohesionAnchors:
 
 
 class TestCohesionDetail:
-    def test_one_row_per_camper_with_cohort_size(self):
-        """detail is per-camper: solo camper → cohort_size 1, shared camper → 2."""
+    def test_detail_is_one_row_per_camper_session(self):
+        """detail is camper×session grain: each camper contributes one row per seatrade session.
+
+        Ann and Bea have two sessions each, Cy has one → 5 rows. Each row carries that session's
+        same-cabin cohort size (self counted; solo → 1), so a camper stranded in one block shows
+        up as their own cohort-size-1 row rather than being hidden by their other, shared session.
+        """
         solution = _roster_solution(
             [
-                ("Ann", "Cabin1", [("1a", "Archery")]),
-                ("Bea", "Cabin1", [("1a", "Archery")]),
+                ("Ann", "Cabin1", [("1a", "Archery"), ("2b", "Sailing")]),
+                ("Bea", "Cabin1", [("1a", "Archery"), ("2b", "Rowing")]),
                 ("Cy", "Cabin2", [("1a", "Sailing")]),
             ]
         )
         detail = _cohesion(score(solution)).detail
-        assert len(detail) == 3
-        sizes = dict(zip(detail["camper"], detail["cohort_size"], strict=True))
-        assert sizes == {"Ann": 2, "Bea": 2, "Cy": 1}
+        assert len(detail) == 5
+        assert set(detail.columns) >= {"cabin", "camper", "block", "seatrade", "cohort_size"}
+        # Ann is with Bea in 1a_Archery (cohort 2) but solo in 2b_Sailing (cohort 1).
+        ann = detail[detail["camper"] == "Ann"]
+        assert sorted(ann["cohort_size"]) == [1, 2]
 
 
 class TestSparsityRawValue:

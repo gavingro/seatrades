@@ -12,8 +12,34 @@ from seatrades.results import (
 )
 from seatrades.scoring import QualityMetric, Scorecard
 
-# Fixed, deliberate ordinal x-order for the summary comparison plot.
-METRIC_ORDER = ["Preference", "Cohesion", "Sparsity", "Age spread", "Fair within", "Fair between"]
+# User-facing labels for metric names that carry project jargon; identity for the rest. The
+# internal ``metric.name`` stays the stable key (``Scorecard.metric``, ``_DETAIL_BUILDERS``); only
+# the displayed string changes, so tests and dispatch never churn when copy is reworded.
+METRIC_DISPLAY_LABELS = {
+    "Fair within": "Within-cabin fairness",
+    "Fair between": "Between-cabin fairness",
+}
+
+
+def metric_label(name: str) -> str:
+    """The user-facing label for a metric name — de-jargoned where needed, else the name itself."""
+    return METRIC_DISPLAY_LABELS.get(name, name)
+
+
+def _format_raw_value(name: str, value: float) -> str:
+    """A metric's raw rollup in plain units for the Overview tooltip (never the 0–100 position).
+
+    Fractions read as a percent, Sparsity as a seatrade count, Age spread in years, the fairness
+    σ's as a 2-dp spread. Keyed by metric name; an unknown metric falls back to a plain number.
+    """
+    if name in ("Preference", "Cohesion"):
+        return f"{value:.0%} of campers"
+    if name == "Sparsity":
+        return f"{value:.0f} seatrades"
+    if name == "Age spread":
+        return f"{value:.1f} yr age range"
+    return f"{value:.2f} pick-rank spread"
+
 
 # CPR causes ordered good (greens) → bad (reds) so the detail bars read good-vs-bad at
 # a glance and the CPR-5 bar visibly splits its two causes (1+4 vs 2+3).
@@ -66,17 +92,19 @@ def normalize_to_band(
 def display_quality_summary(scorecard: Scorecard) -> alt.Chart:
     """The summary comparison plot: every Quality Metric on one up-is-good 0–100 axis.
 
-    Metrics sit on an ordinal x in the fixed ``METRIC_ORDER``; y is each metric's
-    raw value normalized against its reference band; the tooltip carries the *raw*
-    value (never the position). One scenario for v1, so each metric's observed
-    min/max is just its own raw value.
+    Metrics sit on an ordinal x in ``scorecard.metrics`` order (the single source of the
+    deliberate Preference→…→Between-cabin fairness sequence — no parallel order constant); the
+    axis shows each metric's user-facing label; y is each metric's raw value normalized against
+    its reference band; the tooltip carries the *raw* value in plain units (never the position).
+    One scenario for v1, so each metric's observed min/max is just its own raw value.
     """
     rows = []
     for metric in scorecard.metrics:
         rows.append(
             {
                 "name": metric.name,
-                "raw_value": metric.raw_value,
+                "label": metric_label(metric.name),
+                "raw_display": _format_raw_value(metric.name, metric.raw_value),
                 "normalized": normalize_to_band(
                     metric.raw_value,
                     metric.low_anchor,
@@ -88,6 +116,7 @@ def display_quality_summary(scorecard: Scorecard) -> alt.Chart:
             }
         )
     summary_df = pd.DataFrame(rows)
+    labels_in_order = [metric_label(metric.name) for metric in scorecard.metrics]
 
     # TODO: switch to mark_line when we support overlaying multiple scenarios (area
     # fills get muddy + exaggerate axis-order bias).
@@ -95,9 +124,12 @@ def display_quality_summary(scorecard: Scorecard) -> alt.Chart:
         alt.Chart(summary_df)
         .mark_area(opacity=0.5, line=True, point=True)
         .encode(
-            x=alt.X("name:N", sort=METRIC_ORDER, title=None),
+            x=alt.X("label:N", sort=labels_in_order, title=None),
             y=alt.Y("normalized:Q", scale=alt.Scale(domain=[0, 100]), title="Quality (up is good)"),
-            tooltip=[alt.Tooltip("name:N", title="Metric"), alt.Tooltip("raw_value:Q", title="Raw value")],
+            tooltip=[
+                alt.Tooltip("label:N", title="Metric"),
+                alt.Tooltip("raw_display:N", title="Measured value"),
+            ],
         )
         .properties(title={"text": "Schedule Quality", "fontSize": 20, "anchor": "start"})
     )
@@ -117,38 +149,43 @@ def display_preference_detail(metric: QualityMetric) -> alt.Chart:
             x=alt.X(
                 "cpr:O",
                 scale=alt.Scale(domain=[3, 4, 5, 6]),
-                title="Combined Preference Rank (3 = best, 6 = worst)",
+                title="Combined pick rank (3 = best, 6 = worst)",
             ),
             y=alt.Y("count():Q", title="Campers"),
             color=alt.Color(
                 "cause:N",
                 scale=alt.Scale(domain=CPR_CAUSE_ORDER, range=CPR_CAUSE_RANGE),
-                legend=alt.Legend(title="Rank pair (block #1 + block #2)"),
+                legend=alt.Legend(title="Which two picks (block 1 + block 2)"),
             ),
-            tooltip=[alt.Tooltip("cause:N", title="Rank pair"), alt.Tooltip("count():Q", title="Campers")],
+            tooltip=[alt.Tooltip("cause:N", title="Which picks"), alt.Tooltip("count():Q", title="Campers")],
         )
-        .properties(title={"text": "Preference — campers with a good schedule", "fontSize": 20, "anchor": "start"})
+        .properties(title={"text": "Preference — campers who got good picks", "fontSize": 20, "anchor": "start"})
     )
 
 
 def display_cohesion_detail(metric: QualityMetric) -> alt.Chart:
-    """The Cohesion drill-down: how many campers landed in each same-cabin cohort size.
+    """The Cohesion drill-down: how many camper-sessions landed at each cabin-group size.
 
-    x = the largest same-cabin cohort a camper shares a seatrade session with, counting
-    themselves (1 = solo, 2 = with one cabinmate, …); y = camper count.
+    x = how many cabinmates a camper is with in a session, counting themselves (1 = solo/
+    stranded, 2 = with one cabinmate, …); y = count of camper-sessions; colour splits each bar
+    by block so a Captain can see which block is stranding campers. ``metric.detail`` is one row
+    per (camper, session), so the solo (x = 1) bar counts every stranding, not just every
+    stranded camper — the level the rollup penalises.
     """
     return (
         alt.Chart(metric.detail)
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
-            x=alt.X("cohort_size:O", title="Cabin group size in a session (1 = solo)"),
-            y=alt.Y("count():Q", title="Campers"),
+            x=alt.X("cohort_size:O", title="Cabinmates together in a session (1 = alone)"),
+            y=alt.Y("count():Q", title="Camper-sessions"),
+            color=alt.Color("block:N", legend=alt.Legend(title="Block")),
             tooltip=[
-                alt.Tooltip("cohort_size:O", title="Cabin group size"),
-                alt.Tooltip("count():Q", title="Campers"),
+                alt.Tooltip("cohort_size:O", title="Cabinmates together"),
+                alt.Tooltip("block:N", title="Block"),
+                alt.Tooltip("count():Q", title="Camper-sessions"),
             ],
         )
-        .properties(title={"text": "Cohesion — campers with a cabinmate", "fontSize": 20, "anchor": "start"})
+        .properties(title={"text": "Cohesion — is each camper with a cabinmate?", "fontSize": 20, "anchor": "start"})
     )
 
 
@@ -190,7 +227,7 @@ def display_age_spread_detail(metric: QualityMetric) -> alt.Chart:
         alt.Chart(metric.detail)
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
-            x=alt.X("spread:O", title="Age range (years)"),
+            x=alt.X("spread:O", title="Age range: oldest − youngest (0 = all the same age)"),
             y=alt.Y("count():Q", title="Seatrades"),
             detail=["seatrade:N", "block:N"],
             tooltip=[
@@ -252,10 +289,10 @@ def display_fairness_within_detail(metric: QualityMetric) -> alt.Chart:
     return _histogram_with_average(
         metric.detail,
         field="spread",
-        x_title="Within-cabin CPR spread (std)",
-        tooltip_title="CPR spread",
+        x_title="Spread of pick ranks within a cabin (0 = everyone equal)",
+        tooltip_title="Pick-rank spread",
         average=metric.detail["spread"].mean(),
-        title="Fairness within — CPR spread inside each cabin",
+        title="Within-cabin fairness — how even are schedules inside a cabin?",
     )
 
 
@@ -269,10 +306,10 @@ def display_fairness_between_detail(metric: QualityMetric) -> alt.Chart:
     return _histogram_with_average(
         metric.detail,
         field="mean_cpr",
-        x_title="Cabin mean CPR",
-        tooltip_title="Mean CPR",
+        x_title="Cabin's average pick rank (3 = best, 6 = worst)",
+        tooltip_title="Average pick rank",
         average=metric.detail["mean_cpr"].mean(),
-        title="Fairness between — cabin mean CPR spread",
+        title="Between-cabin fairness — is any cabin worse off?",
     )
 
 

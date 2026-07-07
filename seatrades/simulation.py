@@ -76,6 +76,10 @@ def simulate_seatrade_preferences(
 
     seatrades_prefs_dict = {
         seatrade: {
+            # campers_min 1–4 (a real viability floor: a seatrade only worth running with a few
+            # campers), not 0–1. Gives the Sparsity metric and its anchor calibration a realistic
+            # spread of running seatrades. NB this tightens the feasible region — on large rosters
+            # near the model's ~18-cabin ceiling it can push a solve to INFEASIBLE.
             "campers_min": (base_min := np.random.randint(1, 5)),
             "campers_max": base_min
             + (

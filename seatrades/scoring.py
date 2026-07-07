@@ -46,16 +46,22 @@ class Scorecard:
 
 
 def score(solution: AssignmentSolution) -> Scorecard:
-    """Measure a solved schedule's goodness. Deterministic: one solution in, one Scorecard out."""
+    """Measure a solved schedule's goodness. Deterministic: one solution in, one Scorecard out.
+
+    Scoring measures only *assigned* seatrade rows, so the assigned-rows filter is applied
+    once here and the per-metric helpers take the already-assigned frame as a precondition
+    (empty seatrade cells / Fleet Time never carry an ``assignment == 1.0`` row).
+    """
     longform = wrangle_assignments_to_longform(solution)
+    assigned = longform[longform["assignment"] == 1.0]
     return Scorecard(
         metrics=[
-            _preference_metric(longform),
-            _cohesion_metric(longform),
-            _sparsity_metric(longform),
-            _age_spread_metric(longform),
-            _fairness_within_metric(longform),
-            _fairness_between_metric(longform),
+            _preference_metric(assigned),
+            _cohesion_metric(assigned),
+            _sparsity_metric(assigned),
+            _age_spread_metric(assigned),
+            _fairness_within_metric(assigned),
+            _fairness_between_metric(assigned),
         ],
         optimality=solution.status.optimality,
     )
@@ -100,58 +106,67 @@ PREFERENCE_HIGH_ANCHOR = 0.95
 GOOD_CPR_MAX = 4
 
 
-def _camper_cprs(longform: pd.DataFrame) -> pd.DataFrame:
+def _camper_cprs(assigned: pd.DataFrame) -> pd.DataFrame:
     """Combined Preference Rank per camper: sum of their two assigned block ranks.
 
     One row per camper (keyed by cabin+camper, since names alone can collide) with
     ``cpr`` (3–6). Assigned rows carry a 1–4 preference by the top-2 guarantee and
     the preference-only constraint, so the two-block sum lands in 3–6.
     """
-    assigned = longform[longform["assignment"] == 1.0]
     grouped = assigned.groupby(["cabin", "camper"], sort=False)["preference"]
     detail = grouped.agg(cpr="sum", ranks=list).reset_index()
     detail["cause"] = detail["ranks"].map(lambda ranks: f"{min(ranks)}+{max(ranks)}")
     return detail.drop(columns="ranks")
 
 
-# Cohesion — fraction of campers sharing a session with ≥1 cabinmate. Runs high and tight
-# (observed ~0.91–1.00): the ≤4-per-cabin cap naturally groups cabinmates, so a stranded
-# camper is the rare, meaningful failure. Band tops out at the natural 1.0 ceiling.
-COHESION_LOW_ANCHOR = 0.85
-COHESION_HIGH_ANCHOR = 1.0
+# Cohesion — fraction of campers who are with a cabinmate in EVERY one of their seatrade
+# sessions. A camper stranded (solo, no cabinmate) in even one session counts as non-cohesive:
+# with your cabin one block but alone the next is the failure the metric names. The strict "every
+# session" rule runs well below the old "any session" version — recalibrated 2026-07-06 against
+# seeded 8-cabin mock solves, which landed ~0.44–0.68 (seed 0 = 0.59). Band brackets that normal
+# range; a fully-cohesive roster (everyone with a cabinmate in both sessions → 1.0) expands past
+# the high anchor rather than the band pinning there.
+COHESION_LOW_ANCHOR = 0.4
+COHESION_HIGH_ANCHOR = 0.7
 
-# A camper "shares" if their largest same-cabin cohort in any one session is ≥ 2 (self + a
-# cabinmate). Solo (self only) is cohort size 1.
+# A camper "shares" a session if their same-cabin cohort there is ≥ 2 (self + a cabinmate).
+# Solo (self only) is cohort size 1.
 SHARED_COHORT_MIN = 2
 
 
-def _cabin_cohorts(longform: pd.DataFrame) -> pd.DataFrame:
-    """Largest same-cabin cohort size per camper across their seatrade sessions.
+def _cabin_session_cohorts(assigned: pd.DataFrame) -> pd.DataFrame:
+    """Same-cabin cohort size for each camper in each of their seatrade sessions.
 
-    One row per camper (keyed by cabin+camper, since names alone can collide) with
-    ``cohort_size`` = the most same-cabin campers sharing any one of the camper's
-    ``(block, seatrade)`` sessions, counting the camper themselves (solo → 1). Only
-    assigned seatrade rows appear in ``longform``, so Fleet Time co-presence never
-    counts — it is not a seatrade session.
+    One row per ``(camper, session)`` — camper keyed by cabin+camper since names alone can
+    collide — carrying ``block``, ``seatrade`` and ``cohort_size`` = the number of same-cabin
+    campers sharing that one ``(block, seatrade)`` session, counting the camper themselves
+    (solo → 1). Roughly two rows per camper (one per seatrade block). Only assigned seatrade
+    rows are present, so Fleet Time co-presence never counts — it is not a seatrade session.
+    This is the camper×session grain the Cohesion detail histogram plots.
     """
-    assigned = longform[longform["assignment"] == 1.0]
     session_cohort = assigned.groupby(["block", "seatrade", "cabin"], sort=False)["camper"].transform("size")
     per_session = assigned.assign(cohort_size=session_cohort)
-    detail = per_session.groupby(["cabin", "camper"], sort=False)["cohort_size"].max().reset_index()
-    return detail
+    return per_session[["cabin", "camper", "block", "seatrade", "cohort_size"]].reset_index(drop=True)
 
 
-def _cohesion_metric(longform: pd.DataFrame) -> QualityMetric:
-    """The Cohesion metric — "how many campers are with a cabinmate?"."""
-    cohorts = _cabin_cohorts(longform)
-    fraction_shared = (cohorts["cohort_size"] >= SHARED_COHORT_MIN).mean()
+def _cohesion_metric(assigned: pd.DataFrame) -> QualityMetric:
+    """The Cohesion metric — "how many campers are with a cabinmate in every session?".
+
+    Rollup is the fraction of campers who are *never* stranded: a camper counts as cohesive
+    only when the smallest same-cabin cohort they sit in — across all their sessions — is still
+    ≥ 2, i.e. they have a cabinmate in every session. The detail keeps the finer camper×session
+    grain so the histogram shows each stranding, not just each stranded camper.
+    """
+    session_cohorts = _cabin_session_cohorts(assigned)
+    per_camper_min = session_cohorts.groupby(["cabin", "camper"], sort=False)["cohort_size"].min()
+    fraction_cohesive = (per_camper_min >= SHARED_COHORT_MIN).mean()
     return QualityMetric(
         name="Cohesion",
-        raw_value=float(fraction_shared),
+        raw_value=float(fraction_cohesive),
         low_anchor=COHESION_LOW_ANCHOR,
         high_anchor=COHESION_HIGH_ANCHOR,
         higher_is_better=True,
-        detail=cohorts,
+        detail=session_cohorts,
     )
 
 
@@ -164,25 +179,24 @@ SPARSITY_LOW_ANCHOR = 30.0
 SPARSITY_HIGH_ANCHOR = 68.0
 
 
-def _running_seatrades(longform: pd.DataFrame) -> pd.DataFrame:
+def _running_seatrades(assigned: pd.DataFrame) -> pd.DataFrame:
     """The running seatrade sessions: one row per ``(block, seatrade)`` with ≥ 1 camper.
 
     A session runs when at least one camper is assigned to it, so an empty seatrade (0
-    campers in that block) never appears. Only assigned seatrade rows are in ``longform``,
-    so Fleet Time is not a session here. One row per running session lets the detail
-    countplot tally them per block.
+    campers in that block) never appears. Only assigned seatrade rows are present, so Fleet
+    Time is not a session here. One row per running session lets the detail countplot tally
+    them per block.
     """
-    assigned = longform[longform["assignment"] == 1.0]
     return assigned[["block", "seatrade"]].drop_duplicates().reset_index(drop=True)
 
 
-def _sparsity_metric(longform: pd.DataFrame) -> QualityMetric:
+def _sparsity_metric(assigned: pd.DataFrame) -> QualityMetric:
     """The Sparsity metric — "how few seatrades do we have to staff?".
 
     Raw value is the count of running seatrades across all four blocks — the thing being
     measured, so it stays a raw count (not a rate). Fewer is better → down-is-bad.
     """
-    running = _running_seatrades(longform)
+    running = _running_seatrades(assigned)
     return QualityMetric(
         name="Sparsity",
         raw_value=float(len(running)),
@@ -201,27 +215,27 @@ AGE_SPREAD_LOW_ANCHOR = 1.5
 AGE_SPREAD_HIGH_ANCHOR = 2.5
 
 
-def _running_session_age_spreads(longform: pd.DataFrame) -> pd.DataFrame:
+def _running_session_age_spreads(assigned: pd.DataFrame) -> pd.DataFrame:
     """The age range (``maxAge − minAge``) of each running seatrade session.
 
-    One row per ``(block, seatrade)`` with ≥ 1 camper, carrying its ``spread``. Only
-    assigned seatrade rows are in ``longform``, so Fleet Time is not a session here.
-    A single-camper session has ``spread`` 0 (max == min).
+    One row per ``(block, seatrade)`` with ≥ 1 camper, carrying its ``spread``. Only assigned
+    seatrade rows are present, so Fleet Time is not a session here. ``spread`` is a *difference*
+    in whole years: a single-age session (everyone the same age) is 0; a session with 16- and
+    17-year-olds is 1 (not 2).
     """
-    assigned = longform[longform["assignment"] == 1.0]
     grouped = assigned.groupby(["block", "seatrade"], sort=False)["age"]
     spreads = (grouped.max() - grouped.min()).rename("spread")
     return spreads.reset_index()
 
 
-def _age_spread_metric(longform: pd.DataFrame) -> QualityMetric:
+def _age_spread_metric(assigned: pd.DataFrame) -> QualityMetric:
     """The Age Spread metric — "how age-homogeneous are the seatrades?".
 
     Raw value is the session-weighted mean age range over running seatrade sessions —
     each running seatrade contributes its range equally, regardless of camper count.
     Narrower is better → down-is-bad.
     """
-    spreads = _running_session_age_spreads(longform)
+    spreads = _running_session_age_spreads(assigned)
     return QualityMetric(
         name="Age spread",
         raw_value=float(spreads["spread"].mean()),
@@ -232,9 +246,9 @@ def _age_spread_metric(longform: pd.DataFrame) -> QualityMetric:
     )
 
 
-def _preference_metric(longform: pd.DataFrame) -> QualityMetric:
+def _preference_metric(assigned: pd.DataFrame) -> QualityMetric:
     """The Preference metric — "how many campers got a good schedule?"."""
-    cprs = _camper_cprs(longform)
+    cprs = _camper_cprs(assigned)
     fraction_good = (cprs["cpr"] <= GOOD_CPR_MAX).mean()
     return QualityMetric(
         name="Preference",
@@ -253,25 +267,25 @@ FAIRNESS_WITHIN_LOW_ANCHOR = 0.3
 FAIRNESS_WITHIN_HIGH_ANCHOR = 1.0
 
 
-def _within_cabin_cpr_spreads(longform: pd.DataFrame) -> pd.DataFrame:
+def _within_cabin_cpr_spreads(assigned: pd.DataFrame) -> pd.DataFrame:
     """The within-cabin CPR spread of each cabin: one row per cabin with its ``spread``.
 
     ``spread`` is the population standard deviation (``ddof=0``) of that cabin's
     campers' CPRs — population, not sample, std so a 1-camper cabin is 0, not NaN.
     """
-    cprs = _camper_cprs(longform)
+    cprs = _camper_cprs(assigned)
     spreads = cprs.groupby("cabin", sort=False)["cpr"].std(ddof=0).rename("spread")
     return spreads.reset_index()
 
 
-def _fairness_within_metric(longform: pd.DataFrame) -> QualityMetric:
+def _fairness_within_metric(assigned: pd.DataFrame) -> QualityMetric:
     """The Fairness Within Cabins metric — "inside a cabin, are schedules equally good?".
 
     Raw value is the within-cabin CPR std, averaged across cabins. Chosen std (outlier-
     sensitive) over variance (wrong units) or range (too coarse): one camper with a much
     worse schedule than their bunkmates should show up. Tighter is better → down-is-bad.
     """
-    spreads = _within_cabin_cpr_spreads(longform)
+    spreads = _within_cabin_cpr_spreads(assigned)
     return QualityMetric(
         name="Fair within",
         raw_value=float(spreads["spread"].mean()),
@@ -289,23 +303,23 @@ FAIRNESS_BETWEEN_LOW_ANCHOR = 0.1
 FAIRNESS_BETWEEN_HIGH_ANCHOR = 0.35
 
 
-def _cabin_mean_cprs(longform: pd.DataFrame) -> pd.DataFrame:
+def _cabin_mean_cprs(assigned: pd.DataFrame) -> pd.DataFrame:
     """The mean CPR of each cabin: one row per cabin with its ``mean_cpr``.
 
     Mean, not sum, so a cabin is not penalized merely for having an extra camper.
     """
-    cprs = _camper_cprs(longform)
+    cprs = _camper_cprs(assigned)
     means = cprs.groupby("cabin", sort=False)["cpr"].mean().rename("mean_cpr")
     return means.reset_index()
 
 
-def _fairness_between_metric(longform: pd.DataFrame) -> QualityMetric:
+def _fairness_between_metric(assigned: pd.DataFrame) -> QualityMetric:
     """The Fairness Between Cabins metric — "across cabins, is any cabin treated worse?".
 
     Raw value is the population std (``ddof=0``) of the cabin mean-CPRs across cabins —
     a 1-cabin roster is 0, not NaN. Tighter is better → down-is-bad.
     """
-    means = _cabin_mean_cprs(longform)
+    means = _cabin_mean_cprs(assigned)
     return QualityMetric(
         name="Fair between",
         raw_value=float(means["mean_cpr"].std(ddof=0)),

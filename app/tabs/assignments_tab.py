@@ -23,6 +23,7 @@ from seatrades.visualization import (
     display_metric_detail,
     display_optimality_donut,
     display_quality_summary,
+    metric_label,
 )
 
 # session_state key holding the active SolveRun. Its presence *is* "a solve is in
@@ -31,6 +32,29 @@ ACTIVE_RUN_KEY = "solve_run"
 
 # How often the fragment re-polls SolveRun.progress() while a solve runs.
 _POLL_INTERVAL_SECONDS = 2
+
+# Plain-language glossary for the Schedule Quality report card, shown in an expander so a
+# non-technical Captain can decode every area and term without leaving the page. Kept here
+# (presentation copy) rather than in the scoring/visualization service layer.
+_QUALITY_GLOSSARY = """
+Each camper ranks four seatrades and is assigned two of them. Their **pick rank** combines those
+two picks: **3 = both top picks (best)**, **6 = the worst still allowed**. The areas below use it.
+
+- **Preference** — how many campers got *good picks* (their #1 choice in at least one of their two
+  seatrades).
+- **Cohesion** — how many campers are with a cabinmate in *every* seatrade session. A camper left
+  alone in even one session counts against it.
+- **Sparsity** — how many different seatrades you have to staff. *Fewer is better* — less staffing
+  load.
+- **Age spread** — how close in age the campers in each seatrade are. *Age range = oldest minus
+  youngest* (0 = everyone the same age; 16- and 17-year-olds together = 1).
+- **Within-cabin fairness** — inside a cabin, did everyone get similarly good picks, or did one
+  camper get a raw deal?
+- **Between-cabin fairness** — across cabins, did some whole cabins get better picks than others?
+
+Every area is framed so **higher is better for campers**. *Fairness* areas score high when schedules
+are *even*, even if they are evenly mediocre — Preference is what shows the overall level.
+"""
 
 
 class _CompletedRun(Protocol):
@@ -114,14 +138,25 @@ class AssignmentsTab:
                 # single metric's drill-down, never both. Only reached on an optimal solve.
                 st.divider()
                 st.subheader("Schedule Quality")
+                st.caption(
+                    "How good is this schedule *for campers*? Each area below is placed within its "
+                    "normal range for this camp — a **higher bar is better**, but it's not a grade or "
+                    "a percentage, and 100 does **not** mean perfect. The six areas are kept separate "
+                    "on purpose (a schedule can be great on one and weak on another), so there is no "
+                    "single overall score. This is separate from *Solver Optimality* above."
+                )
+                with st.expander("What do these mean?"):
+                    st.markdown(_QUALITY_GLOSSARY)
                 scorecard = score(solution)
-                # Single-source the options from the scorecard so adding a metric can't
-                # leave an option without a detail chart (or vice versa).
+                # Options are single-sourced from the scorecard; a startup test asserts every metric
+                # also has a detail chart, so a selectable area can never lack a drill-down.
                 quality_options = ["Overview", *(metric.name for metric in scorecard.metrics)]
                 quality_view = st.selectbox(
                     "Area",
                     options=quality_options,
                     index=0,
+                    format_func=metric_label,
+                    help="Overview compares all six areas at once; pick an area to drill into its detail chart.",
                     key="quality_view_selector",
                 )
                 if quality_view == "Overview":

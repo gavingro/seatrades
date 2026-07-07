@@ -110,6 +110,19 @@ class TestDoneView:
         quality = at.selectbox(key="quality_view_selector")
         assert quality.value == "Overview"
 
+    def test_schedule_quality_documents_the_report_card(self, solved_solution):
+        """Firm requirement: the Schedule Quality section explains itself for a non-technical
+        Captain — a caption that heads off the "100 = perfect" misread, plus a plain-language
+        glossary defining the areas and the "pick rank" term and de-jargoned fairness labels.
+        """
+        at = _seed_done_view(solved_solution, success=True)
+
+        assert not at.exception
+        text = " ".join(el.value for el in [*at.markdown, *at.caption])
+        assert "mean perfect" in text  # the caption heads off "it says 100 so it's perfect"
+        assert "pick rank" in text  # CPR explained in plain terms
+        assert "Within-cabin fairness" in text  # de-jargoned fairness label is defined
+
     def test_switching_to_preference_detail_does_not_crash(self, solved_solution):
         """Selecting Preference swaps the slot to the detail chart without error."""
         at = _seed_done_view(solved_solution, success=True)

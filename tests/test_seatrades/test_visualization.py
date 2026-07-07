@@ -8,7 +8,7 @@ import pytest
 from seatrades.results import SolverState, SolverStatus
 from seatrades.scoring import score
 from seatrades.visualization import (
-    METRIC_ORDER,
+    _DETAIL_BUILDERS,
     SATISFACTION_RANGE,
     display_age_spread_detail,
     display_assignments,
@@ -20,6 +20,7 @@ from seatrades.visualization import (
     display_preference_detail,
     display_quality_summary,
     display_sparsity_detail,
+    metric_label,
     normalize_to_band,
 )
 
@@ -51,10 +52,15 @@ def _rule_layer_average(spec):
 class TestDisplayQualitySummary:
     """The six-metric overview: normalized 0–100 on an ordinal x, raw value in the tooltip."""
 
-    def test_x_uses_the_canonical_metric_order(self, sample_assignment_solution):
-        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+    def test_x_is_sorted_in_scorecard_order_with_display_labels(self, sample_assignment_solution):
+        """The x-axis order is derived from scorecard.metrics (single source, no parallel
+        constant) and shows the user-facing labels, not the internal metric names."""
+        card = score(sample_assignment_solution)
+        spec = display_quality_summary(card).to_dict()
         x_sorts = [enc["x"].get("sort") for enc in _flatten(spec) if "x" in enc]
-        assert METRIC_ORDER in x_sorts
+        expected = [metric_label(metric.name) for metric in card.metrics]
+        assert expected in x_sorts
+        assert "Within-cabin fairness" in expected  # a de-jargoned label made it to the axis
 
     def test_y_encodes_the_normalized_position(self, sample_assignment_solution):
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
@@ -67,7 +73,9 @@ class TestDisplayQualitySummary:
         for enc in _flatten(spec):
             for entry in enc.get("tooltip", []):
                 tooltip_fields.append(entry.get("field"))
-        assert "raw_value" in tooltip_fields
+        # The plain-units raw display is in the tooltip; the 0–100 position is not.
+        assert "raw_display" in tooltip_fields
+        assert "normalized" not in tooltip_fields
 
     def test_rendered_as_area_for_v1(self, sample_assignment_solution):
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
@@ -75,13 +83,13 @@ class TestDisplayQualitySummary:
         mark_types = [mark.get("type") if isinstance(mark, dict) else mark for mark in marks]
         assert "area" in mark_types
 
-    def test_every_built_metric_is_a_known_order_name(self, sample_assignment_solution):
-        """Every metric score() builds must be a METRIC_ORDER name, so the summary plot
-        places it deliberately. Guards the name↔order drift the KeyError dispatch can't:
-        an unlisted name doesn't error, it just sorts silently to the end of the axis.
+    def test_every_built_metric_has_a_detail_builder(self, sample_assignment_solution):
+        """Every metric score() builds must have a registered detail chart, so a metric can
+        never reach the selectbox (options are derived from the scorecard) without a drill-down
+        — the KeyError dispatch would otherwise only bite at render time (design review #4).
         """
         names = [metric.name for metric in score(sample_assignment_solution).metrics]
-        assert set(names) <= set(METRIC_ORDER)
+        assert set(names) <= set(_DETAIL_BUILDERS)
 
     def test_cohesion_is_plotted_on_the_summary(self, sample_assignment_solution):
         """Cohesion shows on the Overview summary plot (issue #93 acceptance criterion)."""
@@ -107,6 +115,15 @@ class TestDisplayQualitySummary:
         """Fair between shows on the Overview summary plot (issue #96 acceptance criterion)."""
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
         assert "Fair between" in _summary_metric_names(spec)
+
+    def test_summary_axis_uses_de_jargoned_fairness_labels(self, sample_assignment_solution):
+        """The plotted x labels de-jargon the two fairness metrics (owner comment #5)."""
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        data = spec.get("data", {})
+        rows: list[dict] = data.get("values") or next(iter(spec.get("datasets", {}).values()), [])
+        labels = {row["label"] for row in rows if "label" in row}
+        assert {"Within-cabin fairness", "Between-cabin fairness"} <= labels
+        assert "Fair within" not in labels and "Fair between" not in labels
 
 
 def _preference_metric(solution):
@@ -156,15 +173,20 @@ class TestDisplayPreferenceDetail:
 
 
 class TestDisplayCohesionDetail:
-    """The Cohesion drill-down: camper counts per same-cabin cohort size (1 = solo)."""
+    """The Cohesion drill-down: camper-session counts per cabin-group size (1 = alone), by block."""
 
     def test_x_encodes_cohort_size(self, sample_assignment_solution):
         spec = display_cohesion_detail(_cohesion_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["x"]["field"] == "cohort_size"
 
-    def test_y_is_a_camper_count(self, sample_assignment_solution):
+    def test_y_is_a_camper_session_count(self, sample_assignment_solution):
         spec = display_cohesion_detail(_cohesion_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["y"]["aggregate"] == "count"
+
+    def test_colored_by_block(self, sample_assignment_solution):
+        """Bars split by block so the Captain sees which block strands campers (comment #2c)."""
+        spec = display_cohesion_detail(_cohesion_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["color"]["field"] == "block"
 
 
 class TestDisplaySparsityDetail:
