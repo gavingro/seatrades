@@ -183,7 +183,26 @@ Scoring is measured over **seatrade sessions**, generally ignoring Fleet Time un
 
 ### Design principle: MECE, no composite
 
-The 6 Quality Metrics are meant to be **orthogonal** — mutually exclusive, collectively exhaustive areas of goodness. Level and equity are deliberately separate: a uniformly-miserable cabin scores *perfectly fair* (variance 0) on the fairness metrics, and that is **correct** — the preference metric is what exposes the low level. The suite is **not** rolled up into one overall goodness number. The scheduler weighs the trade-offs themselves; Scoring hands them the instruments rather than deciding for them. (This is separate from the *solver optimality* headline, which is a single number but measures the gap, not goodness.)
+The 6 Quality Metrics are meant to be **orthogonal** — mutually exclusive, collectively exhaustive areas of goodness. Level and equity are deliberately separate: a uniformly-miserable cabin scores *perfectly fair* (σ = 0) on the fairness metrics, and that is **correct** — the preference metric is what exposes the low level. The suite is **not** rolled up into one overall goodness number. The scheduler weighs the trade-offs themselves; Scoring hands them the instruments rather than deciding for them. (This is separate from the *solver optimality* headline, which is a single number but measures the gap, not goodness.)
+
+### Cohesion
+
+**Cohesion** measures how many campers are never stranded: the fraction of campers who share a
+seatrade session (same seatrade, same block) with ≥1 cabinmate in **every** one of their sessions.
+A camper alone in even one session counts as non-cohesive — with cabinmates one block but solo the
+next is the failure the metric names. This is stricter than an earlier "shares ≥1 session" framing
+(issue #99 review): the rollup is still per-camper, but the detail view is the finer **camper×session**
+grain (one row per camper per session), so the drill-down histogram counts each *stranding* by
+cabin-group size and block, not just each stranded camper.
+
+### Fairness Within / Between Cabins
+
+Both fairness metrics are built from the same per-camper CPR (Combined Preference Rank) atom, grouped by cabin, using **population** standard deviation (`ddof=0`) — not pandas' default sample std (`ddof=1`). Population std is deliberate: it makes a 1-camper cabin (Fairness Within) or a 1-cabin roster (Fairness Between) correctly evaluate to `0`, not `NaN`. Std (not variance) is chosen for correct units and outlier sensitivity — one camper with a much worse schedule than their bunkmates should show up.
+
+- **Fairness Within** — for each cabin, the std of its campers' CPR, averaged across cabins.
+- **Fairness Between** — each cabin's *mean* CPR (mean, not sum, so a bigger cabin isn't penalized), then the std of those cabin means across cabins.
+
+Both detail views are true histograms (binned quantitative x), not countplots (discrete x) like Age Spread/Sparsity — the reference line at the average requires a shared quantitative scale with the bars, which an ordinal x-axis cannot provide. The reference line's value is the mean of the *plotted* per-cabin quantity (the same statistic the histogram bins), which for Fairness Within happens to equal `raw_value` (it's already an average-of-per-cabin-spreads) but for Fairness Between is *not* `raw_value` (the std of means) — it is a separately computed mean of cabin means.
 
 ## Optimization Problem
 
@@ -245,7 +264,8 @@ Note the tension: `cabins_weight` (soft, encourages cabinmates together) pushes 
 | `solver.py` | `solver.run(problem, config) -> AssignmentSolution` — pure synchronous orchestration of build + solve + wrangle. Calls `problem.build(config)` internally. Does NOT manage threads or read the log — that lives in `solve_run.py`. |
 | `solve_run.py` | `SolveRun` — runs `solver.run` in a background thread, reads the CBC log, and exposes `progress()` (a `SolveProgress` snapshot) / `result()`. The service-layer seam ADR-0004 mandates; the UI polls it and never imports `threading`/`queue` or opens the log file. |
 | `results.py` | `AssignmentSolution` dataclass + free functions for wrangling (`wrangle_assignments_to_longform`, `wrangle_assignments_to_wideform`, `prepare_seatrade_leaders`) and export views. Functions take `AssignmentSolution`, not the problem. |
-| `visualization.py` | Build `alt.Chart` specs from `AssignmentSolution`. No Streamlit dependency — renders in any Altair-capable frontend. Colors cells by a camper-satisfaction scale (top choice → low/unranked) and labels block facets via `blocks.py`. |
+| `scoring.py` | Post-hoc Scoring (#31) — `score(solution) -> Scorecard` measures schedule *goodness* after the solve. Pure service layer, no Streamlit, **no normalization** (that is render-time, in `visualization.py`). `QualityMetric` (name, raw_value, anchors, `higher_is_better`, detail DataFrame) + `Scorecard` (metrics + pass-through `optimality`). Reuses `wrangle_assignments_to_longform`. Ships all six Quality Metrics (Preference, Cohesion, Sparsity, Age spread, Fair within, Fair between) with reference-band anchors calibrated against real mock-scenario solves (#97). |
+| `visualization.py` | Build `alt.Chart` specs from `AssignmentSolution`/`Scorecard`. No Streamlit dependency — renders in any Altair-capable frontend. Colors assignment cells by a camper-satisfaction scale (top choice → low/unranked), labels block facets via `blocks.py`, and owns the Scoring render layer: the pure `normalize_to_band` (raw → 0–100, band expands never contracts, down-is-bad flipped), the `display_quality_summary` overview plot, and a per-metric detail chart for each of the six Quality Metrics. |
 | `blocks.py` | Pure decoder from block codes to Captain-friendly labels (`1a` → `1st·AM`) plus `BLOCK_DECODER_CAPTION`. No Streamlit, no side effects. |
 | `preferences.py` | Pandera schemas + cross-reference validation (camper names match between sources, seatrade names in prefs exist in setup) + 3→2 DataFrame join (camper identity + camper preferences → joined campers) + relationship validation (self-pairs, duplicate pairs, camper existence) [#58 planned] |
 | `simulation.py` | Generate mock data as 3 separate DataFrames (camper identity, camper preferences, seatrade setup) + optional relationships DataFrame [#58 planned] — goes through same validation pipeline as real uploads |

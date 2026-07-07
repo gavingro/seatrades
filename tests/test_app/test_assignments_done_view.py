@@ -102,6 +102,67 @@ class TestDoneView:
         assert log_areas, "solver log not shown in the done view"
         assert log_areas[0].value == at.session_state["solver_log"]
 
+    def test_success_banner_shows_optimality_percent(self, solved_solution):
+        """The green verdict banner carries the solver-optimality % inline; the donut itself
+        moved down beside the Schedule Quality Overview."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        assert not at.exception
+        banner = " ".join(s.value for s in at.success)
+        assert "% optimal" in banner
+
+    def test_schedule_quality_defaults_to_overview(self, solved_solution):
+        """The Schedule Quality section opens on the Overview summary plot, no error."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        assert not at.exception
+        quality = at.selectbox(key="quality_view_selector")
+        assert quality.value == "Overview"
+
+    def test_schedule_quality_documents_the_report_card(self, solved_solution):
+        """Firm requirement: the Schedule Quality report card explains itself for a non-technical
+        Captain — a rendered caption in the section, plus a plain-language glossary (wired into the
+        Area selector's help) that names every area, the "pick rank" term, and the de-jargoned
+        fairness labels. Asserts on the glossary content (the stable documentation artifact) rather
+        than exact caption wording, which is free to be reworded.
+        """
+        from app.tabs.assignments_tab import _QUALITY_GLOSSARY
+
+        at = _seed_done_view(solved_solution, success=True)
+
+        assert not at.exception
+        # The section renders explanatory caption copy.
+        assert any("quality" in caption.value.lower() for caption in at.caption)
+        # The glossary defines every metric + the pick-rank term in plain, de-jargoned language.
+        for term in (
+            "pick rank",
+            "Within-cabin fairness",
+            "Between-cabin fairness",
+            "Preference",
+            "Cohesion",
+            "Sparsity",
+            "Age spread",
+        ):
+            assert term in _QUALITY_GLOSSARY
+
+    def test_switching_to_preference_detail_does_not_crash(self, solved_solution):
+        """Selecting Preference swaps the slot to the detail chart without error."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        at.selectbox(key="quality_view_selector").set_value("Preference").run()
+
+        assert not at.exception
+        assert at.selectbox(key="quality_view_selector").value == "Preference"
+
+    def test_switching_to_cohesion_detail_does_not_crash(self, solved_solution):
+        """Cohesion is offered as an option and its detail chart renders without error."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        at.selectbox(key="quality_view_selector").set_value("Cohesion").run()
+
+        assert not at.exception
+        assert at.selectbox(key="quality_view_selector").value == "Cohesion"
+
     def test_error_status_renders_finished_abnormally_warning(self, solved_solution):
         """A seeded ERROR solution surfaces the crash copy, not the tables, no exception."""
         error_solution = dataclasses.replace(

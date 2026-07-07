@@ -12,7 +12,11 @@ Both run a real CBC solve, so both carry ``@pytest.mark.slow`` — the fast loop
 deselects them; CI and a pre-push ``-m slow`` run exercise them.
 """
 
+import random
+
+import numpy as np
 import pytest
+from faker import Faker
 from streamlit.testing.v1 import AppTest
 
 from tests.test_app.helpers import (
@@ -65,13 +69,20 @@ class TestGenerateAssignExport:
         at.run()
         assert not at.exception
 
-        # Shrink to a 2-cabin roster before regenerating so the real solve proves
-        # optimality fast; the full 8-cabin default can hit the solver time/gap limit
-        # and return a non-OPTIMAL (still feasible) result.
-        find_slider(at, "Number of cabins").set_value(2)
+        # Regenerate onto a *deterministic, known-feasible* roster. The app fixes the demo
+        # seatrade minimums at MOCK_DATA_SEED (app.py); under those minimums (campers_min up
+        # to 4) a roster only solves when each running seatrade can gather enough campers, so
+        # a random regen at a small size is often infeasible. Pin the RNG + a roster size
+        # proven to solve OPTIMAL (cabins=4, seed=0 → 36 campers, ~30s) so this real solve is
+        # reproducible instead of flaky.
+        find_slider(at, "Number of cabins").set_value(4)
         at.run()
 
-        # Regenerate the camper roster (and its relationships/join) through the form.
+        # Re-seed immediately before the Simulate click: its on_click callback is the next
+        # RNG consumer, so the regenerated roster is fully determined by this seed.
+        random.seed(0)
+        np.random.seed(0)
+        Faker.seed(0)
         find_button(at, "Simulate Campers").click()
         at.run()
         assert not at.exception

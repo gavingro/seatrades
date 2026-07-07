@@ -76,7 +76,11 @@ def simulate_seatrade_preferences(
 
     seatrades_prefs_dict = {
         seatrade: {
-            "campers_min": (base_min := np.random.randint(0, 2)),
+            # campers_min 1–4 (a real viability floor: a seatrade only worth running with a few
+            # campers), not 0–1. Gives the Sparsity metric and its anchor calibration a realistic
+            # spread of running seatrades. NB this tightens the feasible region — on large rosters
+            # near the model's ~18-cabin ceiling it can push a solve to INFEASIBLE.
+            "campers_min": (base_min := np.random.randint(1, 5)),
             "campers_max": base_min
             + (
                 np.random.randint(
@@ -115,7 +119,10 @@ def simulate_camper_identity(
         ):
             name = name_faker.name_male() if cabin_gender == "male" else name_faker.name_female()
             # Jitter around the cabin base; no clamp to the base range, only stay positive.
-            age = max(1, int(base_age + round(np.random.normal(0, camper_simulation_config.age_spread))))
+            age = max(
+                1,
+                int(base_age + round(np.random.normal(0, camper_simulation_config.age_spread))),
+            )
             rows.append({"cabin": cabin, "camper": name, "gender": cabin_gender, "age": age})
 
     result = pd.DataFrame(rows)
