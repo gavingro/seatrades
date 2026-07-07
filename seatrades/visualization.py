@@ -30,7 +30,8 @@ def _format_raw_value(name: str, value: float) -> str:
     """A metric's raw rollup in plain units for the Overview tooltip (never the 0–100 position).
 
     Fractions read as a percent, Sparsity as a seatrade count, Age spread in years, the fairness
-    σ's as a 2-dp spread. Keyed by metric name; an unknown metric falls back to a plain number.
+    σ's as a 2-dp spread. Keyed by metric name; the fairness σ's (and any unlisted metric) render
+    as an N.NN pick-rank spread.
     """
     if name in ("Preference", "Cohesion"):
         return f"{value:.0%} of campers"

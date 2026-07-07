@@ -70,20 +70,22 @@ def score(solution: AssignmentSolution) -> Scorecard:
 # ─── Anchor calibration (issue #97) ──────────────────────────────────────────────
 # The reference bands below were calibrated on 2026-07-05 against real CBC solves of the
 # simulated mock scenario (seatrades/simulation.py) with the 17-seatrade catalog, swept
-# across optimization configs and RNG seeds at several roster scales.
+# across optimization configs and RNG seeds at several roster scales. Exception: the Cohesion
+# band was re-derived on 2026-07-06 when the #99 review tightened that metric — see its own note.
 #
 # A band [low_anchor, high_anchor] is the *expected/normal* raw range, roughly the p10–p90 of the
 # observed distribution — not a theoretical best/worst — except where a metric has a natural
-# ceiling, in which case that anchor sits at the ceiling: Cohesion tops out at 1.0, and Sparsity's
-# high_anchor is the catalog staffing ceiling (17 × 4). A genuine outlier still falls outside the
+# ceiling, in which case that anchor sits at the ceiling: Sparsity's high_anchor is the catalog
+# staffing ceiling (17 × 4). A genuine outlier still falls outside the
 # band by design; see each metric's per-metric note. visualization.normalize_to_band uses the band
 # as the default axis domain and a floor on axis
 # width, expanding only to swallow a genuinely outlying scenario. Anchors are always in raw units
 # with low < high; higher_is_better handles the up/down flip at render time.
 #
-# Scale note: the four fraction/σ metrics (Preference, Cohesion, Fairness within/between)
-# are roster-portable — bands come from the full sweep and were cross-checked to hold at
-# large scale. Sparsity (a raw count, ceiling = catalog × 4 blocks) and Age spread (absolute
+# Scale note: Preference and the two Fairness σ metrics are roster-portable — bands come from the
+# full sweep and were cross-checked to hold at large scale. Cohesion is also a fraction, but its
+# band was re-derived from seeded 8-cabin solves only (see its note), not the full cross-scale
+# sweep. Sparsity (a raw count, ceiling = catalog × 4 blocks) and Age spread (absolute
 # years) are roster-DEPENDENT, so their bands span the normal operating range observed across
 # ~8–18 cabins (~80–200 campers), with genuine outliers still falling past the anchors. NB: the
 # ~22-cabin deployment target

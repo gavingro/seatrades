@@ -50,7 +50,7 @@ def _rule_layer_average(spec):
 
 
 class TestDisplayQualitySummary:
-    """The six-metric overview: normalized 0–100 on an ordinal x, raw value in the tooltip."""
+    """The six-metric overview: normalized 0–100 on an ordinal x, measured value (plain units) in the tooltip."""
 
     def test_x_is_sorted_in_scorecard_order_with_display_labels(self, sample_assignment_solution):
         """The x-axis order is derived from scorecard.metrics (single source, no parallel

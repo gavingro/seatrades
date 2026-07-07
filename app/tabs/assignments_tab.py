@@ -148,7 +148,7 @@ class AssignmentsTab:
                 with st.expander("What do these mean?"):
                     st.markdown(_QUALITY_GLOSSARY)
                 scorecard = score(solution)
-                # Options are single-sourced from the scorecard; a startup test asserts every metric
+                # Options are single-sourced from the scorecard; a unit test asserts every metric
                 # also has a detail chart, so a selectable area can never lack a drill-down.
                 quality_options = ["Overview", *(metric.name for metric in scorecard.metrics)]
                 quality_view = st.selectbox(
