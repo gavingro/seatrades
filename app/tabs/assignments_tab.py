@@ -15,11 +15,13 @@ from seatrades.results import (
     prepare_seatrade_leaders,
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
+    wrangle_fleet_assignments,
 )
 from seatrades.scoring import score
 from seatrades.solve_run import SolveRun
 from seatrades.visualization import (
     display_assignments,
+    display_fleet_assignments,
     display_metric_detail,
     display_optimality_donut,
     display_quality_summary,
@@ -134,6 +136,13 @@ class AssignmentsTab:
                 # The Schedule — here's the artifact, before any report card.
                 st.divider()
                 st.subheader("The Schedule")
+
+                # Fleet Assignments — coarse Cabin × Block overview first, so the Captain reads
+                # each cabin's week shape (Seatrade vs Fleet Time) before the dense camper grid.
+                st.subheader("Fleet Assignments")
+                st.caption("Each cabin's week at a glance — on a Seatrade or on Fleet Time each block.")
+                st.altair_chart(display_fleet_assignments(wrangle_fleet_assignments(solution)))
+
                 results_chart = display_assignments(solution)
                 st.altair_chart(results_chart)
                 st.caption(f"Blocks: {BLOCK_DECODER_CAPTION}")

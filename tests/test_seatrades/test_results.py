@@ -1,11 +1,15 @@
 """Tests for seatrades/results.py."""
 
+import dataclasses
+
 import pandas as pd
+import pytest
 
 from seatrades.results import (
     SolverState,
     SolverStatus,
     wrangle_assignments_to_longform,
+    wrangle_fleet_assignments,
 )
 
 
@@ -149,3 +153,51 @@ class TestWrangleAssignmentsToLongform:
         result = wrangle_assignments_to_longform(sample_assignment_solution)
         assigned = result[result["assignment"] == 1.0]
         assert set(assigned["seatrade"].unique()) == {"Archery", "Sailing", "Climbing"}
+
+
+@pytest.fixture
+def fleet_split_solution(sample_assignment_solution):
+    """A 4-block solution with a real fleet split, so both states appear.
+
+    Cabin1 (campers 0,1) is on Fleet 1 — a seatrade in blocks 1a & 2a, Fleet Time in 1b & 2b.
+    Cabin2 (campers 2,3) is on Fleet 2 — a seatrade in blocks 1b & 2b, Fleet Time in 1a & 2a.
+    """
+    camper_ids = pd.Index([0, 1, 2, 3], name="camper_id")
+    seatrades_full = [f"{block}_{trade}" for block in ["1a", "1b", "2a", "2b"] for trade in ["Archery", "Sailing"]]
+    assignments = pd.DataFrame(0.0, index=camper_ids, columns=seatrades_full)
+    assignments.loc[0, ["1a_Archery", "2a_Archery"]] = 1.0
+    assignments.loc[1, ["1a_Sailing", "2a_Sailing"]] = 1.0
+    assignments.loc[2, ["1b_Archery", "2b_Archery"]] = 1.0
+    assignments.loc[3, ["1b_Sailing", "2b_Sailing"]] = 1.0
+    return dataclasses.replace(
+        sample_assignment_solution,
+        assignments=assignments,
+        seatrades_full=seatrades_full,
+    )
+
+
+class TestWrangleFleetAssignments:
+    def test_one_row_per_cabin_block_over_solution_blocks(self, sample_assignment_solution):
+        # sample_assignment_solution only spans blocks 1a and 2b, so the grid derives
+        # exactly those two blocks — cabins × present blocks, no phantom rows.
+        result = wrangle_fleet_assignments(sample_assignment_solution)
+        assert set(result.columns) >= {"cabin", "block", "state"}
+        assert len(result) == 2 * 2  # 2 cabins × 2 present blocks
+        assert set(result["cabin"]) == {"Cabin1", "Cabin2"}
+        assert set(result["block"]) == {"1a", "2b"}
+
+    def test_spans_all_four_blocks_when_solution_does(self, fleet_split_solution):
+        result = wrangle_fleet_assignments(fleet_split_solution)
+        assert len(result) == 2 * 4  # 2 cabins × 4 blocks
+        assert list(result["block"].unique()) == ["1a", "1b", "2a", "2b"]  # canonical order
+
+    def test_cabin_on_a_seatrade_reads_seatrade(self, fleet_split_solution):
+        result = wrangle_fleet_assignments(fleet_split_solution)
+        cell = result[(result["cabin"] == "Cabin1") & (result["block"] == "1a")]
+        assert cell["state"].item() == "Seatrade"
+
+    def test_cabin_with_no_assignment_reads_fleet_time(self, fleet_split_solution):
+        # Cabin1 is on Fleet 1, so block 1b (a Fleet 2 slot) is Fleet Time for it.
+        result = wrangle_fleet_assignments(fleet_split_solution)
+        cell = result[(result["cabin"] == "Cabin1") & (result["block"] == "1b")]
+        assert cell["state"].item() == "Fleet Time"

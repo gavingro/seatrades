@@ -3,18 +3,21 @@
 import dataclasses
 import json
 
+import pandas as pd
 import pytest
 
 from seatrades.results import SolverState, SolverStatus
 from seatrades.scoring import score
 from seatrades.visualization import (
     _DETAIL_BUILDERS,
+    FLEET_STATE_RANGE,
     SATISFACTION_RANGE,
     display_age_spread_detail,
     display_assignments,
     display_cohesion_detail,
     display_fairness_between_detail,
     display_fairness_within_detail,
+    display_fleet_assignments,
     display_metric_detail,
     display_optimality_donut,
     display_preference_detail,
@@ -206,6 +209,56 @@ class TestDisplaySparsityDetail:
     def test_y_is_a_running_seatrade_count(self, sample_assignment_solution):
         spec = display_sparsity_detail(_sparsity_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["y"]["aggregate"] == "count"
+
+
+@pytest.fixture
+def fleet_assignments_df():
+    """A Cabin × Block presence grid as ``wrangle_fleet_assignments`` emits it."""
+    return pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "block": ["1a", "1b", "1a", "1b"],
+            "state": ["Seatrade", "Fleet Time", "Fleet Time", "Seatrade"],
+        }
+    )
+
+
+class TestDisplayFleetAssignments:
+    """The Fleet Assignments overview: Cabin × Block presence heatmap."""
+
+    def test_y_encodes_cabin(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert spec["encoding"]["y"]["field"] == "cabin"
+
+    def test_x_encodes_block(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert spec["encoding"]["x"]["field"] == "block"
+
+    def test_color_encodes_state(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert spec["encoding"]["color"]["field"] == "state"
+
+    def test_color_domain_is_the_two_states(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert spec["encoding"]["color"]["scale"]["domain"] == ["Seatrade", "Fleet Time"]
+
+    def test_palette_is_neutral_not_satisfaction(self, fleet_assignments_df):
+        # Presence, not goodness — must not borrow the green→red satisfaction scale.
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        color_range = spec["encoding"]["color"]["scale"]["range"]
+        assert color_range == FLEET_STATE_RANGE
+        assert color_range != SATISFACTION_RANGE
+
+    def test_block_axis_uses_decoded_labels(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        rows = spec["data"].get("values") or spec["datasets"][spec["data"]["name"]]
+        block_values = {row["block"] for row in rows}
+        assert block_values == {"1st·AM", "1st·PM"}
+
+    def test_tooltip_carries_cabin_block_state(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        tooltip_fields = [entry.get("field") for entry in spec["encoding"]["tooltip"]]
+        assert {"cabin", "block", "state"} <= set(tooltip_fields)
 
 
 class TestDisplayAgeSpreadDetail:

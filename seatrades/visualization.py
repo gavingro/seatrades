@@ -4,6 +4,7 @@ import altair as alt
 import pandas as pd
 
 from seatrades.blocks import block_label
+from seatrades.problem import BLOCKS
 from seatrades.results import (
     UNMATCHED_PREFERENCE,
     AssignmentSolution,
@@ -65,6 +66,12 @@ COHESION_TOGETHERNESS_RANGE = ["#d73027", "#1a9850"]
 # (yellow), 3 yr or wider is bad (red). Ordinal buckets, so a discrete scale, not a gradient.
 AGE_SPREAD_BAND_ORDER = ["0–1 yr", "2 yr", "3+ yr"]
 AGE_SPREAD_BAND_RANGE = ["#1a9850", "#fee08b", "#d73027"]
+
+# Fleet Assignments: a cabin is on a Seatrade or on Fleet Time each block. This encodes
+# *presence*, not goodness, so it deliberately avoids the green→red SATISFACTION scale — a
+# saturated neutral blue (on a seatrade) vs. a muted grey (its complementary Fleet Time slot).
+FLEET_STATE_ORDER = ["Seatrade", "Fleet Time"]
+FLEET_STATE_RANGE = ["#4c78a8", "#b3b3b3"]
 
 # Optimality donut: filled arc (proof-of-optimum) vs. the remaining gap track.
 OPTIMALITY_FILL_COLOR = SATISFACTION_RANGE[0]  # reuse the top-pick green — "as good as proven"
@@ -458,6 +465,37 @@ def _rank_text(preference: int) -> str:
     if preference == UNMATCHED_PREFERENCE:
         return ""
     return str(preference)
+
+
+def display_fleet_assignments(df: pd.DataFrame) -> alt.Chart:
+    """Render the Cabin × Block fleet-placement overview as a neutral presence heatmap.
+
+    Takes a ``wrangle_fleet_assignments`` frame (``cabin``, ``block``, ``state``). Each cell is
+    a labeled binary — ``Seatrade`` or ``Fleet Time`` — coloured on the neutral presence scale,
+    never the satisfaction scale. Blocks are decoded to their AM/PM labels (``1a`` → ``1st·AM``).
+    """
+    df = df.copy()
+    df["block"] = df["block"].map(block_label)
+    block_order = [block_label(block) for block in BLOCKS]
+    return (
+        alt.Chart(df)
+        .mark_rect(stroke="white", strokeWidth=0.5)
+        .encode(
+            x=alt.X("block:N", title=None, sort=block_order),
+            y=alt.Y("cabin:N", title=None),
+            color=alt.Color(
+                "state:N",
+                scale=alt.Scale(domain=FLEET_STATE_ORDER, range=FLEET_STATE_RANGE),
+                legend=alt.Legend(title="Cabin activity"),
+            ),
+            tooltip=[
+                alt.Tooltip("cabin:N", title="Cabin"),
+                alt.Tooltip("block:N", title="Block"),
+                alt.Tooltip("state:N", title="Activity"),
+            ],
+        )
+        .properties(title={"text": "Fleet Assignments", "fontSize": 20, "anchor": "start"})
+    )
 
 
 def display_assignments(solution: AssignmentSolution) -> alt.Chart:

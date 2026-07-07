@@ -75,6 +75,10 @@ Fleet Time is the **perfect complement** of seatrade assignment: in any time slo
 
 Because the Fleet Time group in one slot is exactly the set of cabins *not* on seatrades that slot — which is the seatrade population of the opposite-fleet block in the same half — any measurement over each block's seatrade population also describes the Fleet Time gatherings, with no need to model Fleet Time directly.
 
+### Fleet Assignments (view)
+
+A results **view**, not a separate domain concept: the compact Cabin × Block overview grid at the top of "The Schedule", above the master camper grid. Each cell is a labeled binary — **Seatrade** (the cabin is on a seatrade that block) or **Fleet Time** (its complementary slot) — coloured on a neutral presence scale (deliberately *not* the green→red satisfaction scale, since it encodes presence, not goodness). Because a cabin is on a seatrade only in the blocks matching its **Fleet assignment** (§Cabin — which fleet the cabin attends each half), the Seatrade/Fleet-Time pattern read off the AM/PM-decoded block columns *is* that fleet placement. So "Fleet Assignments" (the view) is a visualization of the existing **Fleet assignment** concept, not a new idea. Derived post-solve by `wrangle_fleet_assignments` (`results.py`) and drawn by `display_fleet_assignments` (`visualization.py`); adds no solver, config, or session state.
+
 ### Camper Relationship
 
 A social constraint between a pair of campers. Each relationship has:
