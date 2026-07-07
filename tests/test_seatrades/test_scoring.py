@@ -181,13 +181,12 @@ class TestCohesionRawValue:
         )
         assert _cohesion(score(solution)).raw_value == 0.0
 
-    def test_stranded_in_either_session_is_not_cohesive(self):
-        """A camper with a cabinmate in one session but solo in the other is NOT cohesive.
+    def test_one_solo_session_counts_once_not_the_whole_camper(self):
+        """Rollup is per camper×session: a camper stranded in one block only loses that session.
 
-        Only campers together in *every* session count; being stranded in either block is the
-        failure the metric names. Ann and Bea share both sessions (cohesive); Cy shares block 1a
-        but is solo in 2b (stranded) → 2 of 3 campers cohesive. Under the old "shares ≥1 session"
-        rule all three would count, giving 1.0.
+        Ann and Bea share both their sessions (2 shared each); Cy shares block 1a but is solo in
+        2b → 1 shared, 1 solo. That is 5 shared of 6 total sessions → 5/6. Under the old per-camper
+        "every session" rollup Cy's one solo block would sink his whole camper, giving 2/3.
         """
         solution = _roster_solution(
             [
@@ -196,7 +195,7 @@ class TestCohesionRawValue:
                 ("Cy", "Cabin1", [("1a", "Archery"), ("2b", "Rowing")]),
             ]
         )
-        assert _cohesion(score(solution)).raw_value == pytest.approx(2 / 3)
+        assert _cohesion(score(solution)).raw_value == pytest.approx(5 / 6)
 
 
 class TestCohesionAnchors:

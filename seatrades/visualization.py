@@ -34,8 +34,10 @@ def _format_raw_value(name: str, value: float) -> str:
     σ's as a 2-dp spread. Keyed by metric name; the fairness σ's (and any unlisted metric) render
     as an N.NN pick-rank spread.
     """
-    if name in ("Preference", "Cohesion"):
+    if name == "Preference":
         return f"{value:.0%} of campers"
+    if name == "Cohesion":
+        return f"{value:.0%} of sessions"
     if name == "Sparsity":
         return f"{value:.0f} seatrades"
     if name == "Age spread":

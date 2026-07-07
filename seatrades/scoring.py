@@ -121,15 +121,15 @@ def _camper_cprs(assigned: pd.DataFrame) -> pd.DataFrame:
     return detail.drop(columns="ranks")
 
 
-# Cohesion — fraction of campers who are with a cabinmate in EVERY one of their seatrade
-# sessions. A camper stranded (solo, no cabinmate) in even one session counts as non-cohesive:
-# with your cabin one block but alone the next is the failure the metric names. The strict "every
-# session" rule runs well below the old "any session" version — recalibrated 2026-07-06 against
-# seeded 8-cabin mock solves, which landed ~0.44–0.68 (seed 0 = 0.59). Band brackets that normal
-# range; a fully-cohesive roster (everyone with a cabinmate in both sessions → 1.0) expands past
-# the high anchor rather than the band pinning there.
-COHESION_LOW_ANCHOR = 0.4
-COHESION_HIGH_ANCHOR = 0.7
+# Cohesion — fraction of camper×session slots that are *shared* (same-cabin cohort ≥ 2, i.e. the
+# camper has a cabinmate in that session). This is the same camper×session grain the detail
+# histogram plots, so one solo session counts once, not as a whole stranded camper. Re-derived
+# 2026-07-06 at this per-session grain against seeded 8-cabin mock solves, which landed ~0.69–0.83
+# (seed 0 = 0.77) — higher and tighter than the old per-camper "every session" rollup (~0.44–0.68)
+# because half-stranded campers no longer fail whole. Band brackets that normal range; a fully-
+# cohesive roster (every session shared → 1.0) expands past the high anchor rather than pinning there.
+COHESION_LOW_ANCHOR = 0.65
+COHESION_HIGH_ANCHOR = 0.85
 
 # A camper "shares" a session if their same-cabin cohort there is ≥ 2 (self + a cabinmate).
 # Solo (self only) is cohort size 1.
@@ -152,16 +152,15 @@ def _cabin_session_cohorts(assigned: pd.DataFrame) -> pd.DataFrame:
 
 
 def _cohesion_metric(assigned: pd.DataFrame) -> QualityMetric:
-    """The Cohesion metric — "how many campers are with a cabinmate in every session?".
+    """The Cohesion metric — "how often is a camper with a cabinmate in a session?".
 
-    Rollup is the fraction of campers who are *never* stranded: a camper counts as cohesive
-    only when the smallest same-cabin cohort they sit in — across all their sessions — is still
-    ≥ 2, i.e. they have a cabinmate in every session. The detail keeps the finer camper×session
-    grain so the histogram shows each stranding, not just each stranded camper.
+    Rollup is the fraction of camper×session slots that are *shared*: a slot counts as cohesive
+    when the camper's same-cabin cohort there is ≥ 2 (self + a cabinmate). This is the same
+    camper×session grain the detail histogram plots, so the rollup and the drill-down count the
+    same thing — one solo session is one stranding, not a whole stranded camper.
     """
     session_cohorts = _cabin_session_cohorts(assigned)
-    per_camper_min = session_cohorts.groupby(["cabin", "camper"], sort=False)["cohort_size"].min()
-    fraction_cohesive = (per_camper_min >= SHARED_COHORT_MIN).mean()
+    fraction_cohesive = (session_cohorts["cohort_size"] >= SHARED_COHORT_MIN).mean()
     return QualityMetric(
         name="Cohesion",
         raw_value=float(fraction_cohesive),

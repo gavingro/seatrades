@@ -201,13 +201,14 @@ The 6 Quality Metrics are meant to be **orthogonal** — mutually exclusive, col
 
 ### Cohesion
 
-**Cohesion** measures how many campers are never stranded: the fraction of campers who share a
-seatrade session (same seatrade, same block) with ≥1 cabinmate in **every** one of their sessions.
-A camper alone in even one session counts as non-cohesive — with cabinmates one block but solo the
-next is the failure the metric names. This is stricter than an earlier "shares ≥1 session" framing
-(issue #99 review): the rollup is still per-camper, but the detail view is the finer **camper×session**
-grain (one row per camper per session), so the drill-down histogram counts each *stranding* by
-cabin-group size and block, not just each stranded camper.
+**Cohesion** measures how often a camper has company: the fraction of **camper×session slots**
+that are *shared* — the camper's same-cabin cohort in that (block, seatrade) session is ≥2 (self +
+a cabinmate). Counted per session, so a camper alone in one of their two blocks loses only that one
+session, not their whole self. The rollup sits at the **same camper×session grain as the detail**
+histogram (one row per camper per session), so the summary number and the drill-down count the same
+thing: each *stranding* by cabin-group size and block. This per-session grain superseded an earlier
+per-camper "every session" rollup (too harsh, and mismatched its own detail chart), which had itself
+tightened the original "shares ≥1 session" framing (issue #99 review).
 
 ### Fairness Within / Between Cabins
 
