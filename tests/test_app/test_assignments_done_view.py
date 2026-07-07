@@ -102,6 +102,15 @@ class TestDoneView:
         assert log_areas, "solver log not shown in the done view"
         assert log_areas[0].value == at.session_state["solver_log"]
 
+    def test_success_banner_shows_optimality_percent(self, solved_solution):
+        """The green verdict banner carries the solver-optimality % inline; the donut itself
+        moved down beside the Schedule Quality Overview."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        assert not at.exception
+        banner = " ".join(s.value for s in at.success)
+        assert "% optimal" in banner
+
     def test_schedule_quality_defaults_to_overview(self, solved_solution):
         """The Schedule Quality section opens on the Overview summary plot, no error."""
         at = _seed_done_view(solved_solution, success=True)
@@ -112,16 +121,22 @@ class TestDoneView:
 
     def test_schedule_quality_documents_the_report_card(self, solved_solution):
         """Firm requirement: the Schedule Quality section explains itself for a non-technical
-        Captain — a caption that heads off the "100 = perfect" misread, plus a plain-language
-        glossary defining the areas and the "pick rank" term and de-jargoned fairness labels.
+        Captain — a rendered caption that heads off the "100 = perfect" misread, plus a plain-
+        language glossary (wired into the Area selector's help tooltip) defining the areas, the
+        "pick rank" term, and the de-jargoned fairness labels.
         """
+        from app.tabs.assignments_tab import _QUALITY_GLOSSARY
+
         at = _seed_done_view(solved_solution, success=True)
 
         assert not at.exception
-        text = " ".join(el.value for el in [*at.markdown, *at.caption])
-        assert "mean perfect" in text  # the caption heads off "it says 100 so it's perfect"
-        assert "pick rank" in text  # CPR explained in plain terms
-        assert "Within-cabin fairness" in text  # de-jargoned fairness label is defined
+        caption_text = " ".join(el.value for el in [*at.markdown, *at.caption])
+        # The rendered caption heads off the "it's a grade / 100 = perfect" misread.
+        assert "no single overall score" in caption_text
+        assert "not exactly a grade or a percentage" in caption_text
+        # The glossary (surfaced on the Area selector's help) defines the terms in plain language.
+        assert "pick rank" in _QUALITY_GLOSSARY  # CPR explained plainly
+        assert "Within-cabin fairness" in _QUALITY_GLOSSARY  # de-jargoned fairness label defined
 
     def test_switching_to_preference_detail_does_not_crash(self, solved_solution):
         """Selecting Preference swaps the slot to the detail chart without error."""

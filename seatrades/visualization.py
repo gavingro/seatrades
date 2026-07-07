@@ -126,7 +126,14 @@ def display_quality_summary(scorecard: Scorecard) -> alt.Chart:
         .mark_area(opacity=0.5, line=True, point=True)
         .encode(
             x=alt.X("label:N", sort=labels_in_order, title=None),
-            y=alt.Y("normalized:Q", scale=alt.Scale(domain=[0, 100]), title="Quality (up is good)"),
+            # Bare y-axis (no title, ticks, or labels): the 0–100 position is a normalized
+            # comparison aid, not a number to read off — "higher is better" is said in the caption.
+            y=alt.Y(
+                "normalized:Q",
+                scale=alt.Scale(domain=[0, 100]),
+                title="",
+                axis=alt.Axis(labels=False, ticks=False),
+            ),
             tooltip=[
                 alt.Tooltip("label:N", title="Metric"),
                 alt.Tooltip("raw_display:N", title="Measured value"),
@@ -158,9 +165,18 @@ def display_preference_detail(metric: QualityMetric) -> alt.Chart:
                 scale=alt.Scale(domain=CPR_CAUSE_ORDER, range=CPR_CAUSE_RANGE),
                 legend=alt.Legend(title="Which two picks (block 1 + block 2)"),
             ),
-            tooltip=[alt.Tooltip("cause:N", title="Which picks"), alt.Tooltip("count():Q", title="Campers")],
+            tooltip=[
+                alt.Tooltip("cause:N", title="Which picks"),
+                alt.Tooltip("count():Q", title="Campers"),
+            ],
         )
-        .properties(title={"text": "Preference — campers who got good picks", "fontSize": 20, "anchor": "start"})
+        .properties(
+            title={
+                "text": "Preference — campers who got good picks",
+                "fontSize": 20,
+                "anchor": "start",
+            }
+        )
     )
 
 
@@ -186,7 +202,13 @@ def display_cohesion_detail(metric: QualityMetric) -> alt.Chart:
                 alt.Tooltip("count():Q", title="Camper-sessions"),
             ],
         )
-        .properties(title={"text": "Cohesion — is each camper with a cabinmate?", "fontSize": 20, "anchor": "start"})
+        .properties(
+            title={
+                "text": "Cohesion — is each camper with a cabinmate?",
+                "fontSize": 20,
+                "anchor": "start",
+            }
+        )
     )
 
 
@@ -207,7 +229,13 @@ def display_sparsity_detail(metric: QualityMetric) -> alt.Chart:
                 alt.Tooltip("count():Q", title="Running seatrades"),
             ],
         )
-        .properties(title={"text": "Sparsity — seatrades to staff per block", "fontSize": 20, "anchor": "start"})
+        .properties(
+            title={
+                "text": "Sparsity — seatrades to staff per block",
+                "fontSize": 20,
+                "anchor": "start",
+            }
+        )
     )
 
 
@@ -237,7 +265,13 @@ def display_age_spread_detail(metric: QualityMetric) -> alt.Chart:
                 alt.Tooltip("spread:O", title="Age range"),
             ],
         )
-        .properties(title={"text": "Age spread — age range per seatrade", "fontSize": 20, "anchor": "start"})
+        .properties(
+            title={
+                "text": "Age spread — age range per seatrade",
+                "fontSize": 20,
+                "anchor": "start",
+            }
+        )
     )
 
 

@@ -37,14 +37,15 @@ _POLL_INTERVAL_SECONDS = 2
 # non-technical Captain can decode every area and term without leaving the page. Kept here
 # (presentation copy) rather than in the scoring/visualization service layer.
 _QUALITY_GLOSSARY = """
-Each camper ranks four seatrades and is assigned two of them. Their **pick rank** combines those
-two picks: **3 = both top picks (best)**, **6 = the worst still allowed**. The areas below use it.
+**What do these scores mean?**
 
-- **Preference** — how many campers got *good picks* (their #1 choice in at least one of their two
+**Overview** compares all six areas at once; pick an area to drill into a detailed display:
+
+- **Preference** — the percentage of campers that got *good picks* (their #1 choice in at least one of their two
   seatrades).
-- **Cohesion** — how many campers are with a cabinmate in *every* seatrade session. A camper left
+- **Cohesion** — the percentage of campers that are with a cabinmate in *every* seatrade session. A camper left
   alone in even one session counts against it.
-- **Sparsity** — how many different seatrades you have to staff. *Fewer is better* — less staffing
+- **Sparsity** — the total count of seatrades you have to staff. *Fewer is better* — less staffing
   load.
 - **Age spread** — how close in age the campers in each seatrade are. *Age range = oldest minus
   youngest* (0 = everyone the same age; 16- and 17-year-olds together = 1).
@@ -52,8 +53,14 @@ two picks: **3 = both top picks (best)**, **6 = the worst still allowed**. The a
   camper get a raw deal?
 - **Between-cabin fairness** — across cabins, did some whole cabins get better picks than others?
 
-Every area is framed so **higher is better for campers**. *Fairness* areas score high when schedules
-are *even*, even if they are evenly mediocre — Preference is what shows the overall level.
+Every area is framed so **higher is better**. *Fairness* areas score high when schedules
+are *even*, even if they are evenly mediocre. Preference is what shows the overall level,
+and is probably the most important score here.
+
+One glossary term: Each camper ranks four seatrades and is assigned two of them. Their **pick rank** combines those
+two picks to range from: **3 = seatrade pick number 1 and number 2 (best)**, **6 = pick 2 and 4 (worst)**.
+The preference and fairness areas above reference this "**pick rank**" value.
+
 """
 
 
@@ -63,7 +70,9 @@ class _CompletedRun(Protocol):
     def result(self) -> Optional[AssignmentSolution]: ...
 
 
-def solve_view_state(session_state: MutableMapping[Any, Any]) -> Literal["idle", "running", "done"]:
+def solve_view_state(
+    session_state: MutableMapping[Any, Any],
+) -> Literal["idle", "running", "done"]:
     """Which assignments view to render, derived purely from session_state.
 
     "running" while a SolveRun is active (takes precedence over a lingering prior
@@ -118,13 +127,9 @@ class AssignmentsTab:
             else:
                 solution = st.session_state["assigned_solution"]
 
-                # Verdict — did it work? Confirmation + the Solver Optimality headline.
-                st.success("Every camper is assigned.")
-                st.altair_chart(display_optimality_donut(solution.status.optimality))
-                st.caption(
-                    "This measures the *solver's* proof-of-optimum (how close it got to the "
-                    "mathematical optimum), **not** how good the schedule is for campers."
-                )
+                # Verdict — did it work? Confirmation + the solver-optimality % inline. The
+                # Solver Optimality donut itself now lives beside the Overview summary below.
+                st.success(f"Every camper is assigned — {round(solution.status.optimality * 100)}% optimal.")
 
                 # The Schedule — here's the artifact, before any report card.
                 st.divider()
@@ -139,28 +144,40 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Schedule Quality")
                 st.caption(
-                    "How good is this schedule *for campers*? Each area below is placed within its "
-                    "normal range for this camp — a **higher bar is better**, but it's not a grade or "
-                    "a percentage, and 100 does **not** mean perfect. The six areas are kept separate "
-                    "on purpose (a schedule can be great on one and weak on another), so there is no "
-                    "single overall score. This is separate from *Solver Optimality* above."
+                    "How good is this schedule in practice? Each area below is placed within its "
+                    "normal range for this camp. A **visually higher line is better**, but it's not exactly a grade or "
+                    "a percentage, we've just normalized the axis to values we've found are helpful to compare."
                 )
-                with st.expander("What do these mean?"):
-                    st.markdown(_QUALITY_GLOSSARY)
                 scorecard = score(solution)
                 # Options are single-sourced from the scorecard; a unit test asserts every metric
                 # also has a detail chart, so a selectable area can never lack a drill-down.
-                quality_options = ["Overview", *(metric.name for metric in scorecard.metrics)]
+                quality_options = [
+                    "Overview",
+                    *(metric.name for metric in scorecard.metrics),
+                ]
                 quality_view = st.selectbox(
                     "Area",
                     options=quality_options,
                     index=0,
                     format_func=metric_label,
-                    help="Overview compares all six areas at once; pick an area to drill into its detail chart.",
+                    help=_QUALITY_GLOSSARY,
                     key="quality_view_selector",
                 )
                 if quality_view == "Overview":
-                    st.altair_chart(display_quality_summary(scorecard))
+                    # Overview shows the six-area summary alongside the Solver Optimality donut,
+                    # both framed as at-a-glance "summary" artifacts of the solve.
+                    optimality_col, summary_col = st.columns([1, 2])
+                    with optimality_col:
+                        st.altair_chart(display_optimality_donut(solution.status.optimality))
+                        st.caption(
+                            "*Solver Optimality* is how close the solver proved it got to the mathematical optimum."
+                        )
+                    with summary_col:
+                        st.altair_chart(display_quality_summary(scorecard))
+                        st.caption(
+                            "*Schedule Quality* is how well the schedule supports camp goals.\n "
+                            "Each score is on it's own scale for ease of display."
+                        )
                 else:
                     st.altair_chart(display_metric_detail(scorecard.metric(quality_view)))
 
@@ -170,7 +187,10 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Assignment Data")
 
-                view_options: list[Literal["By Camper", "By Seatrade"]] = ["By Camper", "By Seatrade"]
+                view_options: list[Literal["By Camper", "By Seatrade"]] = [
+                    "By Camper",
+                    "By Seatrade",
+                ]
                 selected_view = st.selectbox(
                     "View",
                     options=view_options,
@@ -186,7 +206,12 @@ class AssignmentsTab:
             solver_log = st.session_state.get("solver_log")
             if solver_log:
                 with st.expander("Show technical details (solver logs)"):
-                    st.text_area("Solver Logs", value=solver_log, height=300, key="final_solver_logs")
+                    st.text_area(
+                        "Solver Logs",
+                        value=solver_log,
+                        height=300,
+                        key="final_solver_logs",
+                    )
 
 
 @st.dialog("Welcome to the Keats Seatrade Scheduler", width="large")
@@ -194,8 +219,7 @@ def _generate_intro_dialogue() -> None:
     """
     Generate intro dialog if not seen already.
     """
-    st.markdown(
-        """
+    st.markdown("""
     This web application is designed to help the **Scheduling Captain** to optimally assign
     campers to seatrades, balancing cabin cohesion, camper preferences, and seatrade
     availability.
@@ -210,8 +234,7 @@ def _generate_intro_dialogue() -> None:
 
     **Example mock data is already loaded** so you can try assigning seatrades right away — it's
     only a sample, and you can replace it with your own week any time. There are 3 steps to do that:
-    """
-    )
+    """)
     cols = st.columns(3)
     with cols[0]:
         st.info(

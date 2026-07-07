@@ -50,9 +50,9 @@ class TestAppSmoke:
         assert at.session_state["optimization_success"] is True
         assert at.success, "expected a success message after solving"
 
-        # The done view renders as ordered sections (Verdict + donut → Schedule → Export).
-        # AppTest can't introspect Altair contents, so no-exception above is the donut's
-        # smoke coverage; here we assert the new section headers landed.
+        # The done view renders as ordered sections (Verdict → Schedule → Schedule Quality
+        # (summary + optimality donut) → Export). AppTest can't introspect Altair contents, so
+        # no-exception above is the charts' smoke coverage; here we assert the section headers landed.
         subheaders = [s.value for s in at.subheader]
         assert "The Schedule" in subheaders
         assert "Assignment Data" in subheaders
