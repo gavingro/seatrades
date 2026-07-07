@@ -183,11 +183,13 @@ class TestDisplayCohesionDetail:
         spec = display_cohesion_detail(_cohesion_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["y"]["aggregate"] == "count"
 
-    def test_separated_by_block_without_a_good_bad_colour(self, sample_assignment_solution):
-        """Blocks are split on the neutral detail stacking channel + tooltip, NOT a colour scale —
-        a diverging block colour falsely reads as 'good' vs 'bad' blocks (#99 review)."""
+    def test_coloured_red_green_by_alone_not_by_block(self, sample_assignment_solution):
+        """Colour reads the *quality* (alone = red, with a cabinmate = green), NOT the block — a
+        block colour falsely reads as 'good' vs 'bad' blocks. Blocks still ride detail + tooltip."""
         spec = display_cohesion_detail(_cohesion_metric(sample_assignment_solution)).to_dict()
-        assert "color" not in spec["encoding"]
+        assert spec["encoding"]["color"]["field"] == "togetherness"
+        alone_index = spec["encoding"]["color"]["scale"]["domain"].index("Alone")
+        assert spec["encoding"]["color"]["scale"]["range"][alone_index] == "#d73027"
         detail_fields = [entry.get("field") for entry in spec["encoding"]["detail"]]
         assert "block" in detail_fields
         tooltip_fields = [entry.get("field") for entry in spec["encoding"]["tooltip"]]
@@ -223,6 +225,14 @@ class TestDisplayAgeSpreadDetail:
         tooltip_fields = [entry.get("field") for entry in spec["encoding"]["tooltip"]]
         assert "seatrade" in tooltip_fields
         assert "block" in tooltip_fields
+
+    def test_coloured_red_green_by_range_band(self, sample_assignment_solution):
+        """Colour is a red↔green band on the range: 0–1 yr green, 2 yr yellow, 3+ yr red."""
+        spec = display_age_spread_detail(_age_spread_metric(sample_assignment_solution)).to_dict()
+        assert spec["encoding"]["color"]["field"] == "band"
+        scale = spec["encoding"]["color"]["scale"]
+        by_band = dict(zip(scale["domain"], scale["range"], strict=True))
+        assert by_band == {"0–1 yr": "#1a9850", "2 yr": "#fee08b", "3+ yr": "#d73027"}
 
     def test_per_session_marks_stack_into_the_count(self, sample_assignment_solution):
         """The per-session grouping (seatrade x block) must ride a stacking channel (detail),

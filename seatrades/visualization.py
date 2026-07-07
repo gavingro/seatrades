@@ -55,6 +55,17 @@ SATISFACTION_RANGE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"]
 # Neutral fill for cells a camper is not assigned, so the grid stays visible on a dark app theme.
 UNASSIGNED_COLOR = "#99C2DF"
 
+# Cohesion detail: red↔green on the *quality* (not the block) — a camper alone in a session is bad
+# (red), with any cabinmate is good (green). Blocks still ride ``detail`` so they split on the
+# tooltip; the colour just reads the x-axis level so the eye lands on the right conclusion.
+COHESION_TOGETHERNESS_ORDER = ["Alone", "With a cabinmate"]
+COHESION_TOGETHERNESS_RANGE = ["#d73027", "#1a9850"]
+
+# Age spread detail: red↔green diverging on the range — 0–1 yr is tight (green), 2 yr is a stretch
+# (yellow), 3 yr or wider is bad (red). Ordinal buckets, so a discrete scale, not a gradient.
+AGE_SPREAD_BAND_ORDER = ["0–1 yr", "2 yr", "3+ yr"]
+AGE_SPREAD_BAND_RANGE = ["#1a9850", "#fee08b", "#d73027"]
+
 # Optimality donut: filled arc (proof-of-optimum) vs. the remaining gap track.
 OPTIMALITY_FILL_COLOR = SATISFACTION_RANGE[0]  # reuse the top-pick green — "as good as proven"
 OPTIMALITY_TRACK_COLOR = "#3a3f44"  # muted track that reads on the dark app theme
@@ -184,19 +195,25 @@ def display_cohesion_detail(metric: QualityMetric) -> alt.Chart:
     """The Cohesion drill-down: how many camper-sessions landed at each cabin-group size.
 
     x = how many cabinmates a camper is with in a session, counting themselves (1 = solo/
-    stranded, 2 = with one cabinmate, …); y = count of camper-sessions. Good-vs-bad lives on the
-    x-axis (alone = bad), so blocks are *not* colour-coded — a colour scale here reads as "some
-    blocks are good, some bad", which is wrong. Instead each bar is split per block on the neutral
-    ``detail`` stacking channel, so the four blocks stay separate on hover without implying a
-    ranking. ``metric.detail`` is one row per (camper, session), so the solo (x = 1) bar counts
-    every stranding, not just every stranded camper — the level the rollup penalises.
+    stranded, 2 = with one cabinmate, …); y = count of camper-sessions. Colour reads the *quality*,
+    not the block: a camper alone (x = 1) is red, with any cabinmate is green — the good-vs-bad the
+    rollup penalises. Blocks are *not* colour-coded (a block colour falsely reads as "some blocks
+    good, some bad"); they still ride the neutral ``detail`` stacking channel so the four blocks
+    stay separate on hover. ``metric.detail`` is one row per (camper, session), so the solo bar
+    counts every stranding, not just every stranded camper.
     """
     return (
         alt.Chart(metric.detail)
+        .transform_calculate(togetherness="datum.cohort_size === 1 ? 'Alone' : 'With a cabinmate'")
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
             x=alt.X("cohort_size:O", title="Cabinmates together in a session (1 = alone)"),
             y=alt.Y("count():Q", title="Camper-sessions"),
+            color=alt.Color(
+                "togetherness:N",
+                scale=alt.Scale(domain=COHESION_TOGETHERNESS_ORDER, range=COHESION_TOGETHERNESS_RANGE),
+                legend=alt.Legend(title="Is the camper with a cabinmate?"),
+            ),
             detail=["block:N"],
             tooltip=[
                 alt.Tooltip("cohort_size:O", title="Cabinmates together"),
@@ -253,13 +270,21 @@ def display_age_spread_detail(metric: QualityMetric) -> alt.Chart:
     pulled into the ``count()`` groupby (one group per session) but tooltip does not stack, so
     the fields there alone would overplot every session at height 1 and no bar would reach its
     true count.
+
+    Colour is a red↔green diverging band on the range itself: 0–1 yr green, 2 yr yellow, 3+ yr red.
     """
     return (
         alt.Chart(metric.detail)
+        .transform_calculate(band="datum.spread <= 1 ? '0–1 yr' : (datum.spread === 2 ? '2 yr' : '3+ yr')")
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
             x=alt.X("spread:O", title="Age range: oldest − youngest (0 = all the same age)"),
             y=alt.Y("count():Q", title="Seatrades"),
+            color=alt.Color(
+                "band:N",
+                scale=alt.Scale(domain=AGE_SPREAD_BAND_ORDER, range=AGE_SPREAD_BAND_RANGE),
+                legend=alt.Legend(title="Age range"),
+            ),
             detail=["seatrade:N", "block:N"],
             tooltip=[
                 alt.Tooltip("seatrade:N", title="Seatrade"),
