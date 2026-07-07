@@ -144,9 +144,8 @@ class AssignmentsTab:
                 st.divider()
                 st.subheader("Schedule Quality")
                 st.caption(
-                    "How good is this schedule in practice? Each area below is placed within its "
-                    "normal range for this camp. A **visually higher line is better**, but it's not exactly a grade or "
-                    "a percentage, we've just normalized the axis to values we've found are helpful to compare."
+                    "How good is this schedule in practice? View the quality of the generated "
+                    "schedule across a range of independent scheduling goals."
                 )
                 scorecard = score(solution)
                 # Options are single-sourced from the scorecard; a unit test asserts every metric
