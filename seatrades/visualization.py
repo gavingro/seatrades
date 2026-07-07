@@ -274,7 +274,10 @@ def display_sparsity_detail(metric: QualityMetric) -> alt.Chart:
     """
     return (
         alt.Chart(metric.detail)
-        .transform_calculate(status="datum.assigned ? 'Assigned' : 'Not assigned'")
+        .transform_calculate(
+            status="datum.assigned ? 'Assigned' : 'Not assigned'",
+            stack_order="datum.assigned ? 0 : 1",
+        )
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
             x=alt.X("block:N", title="Block"),
@@ -284,6 +287,8 @@ def display_sparsity_detail(metric: QualityMetric) -> alt.Chart:
                 scale=alt.Scale(domain=SPARSITY_STATUS_ORDER, range=SPARSITY_STATUS_RANGE),
                 legend=alt.Legend(title="Seatrade slot"),
             ),
+            # Lowest order sits at the baseline: Assigned (0) below, Not assigned (1) on top.
+            order=alt.Order("stack_order:Q"),
             detail=["seatrade:N"],
             tooltip=[
                 alt.Tooltip("seatrade:N", title="Seatrade"),

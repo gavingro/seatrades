@@ -228,6 +228,15 @@ class TestDisplaySparsityDetail:
         detail_fields = [entry.get("field") for entry in spec["encoding"]["detail"]]
         assert "seatrade" in detail_fields
 
+    def test_assigned_stacks_below_not_assigned(self, sample_assignment_solution):
+        """Stack order puts Assigned (blue) at the baseline and Not assigned (grey) on top —
+        lowest order value sits at the bottom, and the calc gives Assigned 0, else 1."""
+        chart = display_sparsity_detail(_sparsity_metric(sample_assignment_solution))
+        spec = chart.to_dict()
+        assert spec["encoding"]["order"]["field"] == "stack_order"
+        calc = {t["as"]: t["calculate"] for t in spec["transform"] if "calculate" in t}
+        assert calc["stack_order"] == "datum.assigned ? 0 : 1"
+
 
 @pytest.fixture
 def fleet_assignments_df():
