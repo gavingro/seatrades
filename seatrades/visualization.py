@@ -467,7 +467,7 @@ def _rank_text(preference: int) -> str:
     return str(preference)
 
 
-def display_fleet_assignments(df: pd.DataFrame) -> alt.Chart:
+def display_fleet_assignments(fleet_grid: pd.DataFrame) -> alt.Chart:
     """Render the Cabin × Block fleet-placement overview as a neutral presence heatmap.
 
     Takes a ``wrangle_fleet_assignments`` frame (``cabin``, ``block``, ``state``). Each cell is
@@ -477,11 +477,11 @@ def display_fleet_assignments(df: pd.DataFrame) -> alt.Chart:
     Carries no chart title: the app renders an ``st.subheader("Fleet Assignments")`` directly
     above it, so a same-text chart title would double the heading.
     """
-    df = df.copy()
-    df["block"] = df["block"].map(block_label)
+    fleet_grid = fleet_grid.copy()
+    fleet_grid["block"] = fleet_grid["block"].map(block_label)
     block_order = [block_label(block) for block in BLOCKS]
     return (
-        alt.Chart(df)
+        alt.Chart(fleet_grid)
         .mark_rect(stroke="white", strokeWidth=0.5)
         .encode(
             x=alt.X("block:N", title=None, sort=block_order),
