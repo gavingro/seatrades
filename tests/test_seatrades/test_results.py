@@ -1,11 +1,16 @@
 """Tests for seatrades/results.py."""
 
+import dataclasses
+
 import pandas as pd
+import pytest
 
 from seatrades.results import (
     SolverState,
     SolverStatus,
     wrangle_assignments_to_longform,
+    wrangle_fleet_assignments,
+    wrangle_seatrade_staffing,
 )
 
 
@@ -149,3 +154,107 @@ class TestWrangleAssignmentsToLongform:
         result = wrangle_assignments_to_longform(sample_assignment_solution)
         assigned = result[result["assignment"] == 1.0]
         assert set(assigned["seatrade"].unique()) == {"Archery", "Sailing", "Climbing"}
+
+
+@pytest.fixture
+def fleet_split_solution(sample_assignment_solution):
+    """A 4-block solution with a real fleet split, so both states appear.
+
+    Cabin1 (campers 0,1) is on Fleet 1 — a seatrade in blocks 1a & 2a, Fleet Time in 1b & 2b.
+    Cabin2 (campers 2,3) is on Fleet 2 — a seatrade in blocks 1b & 2b, Fleet Time in 1a & 2a.
+    """
+    camper_ids = pd.Index([0, 1, 2, 3], name="camper_id")
+    seatrades_full = [f"{block}_{trade}" for block in ["1a", "1b", "2a", "2b"] for trade in ["Archery", "Sailing"]]
+    assignments = pd.DataFrame(0.0, index=camper_ids, columns=seatrades_full)
+    assignments.loc[0, ["1a_Archery", "2a_Archery"]] = 1.0
+    assignments.loc[1, ["1a_Sailing", "2a_Sailing"]] = 1.0
+    assignments.loc[2, ["1b_Archery", "2b_Archery"]] = 1.0
+    assignments.loc[3, ["1b_Sailing", "2b_Sailing"]] = 1.0
+    return dataclasses.replace(
+        sample_assignment_solution,
+        assignments=assignments,
+        seatrades_full=seatrades_full,
+    )
+
+
+class TestWrangleFleetAssignments:
+    def test_one_row_per_cabin_block_over_solution_blocks(self, sample_assignment_solution):
+        # sample_assignment_solution only spans blocks 1a and 2b, so the grid derives
+        # exactly those two blocks — cabins × present blocks, no phantom rows.
+        result = wrangle_fleet_assignments(sample_assignment_solution)
+        assert set(result.columns) >= {"cabin", "block", "state"}
+        assert len(result) == 2 * 2  # 2 cabins × 2 present blocks
+        assert set(result["cabin"]) == {"Cabin1", "Cabin2"}
+        assert set(result["block"]) == {"1a", "2b"}
+
+    def test_spans_all_four_blocks_when_solution_does(self, fleet_split_solution):
+        result = wrangle_fleet_assignments(fleet_split_solution)
+        assert len(result) == 2 * 4  # 2 cabins × 4 blocks
+        assert list(result["block"].unique()) == ["1a", "1b", "2a", "2b"]  # canonical order
+
+    def test_cabin_on_a_seatrade_reads_seatrade(self, fleet_split_solution):
+        result = wrangle_fleet_assignments(fleet_split_solution)
+        cell = result[(result["cabin"] == "Cabin1") & (result["block"] == "1a")]
+        assert cell["state"].item() == "Seatrade"
+
+    def test_cabin_with_no_assignment_reads_fleet_time(self, fleet_split_solution):
+        # Cabin1 is on Fleet 1, so block 1b (a Fleet 2 slot) is Fleet Time for it.
+        result = wrangle_fleet_assignments(fleet_split_solution)
+        cell = result[(result["cabin"] == "Cabin1") & (result["block"] == "1b")]
+        assert cell["state"].item() == "Fleet Time"
+
+
+@pytest.fixture
+def zero_uptake_solution(sample_assignment_solution):
+    """The sample plus a Kayaking offering nobody picked — an all-zero column in each block.
+
+    Kayaking is in ``seatrades_full`` (offered in the setup) but carries no assignment, so it
+    is the zero-uptake case: a seatrade with nobody to staff it, a full ``Not offered`` row.
+    """
+    assignments = sample_assignment_solution.assignments.copy()
+    assignments["1a_Kayaking"] = 0.0
+    assignments["2b_Kayaking"] = 0.0
+    seatrades_full = sample_assignment_solution.seatrades_full + ["1a_Kayaking", "2b_Kayaking"]
+    return dataclasses.replace(
+        sample_assignment_solution,
+        assignments=assignments,
+        seatrades_full=seatrades_full,
+    )
+
+
+class TestWrangleSeatradeStaffing:
+    def test_one_row_per_seatrade_block_over_solution_blocks(self, sample_assignment_solution):
+        # sample spans blocks 1a and 2b with 3 seatrades (Archery, Sailing, Climbing),
+        # so the grid is those 3 seatrades × the 2 present blocks — no phantom rows.
+        result = wrangle_seatrade_staffing(sample_assignment_solution)
+        assert set(result.columns) >= {"seatrade", "block", "state"}
+        assert len(result) == 3 * 2  # 3 seatrades × 2 present blocks
+        assert set(result["seatrade"]) == {"Archery", "Sailing", "Climbing"}
+        assert set(result["block"]) == {"1a", "2b"}
+
+    def test_seatrade_running_a_block_reads_running(self, sample_assignment_solution):
+        # Archery is picked in block 1a (campers Alice & Dave), so it runs there.
+        result = wrangle_seatrade_staffing(sample_assignment_solution)
+        cell = result[(result["seatrade"] == "Archery") & (result["block"] == "1a")]
+        assert cell["state"].item() == "Running"
+
+    def test_seatrade_with_no_uptake_reads_not_offered(self, zero_uptake_solution):
+        # Kayaking is offered but nobody picked it — Not offered in every block.
+        result = wrangle_seatrade_staffing(zero_uptake_solution)
+        kayaking = result[result["seatrade"] == "Kayaking"]
+        assert (kayaking["state"] == "Not offered").all()
+
+    def test_zero_uptake_seatrade_is_a_full_not_offered_row(self, zero_uptake_solution):
+        # Every offered seatrade gets a row even at zero uptake, surfacing nobody-to-staff.
+        result = wrangle_seatrade_staffing(zero_uptake_solution)
+        assert "Kayaking" in set(result["seatrade"])
+        kayaking = result[result["seatrade"] == "Kayaking"]
+        assert len(kayaking) == 2  # both present blocks, all Not offered
+
+    def test_rows_follow_seatrades_full_order_not_alphabetical(self, sample_assignment_solution):
+        # display_seatrade_staffing derives its y-axis sort from this row order, so the wrangler
+        # must emit seatrades in seatrades_full order. The sample order is Archery, Sailing,
+        # Climbing — deliberately NOT alphabetical (Archery, Climbing, Sailing) — so this pins
+        # the contract: a future regroup/sort that reordered rows would flip the view's y-axis.
+        result = wrangle_seatrade_staffing(sample_assignment_solution)
+        assert list(dict.fromkeys(result["seatrade"])) == ["Archery", "Sailing", "Climbing"]

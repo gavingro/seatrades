@@ -3,22 +3,27 @@
 import dataclasses
 import json
 
+import pandas as pd
 import pytest
 
 from seatrades.results import SolverState, SolverStatus
 from seatrades.scoring import score
 from seatrades.visualization import (
     _DETAIL_BUILDERS,
+    FLEET_STATE_RANGE,
     SATISFACTION_RANGE,
+    STAFFING_STATE_RANGE,
     display_age_spread_detail,
     display_assignments,
     display_cohesion_detail,
     display_fairness_between_detail,
     display_fairness_within_detail,
+    display_fleet_assignments,
     display_metric_detail,
     display_optimality_donut,
     display_preference_detail,
     display_quality_summary,
+    display_seatrade_staffing,
     display_sparsity_detail,
     metric_label,
     normalize_to_band,
@@ -206,6 +211,132 @@ class TestDisplaySparsityDetail:
     def test_y_is_a_running_seatrade_count(self, sample_assignment_solution):
         spec = display_sparsity_detail(_sparsity_metric(sample_assignment_solution)).to_dict()
         assert spec["encoding"]["y"]["aggregate"] == "count"
+
+
+@pytest.fixture
+def fleet_assignments_df():
+    """A Cabin × Block presence grid as ``wrangle_fleet_assignments`` emits it."""
+    return pd.DataFrame(
+        {
+            "cabin": ["Cabin1", "Cabin1", "Cabin2", "Cabin2"],
+            "block": ["1a", "1b", "1a", "1b"],
+            "state": ["Seatrade", "Fleet Time", "Fleet Time", "Seatrade"],
+        }
+    )
+
+
+class TestDisplayFleetAssignments:
+    """The Fleet Assignments overview: Cabin × Block presence heatmap."""
+
+    def test_y_encodes_cabin(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert spec["encoding"]["y"]["field"] == "cabin"
+
+    def test_x_encodes_block(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert spec["encoding"]["x"]["field"] == "block"
+
+    def test_color_encodes_state(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert spec["encoding"]["color"]["field"] == "state"
+
+    def test_color_domain_is_the_two_states(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert spec["encoding"]["color"]["scale"]["domain"] == ["Seatrade", "Fleet Time"]
+
+    def test_palette_is_neutral_not_satisfaction(self, fleet_assignments_df):
+        # Presence, not goodness — must not borrow the green→red satisfaction scale.
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        color_range = spec["encoding"]["color"]["scale"]["range"]
+        assert color_range == FLEET_STATE_RANGE
+        assert color_range != SATISFACTION_RANGE
+
+    def test_block_axis_uses_decoded_labels(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        rows = spec["data"].get("values") or spec["datasets"][spec["data"]["name"]]
+        block_values = {row["block"] for row in rows}
+        assert block_values == {"1st·AM", "1st·PM"}
+
+    def test_tooltip_carries_cabin_block_state(self, fleet_assignments_df):
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        tooltip_fields = [entry.get("field") for entry in spec["encoding"]["tooltip"]]
+        assert {"cabin", "block", "state"} <= set(tooltip_fields)
+
+    def test_no_chart_title_so_the_app_subheader_owns_the_heading(self, fleet_assignments_df):
+        # The app renders st.subheader("Fleet Assignments") directly above this chart. A
+        # chart-level title of the same text would double the heading (unlike the master grid,
+        # which self-titles because it has no subheader). The subheader owns the heading.
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert "title" not in spec
+
+
+@pytest.fixture
+def seatrade_staffing_df():
+    """A Seatrade × Block staffing grid as ``wrangle_seatrade_staffing`` emits it."""
+    return pd.DataFrame(
+        {
+            "seatrade": ["Archery", "Archery", "Sailing", "Sailing"],
+            "block": ["1a", "1b", "1a", "1b"],
+            "state": ["Running", "Not offered", "Not offered", "Running"],
+        }
+    )
+
+
+class TestDisplaySeatradeStaffing:
+    """The Seatrade Staffing Schedule overview: Seatrade × Block presence heatmap."""
+
+    def test_y_encodes_seatrade(self, seatrade_staffing_df):
+        spec = display_seatrade_staffing(seatrade_staffing_df).to_dict()
+        assert spec["encoding"]["y"]["field"] == "seatrade"
+
+    def test_x_encodes_block(self, seatrade_staffing_df):
+        spec = display_seatrade_staffing(seatrade_staffing_df).to_dict()
+        assert spec["encoding"]["x"]["field"] == "block"
+
+    def test_color_encodes_state(self, seatrade_staffing_df):
+        spec = display_seatrade_staffing(seatrade_staffing_df).to_dict()
+        assert spec["encoding"]["color"]["field"] == "state"
+
+    def test_color_domain_is_the_two_states(self, seatrade_staffing_df):
+        spec = display_seatrade_staffing(seatrade_staffing_df).to_dict()
+        assert spec["encoding"]["color"]["scale"]["domain"] == ["Running", "Not offered"]
+
+    def test_palette_is_neutral_not_satisfaction(self, seatrade_staffing_df):
+        # Presence, not goodness — must not borrow the green→red satisfaction scale.
+        spec = display_seatrade_staffing(seatrade_staffing_df).to_dict()
+        color_range = spec["encoding"]["color"]["scale"]["range"]
+        assert color_range == STAFFING_STATE_RANGE
+        assert color_range != SATISFACTION_RANGE
+
+    def test_block_axis_uses_decoded_labels(self, seatrade_staffing_df):
+        spec = display_seatrade_staffing(seatrade_staffing_df).to_dict()
+        rows = spec["data"].get("values") or spec["datasets"][spec["data"]["name"]]
+        block_values = {row["block"] for row in rows}
+        assert block_values == {"1st·AM", "1st·PM"}
+
+    def test_tooltip_carries_seatrade_block_state(self, seatrade_staffing_df):
+        spec = display_seatrade_staffing(seatrade_staffing_df).to_dict()
+        tooltip_fields = [entry.get("field") for entry in spec["encoding"]["tooltip"]]
+        assert {"seatrade", "block", "state"} <= set(tooltip_fields)
+
+    def test_no_chart_title_so_the_app_subheader_owns_the_heading(self, seatrade_staffing_df):
+        # The app renders st.subheader("Seatrade Staffing Schedule") directly above this chart;
+        # a same-text chart title would double the heading. The subheader owns the heading.
+        spec = display_seatrade_staffing(seatrade_staffing_df).to_dict()
+        assert "title" not in spec
+
+    def test_y_sort_follows_row_order_not_alphabetical(self):
+        # The wrangler emits rows in seatrades_full order; the chart must preserve it rather
+        # than let Altair re-sort the y axis alphabetically (Sailing before Archery here).
+        grid = pd.DataFrame(
+            {
+                "seatrade": ["Sailing", "Archery"],
+                "block": ["1a", "1a"],
+                "state": ["Running", "Running"],
+            }
+        )
+        spec = display_seatrade_staffing(grid).to_dict()
+        assert spec["encoding"]["y"]["sort"] == ["Sailing", "Archery"]
 
 
 class TestDisplayAgeSpreadDetail:

@@ -6,6 +6,8 @@ from typing import Optional
 
 import pandas as pd
 
+from seatrades.problem import BLOCKS, block_name, seatrade_name
+
 SEATRADE_BLOCK_COLUMNS = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
 
 UNMATCHED_PREFERENCE = 999
@@ -153,6 +155,65 @@ def wrangle_assignments_to_wideform(
     )
 
     return assigned_by_camper
+
+
+def _spanned_blocks(solution: AssignmentSolution) -> list[str]:
+    """The blocks the solution actually spans, in canonical ``BLOCKS`` order.
+
+    Derived from the distinct block prefixes of ``seatrades_full`` so the overview grids never
+    show a phantom column for a block that carries no seatrade offering this week.
+    """
+    solution_blocks = {block_name(full) for full in solution.seatrades_full}
+    return [block for block in BLOCKS if block in solution_blocks]
+
+
+def wrangle_fleet_assignments(solution: AssignmentSolution) -> pd.DataFrame:
+    """Cabin × Block presence grid: is each cabin on a Seatrade or Fleet Time each block?
+
+    One row per (cabin, block) over all ``solution.cabins`` × the blocks the solution
+    actually spans (the distinct block prefixes of ``seatrades_full``, in canonical order).
+    ``state`` is ``"Seatrade"`` if *any* of the cabin's campers is assigned a seatrade that
+    block, else ``"Fleet Time"`` — the perfect complement, never modeled in the solver.
+    """
+    longform_df = wrangle_assignments_to_longform(solution)
+    blocks = _spanned_blocks(solution)
+
+    assigned = longform_df[longform_df["assignment"] == 1.0]
+    on_seatrade = set(zip(assigned["cabin"], assigned["block"], strict=True))
+
+    rows = [
+        {"cabin": cabin, "block": block, "state": "Seatrade" if (cabin, block) in on_seatrade else "Fleet Time"}
+        for cabin in solution.cabins
+        for block in blocks
+    ]
+    return pd.DataFrame(rows, columns=["cabin", "block", "state"])
+
+
+def wrangle_seatrade_staffing(solution: AssignmentSolution) -> pd.DataFrame:
+    """Seatrade × Block staffing grid: does each seatrade run as a session each block?
+
+    One row per (seatrade, block) over all seatrades in the setup (the distinct trade names
+    of ``seatrades_full``, so a seatrade with zero uptake still gets a row) × the blocks the
+    solution actually spans. ``state`` is ``"Running"`` if *any* camper is assigned that
+    seatrade that block, else ``"Not offered"`` — so a seatrade nobody picked reads as a full
+    ``Not offered`` row, surfacing that there is nobody to staff it this week.
+
+    Rows are emitted in ``seatrades_full`` order; ``display_seatrade_staffing`` relies on this
+    row order for its y-axis sort, so a downstream regroup/sort would silently reorder the view.
+    """
+    longform_df = wrangle_assignments_to_longform(solution)
+    seatrades = list(dict.fromkeys(seatrade_name(full) for full in solution.seatrades_full))
+    blocks = _spanned_blocks(solution)
+
+    assigned = longform_df[longform_df["assignment"] == 1.0]
+    running = set(zip(assigned["seatrade"], assigned["block"], strict=True))
+
+    rows = [
+        {"seatrade": seatrade, "block": block, "state": "Running" if (seatrade, block) in running else "Not offered"}
+        for seatrade in seatrades
+        for block in blocks
+    ]
+    return pd.DataFrame(rows, columns=["seatrade", "block", "state"])
 
 
 def prepare_seatrade_leaders(longform_df: pd.DataFrame) -> pd.DataFrame:
