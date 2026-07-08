@@ -14,6 +14,7 @@ hand cbc a tty with no subclassing or monkeypatching.
 import os
 import pty
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -21,16 +22,25 @@ _READ_SIZE = 4096
 
 
 @contextmanager
-def live_cbc_log(solver_cmd, log_path: Path):
+def live_cbc_log(solver_cmd, log_path: Path) -> Iterator[None]:
     """Give ``solver_cmd``'s cbc a pty and tee its output into ``log_path`` live.
 
-    Sets ``solver_cmd.optionsDict["logPath"]`` to the pty slave fd for the duration of
-    the block, so PuLP's ``open(logPath)`` hands cbc a tty. A background reader relays the
-    pty output into ``log_path`` (unbuffered), normalizing the pty line discipline's
-    ``\\r\\n`` back to ``\\n``. On exit the reader is drained and joined, so ``log_path``
-    is complete before the caller reads it (e.g. to parse the MIP gap).
+    Sets ``solver_cmd.optionsDict["logPath"]`` to the pty slave fd for the duration of the
+    block, so PuLP's ``open(logPath)`` hands cbc a tty (the original option value is
+    restored on exit). A background reader relays the pty output into ``log_path``
+    (unbuffered), normalizing the pty line discipline's ``\\r\\n`` back to ``\\n``. On exit
+    the reader is drained and joined, so ``log_path`` is complete before the caller reads
+    it (e.g. to parse the MIP gap).
     """
     master_fd, slave_fd = pty.openpty()
+    # Hand PuLP the pty slave fd and let PuLP own closing it: PuLP does
+    # ``open(logPath, "w") ... pipe.close()``, which closes this fd after the solve (on
+    # both the success and the error path). We must NOT close it too — a double-close can
+    # silently clobber an unrelated fd if the number was recycled in between, which the
+    # `except OSError` guard cannot catch. PuLP closing the slave, plus cbc exiting, is
+    # what EOFs the reader.
+    had_log_path = "logPath" in solver_cmd.optionsDict
+    prev_log_path = solver_cmd.optionsDict.get("logPath")
     solver_cmd.optionsDict["logPath"] = slave_fd
 
     def _relay() -> None:
@@ -49,9 +59,9 @@ def live_cbc_log(solver_cmd, log_path: Path):
     try:
         yield
     finally:
-        try:
-            os.close(slave_fd)  # force EOF; guarded — PuLP normally closes it already
-        except OSError:
-            pass
-        reader.join()
+        reader.join()  # PuLP's close of the slave (above) EOFs the reader
         os.close(master_fd)
+        if had_log_path:  # leave the caller's solver option as we found it
+            solver_cmd.optionsDict["logPath"] = prev_log_path
+        else:
+            solver_cmd.optionsDict.pop("logPath", None)
