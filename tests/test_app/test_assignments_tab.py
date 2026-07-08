@@ -1,5 +1,7 @@
 """Tests for the assignments_tab module."""
 
+from streamlit.testing.v1 import AppTest
+
 from app.tabs.assignments_tab import (
     ACTIVE_RUN_KEY,
     assignment_failure_warning,
@@ -8,6 +10,32 @@ from app.tabs.assignments_tab import (
     solve_view_state,
 )
 from seatrades.results import SolverState, SolverStatus
+from seatrades.solve_run import SolveProgress
+
+# One-liner app that renders just the live-progress fragment against the run seeded into
+# session_state. A string (not from_function) so the import resolves in AppTest's fresh
+# script namespace and the linter can't hoist/strip it.
+_FRAGMENT_SCRIPT = "from app.tabs.assignments_tab import _solve_progress_fragment\n_solve_progress_fragment()\n"
+
+
+class _RunningRun:
+    """Fake SolveRun that stays in-flight, reporting whatever log it's given.
+
+    ``log_text`` is mutated between polls to mimic CBC streaming new lines into the
+    log while the solve runs.
+    """
+
+    def __init__(self, log_text: str = "") -> None:
+        self.log_text = log_text
+
+    def progress(self) -> SolveProgress:
+        return SolveProgress(
+            running=True,
+            percent=0.1,
+            message="Optimizing seatrade assignments…",
+            log_text=self.log_text,
+            timed_out=False,
+        )
 
 
 class _FakeSolution:
@@ -73,6 +101,41 @@ class TestFinalizeSolve:
         finalize_solve(state[ACTIVE_RUN_KEY], "Cbc0010I solved\nDone", state)
 
         assert state["solver_log"] == "Cbc0010I solved\nDone"
+
+
+class TestSolveProgressFragment:
+    def test_live_log_reflects_new_output_on_a_later_poll(self):
+        """The live solver-log widget shows the newest CBC output as the solve streams it.
+
+        The fragment re-polls every couple of seconds; each poll must render the log as
+        it stands *now*, not stay frozen on the first poll's contents (regression: a
+        keyed text_area pinned to its first value and never updated).
+        """
+        at = AppTest.from_string(_FRAGMENT_SCRIPT)
+        at.session_state[ACTIVE_RUN_KEY] = _RunningRun(log_text="Cbc0010I first line\n")
+
+        at.run()
+        assert not at.exception
+
+        # A later poll: CBC has streamed a new line into the log.
+        at.session_state[ACTIVE_RUN_KEY].log_text = "Cbc0010I first line\nCbc0010I newest line\n"
+        at.run()
+        assert not at.exception
+
+        value = at.text_area[0].value
+        assert value is not None and "newest line" in value
+
+    def test_live_log_shows_newest_line_on_top(self):
+        """The live panel reverses the log so the latest CBC line reads first, no scroll."""
+        at = AppTest.from_string(_FRAGMENT_SCRIPT)
+        at.session_state[ACTIVE_RUN_KEY] = _RunningRun(log_text="older line\nnewest line\n")
+
+        at.run()
+        assert not at.exception
+
+        value = at.text_area[0].value
+        assert value is not None
+        assert value.index("newest line") < value.index("older line")
 
 
 class TestAssignmentFailureWarning:

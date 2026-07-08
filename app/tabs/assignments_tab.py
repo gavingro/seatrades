@@ -327,10 +327,13 @@ def _solve_progress_fragment() -> None:
     with st.status(progress.message, expanded=True):
         st.progress(progress.percent, progress.message)
         # Newest log lines on top while streaming, so the latest CBC output is
-        # visible without scrolling. A single stable widget key re-renders in place.
+        # visible without scrolling. No widget key: a keyed text_area pins to its
+        # first-poll value and ignores later `value=` updates (Streamlit widget-state
+        # rule), which froze the log empty for the whole solve. Keyless re-applies
+        # `value` each poll, so the panel tracks the growing log.
         live_log = "".join(progress.log_text.splitlines(keepends=True)[::-1])
         with st.expander("Show technical details (solver logs)"):
-            st.text_area("Solver Logs", value=live_log, height=300, key="solver_logs")
+            st.text_area("Solver Logs", value=live_log, height=300)
         st.caption("This solve finishes on its own or stops at the configured time limit.")
 
 
