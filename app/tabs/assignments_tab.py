@@ -47,10 +47,10 @@ _QUALITY_GLOSSARY = """
 
 - **Preference** — the percentage of campers that got *good picks* (their #1 choice in at least one of their two
   seatrades).
-- **Cohesion** — the percentage of campers that are with a cabinmate in *every* seatrade session. A camper left
-  alone in even one session counts against it.
-- **Sparsity** — the total count of seatrades you have to staff. *Fewer is better* — less staffing
-  load.
+- **Cohesion** — the percentage of campers that are with a cabinmate in their seatrade session(s). Technically,
+  this is scored twice for each camper: once for each of their seatrade assignments.
+- **Sparsity** — the percentage of seatrades you have to staff of the total available seatrades.
+  *Fewer is better* — less staffing load.
 - **Age spread** — how close in age the campers in each seatrade are. *Age range = oldest minus
   youngest* (0 = everyone the same age; 16- and 17-year-olds together = 1).
 - **Within-cabin fairness** — inside a cabin, did everyone get similarly good picks, or did one

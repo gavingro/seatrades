@@ -67,17 +67,20 @@ COHESION_TOGETHERNESS_RANGE = ["#d73027", "#1a9850"]
 AGE_SPREAD_BAND_ORDER = ["0–1 yr", "2 yr", "3+ yr"]
 AGE_SPREAD_BAND_RANGE = ["#1a9850", "#fee08b", "#d73027"]
 
-# Fleet Assignments: a cabin is on a Seatrade or on Fleet Time each block. This encodes
-# *presence*, not goodness, so it deliberately avoids the green→red SATISFACTION scale — a
-# saturated neutral blue (on a seatrade) vs. a muted grey (its complementary Fleet Time slot).
+# Fleet Assignments: a cabin is on a Seatrade or on Fleet Time each block. Both fills borrow the
+# master camper grid's palette so the overview reads as the same family — the top-pick green
+# (SATISFACTION_RANGE[0]) for the "on" (Seatrade) cell, the light UNASSIGNED_COLOR for the
+# complementary Fleet Time slot (the master grid's empty-cell background). Not the full green→red
+# satisfaction scale: two anchor colours encode *presence*, not per-camper goodness.
 FLEET_STATE_ORDER = ["Seatrade", "Fleet Time"]
-FLEET_STATE_RANGE = ["#4c78a8", "#b3b3b3"]
+FLEET_STATE_RANGE = [SATISFACTION_RANGE[0], UNASSIGNED_COLOR]
 
 # Seatrade Staffing Schedule: a seatrade is Running (has campers this block) or Not offered. Same
-# presence-not-goodness rationale as Fleet Assignments — the same neutral scale, deliberately not
-# SATISFACTION_RANGE: a saturated neutral blue (running) vs. a muted grey (not offered).
+# two-anchor rationale as Fleet Assignments — the top-pick green (SATISFACTION_RANGE[0]) for
+# Running vs. the master grid's light UNASSIGNED_COLOR (Not offered), so the "off" cells share the
+# master camper grid's background. Presence, not the full satisfaction scale.
 STAFFING_STATE_ORDER = ["Running", "Not offered"]
-STAFFING_STATE_RANGE = ["#4c78a8", "#b3b3b3"]
+STAFFING_STATE_RANGE = [SATISFACTION_RANGE[0], UNASSIGNED_COLOR]
 
 # Optimality donut: filled arc (proof-of-optimum) vs. the remaining gap track.
 OPTIMALITY_FILL_COLOR = SATISFACTION_RANGE[0]  # reuse the top-pick green — "as good as proven"
