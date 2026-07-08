@@ -16,6 +16,7 @@ from seatrades.results import (
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
     wrangle_fleet_assignments,
+    wrangle_seatrade_staffing,
 )
 from seatrades.scoring import score
 from seatrades.solve_run import SolveRun
@@ -25,6 +26,7 @@ from seatrades.visualization import (
     display_metric_detail,
     display_optimality_donut,
     display_quality_summary,
+    display_seatrade_staffing,
     metric_label,
 )
 
@@ -142,6 +144,12 @@ class AssignmentsTab:
                 st.subheader("Fleet Assignments")
                 st.caption("Each cabin's week at a glance — on a Seatrade or on Fleet Time each block.")
                 st.altair_chart(display_fleet_assignments(wrangle_fleet_assignments(solution)))
+
+                # Seatrade Staffing Schedule — which seatrades run in which blocks, so the Captain
+                # sees what there is to staff. A full "Not offered" row = a seatrade with zero uptake.
+                st.subheader("Seatrade Staffing Schedule")
+                st.caption("Which seatrades run each block — a fully Not-offered row got zero uptake this week.")
+                st.altair_chart(display_seatrade_staffing(wrangle_seatrade_staffing(solution)))
 
                 results_chart = display_assignments(solution)
                 st.altair_chart(results_chart)

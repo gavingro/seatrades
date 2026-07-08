@@ -73,6 +73,12 @@ AGE_SPREAD_BAND_RANGE = ["#1a9850", "#fee08b", "#d73027"]
 FLEET_STATE_ORDER = ["Seatrade", "Fleet Time"]
 FLEET_STATE_RANGE = ["#4c78a8", "#b3b3b3"]
 
+# Seatrade Staffing Schedule: a seatrade is Running (has campers this block) or Not offered. Same
+# presence-not-goodness rationale as Fleet Assignments — the same neutral scale, deliberately not
+# SATISFACTION_RANGE: a saturated neutral blue (running) vs. a muted grey (not offered).
+STAFFING_STATE_ORDER = ["Running", "Not offered"]
+STAFFING_STATE_RANGE = ["#4c78a8", "#b3b3b3"]
+
 # Optimality donut: filled arc (proof-of-optimum) vs. the remaining gap track.
 OPTIMALITY_FILL_COLOR = SATISFACTION_RANGE[0]  # reuse the top-pick green — "as good as proven"
 OPTIMALITY_TRACK_COLOR = "#3a3f44"  # muted track that reads on the dark app theme
@@ -495,6 +501,43 @@ def display_fleet_assignments(fleet_grid: pd.DataFrame) -> alt.Chart:
                 alt.Tooltip("cabin:N", title="Cabin"),
                 alt.Tooltip("block:N", title="Block"),
                 alt.Tooltip("state:N", title="Activity"),
+            ],
+        )
+    )
+
+
+def display_seatrade_staffing(staffing_grid: pd.DataFrame) -> alt.Chart:
+    """Render the Seatrade × Block staffing overview as a neutral presence heatmap.
+
+    Takes a ``wrangle_seatrade_staffing`` frame (``seatrade``, ``block``, ``state``). Each cell is
+    a labeled binary — ``Running`` or ``Not offered`` — coloured on the neutral presence scale,
+    never the satisfaction scale (this is "*which* am I staffing", not goodness). A full
+    ``Not offered`` row is a seatrade with zero uptake. Blocks are decoded to AM/PM labels.
+
+    Carries no chart title: the app renders ``st.subheader("Seatrade Staffing Schedule")`` directly
+    above it, so a same-text chart title would double the heading.
+    """
+    staffing_grid = staffing_grid.copy()
+    # The wrangler emits rows in seatrades_full order; capture it before Altair defaults the
+    # y axis to alphabetical, so the grid reads in the setup's seatrade order.
+    seatrade_order = list(dict.fromkeys(staffing_grid["seatrade"]))
+    staffing_grid["block"] = staffing_grid["block"].map(block_label)
+    block_order = [block_label(block) for block in BLOCKS]
+    return (
+        alt.Chart(staffing_grid)
+        .mark_rect(stroke="white", strokeWidth=0.5)
+        .encode(
+            x=alt.X("block:N", title=None, sort=block_order),
+            y=alt.Y("seatrade:N", title=None, sort=seatrade_order),
+            color=alt.Color(
+                "state:N",
+                scale=alt.Scale(domain=STAFFING_STATE_ORDER, range=STAFFING_STATE_RANGE),
+                legend=alt.Legend(title="Seatrade status"),
+            ),
+            tooltip=[
+                alt.Tooltip("seatrade:N", title="Seatrade"),
+                alt.Tooltip("block:N", title="Block"),
+                alt.Tooltip("state:N", title="Status"),
             ],
         )
     )

@@ -10,6 +10,7 @@ from seatrades.results import (
     SolverStatus,
     wrangle_assignments_to_longform,
     wrangle_fleet_assignments,
+    wrangle_seatrade_staffing,
 )
 
 
@@ -201,3 +202,51 @@ class TestWrangleFleetAssignments:
         result = wrangle_fleet_assignments(fleet_split_solution)
         cell = result[(result["cabin"] == "Cabin1") & (result["block"] == "1b")]
         assert cell["state"].item() == "Fleet Time"
+
+
+@pytest.fixture
+def zero_uptake_solution(sample_assignment_solution):
+    """The sample plus a Kayaking offering nobody picked — an all-zero column in each block.
+
+    Kayaking is in ``seatrades_full`` (offered in the setup) but carries no assignment, so it
+    is the zero-uptake case: a seatrade with nobody to staff it, a full ``Not offered`` row.
+    """
+    assignments = sample_assignment_solution.assignments.copy()
+    assignments["1a_Kayaking"] = 0.0
+    assignments["2b_Kayaking"] = 0.0
+    seatrades_full = sample_assignment_solution.seatrades_full + ["1a_Kayaking", "2b_Kayaking"]
+    return dataclasses.replace(
+        sample_assignment_solution,
+        assignments=assignments,
+        seatrades_full=seatrades_full,
+    )
+
+
+class TestWrangleSeatradeStaffing:
+    def test_one_row_per_seatrade_block_over_solution_blocks(self, sample_assignment_solution):
+        # sample spans blocks 1a and 2b with 3 seatrades (Archery, Sailing, Climbing),
+        # so the grid is those 3 seatrades × the 2 present blocks — no phantom rows.
+        result = wrangle_seatrade_staffing(sample_assignment_solution)
+        assert set(result.columns) >= {"seatrade", "block", "state"}
+        assert len(result) == 3 * 2  # 3 seatrades × 2 present blocks
+        assert set(result["seatrade"]) == {"Archery", "Sailing", "Climbing"}
+        assert set(result["block"]) == {"1a", "2b"}
+
+    def test_seatrade_running_a_block_reads_running(self, sample_assignment_solution):
+        # Archery is picked in block 1a (campers Alice & Dave), so it runs there.
+        result = wrangle_seatrade_staffing(sample_assignment_solution)
+        cell = result[(result["seatrade"] == "Archery") & (result["block"] == "1a")]
+        assert cell["state"].item() == "Running"
+
+    def test_seatrade_with_no_uptake_reads_not_offered(self, zero_uptake_solution):
+        # Kayaking is offered but nobody picked it — Not offered in every block.
+        result = wrangle_seatrade_staffing(zero_uptake_solution)
+        kayaking = result[result["seatrade"] == "Kayaking"]
+        assert (kayaking["state"] == "Not offered").all()
+
+    def test_zero_uptake_seatrade_is_a_full_not_offered_row(self, zero_uptake_solution):
+        # Every offered seatrade gets a row even at zero uptake, surfacing nobody-to-staff.
+        result = wrangle_seatrade_staffing(zero_uptake_solution)
+        assert "Kayaking" in set(result["seatrade"])
+        kayaking = result[result["seatrade"] == "Kayaking"]
+        assert len(kayaking) == 2  # both present blocks, all Not offered

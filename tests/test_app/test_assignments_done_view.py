@@ -202,3 +202,29 @@ class TestFleetAssignmentsOverview:
 
         assert not at.exception
         assert "Fleet Assignments" not in [s.value for s in at.subheader]
+
+
+class TestSeatradeStaffingOverview:
+    """The Seatrade Staffing Schedule overview grid (#103), a subsection of "The Schedule"."""
+
+    def test_renders_below_fleet_assignments_and_above_the_master_grid(self, solved_solution):
+        """On an optimal solve, "Seatrade Staffing Schedule" sits after Fleet Assignments and
+        before Schedule Quality — i.e. above the master camper grid, within the section."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        assert not at.exception
+        subheaders = [s.value for s in at.subheader]
+        assert "Seatrade Staffing Schedule" in subheaders
+        assert subheaders.index("Fleet Assignments") < subheaders.index("Seatrade Staffing Schedule")
+        assert subheaders.index("Seatrade Staffing Schedule") < subheaders.index("Schedule Quality")
+
+    def test_absent_on_errored_solve(self, solved_solution):
+        """An infeasible/errored solve shows only the failure warning — no structure grid."""
+        error_solution = dataclasses.replace(
+            solved_solution,
+            status=SolverStatus(state=SolverState.ERROR, message="solver blew up"),
+        )
+        at = _seed_done_view(error_solution, success=False)
+
+        assert not at.exception
+        assert "Seatrade Staffing Schedule" not in [s.value for s in at.subheader]
