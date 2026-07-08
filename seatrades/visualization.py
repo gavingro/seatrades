@@ -473,6 +473,9 @@ def display_fleet_assignments(df: pd.DataFrame) -> alt.Chart:
     Takes a ``wrangle_fleet_assignments`` frame (``cabin``, ``block``, ``state``). Each cell is
     a labeled binary — ``Seatrade`` or ``Fleet Time`` — coloured on the neutral presence scale,
     never the satisfaction scale. Blocks are decoded to their AM/PM labels (``1a`` → ``1st·AM``).
+
+    Carries no chart title: the app renders an ``st.subheader("Fleet Assignments")`` directly
+    above it, so a same-text chart title would double the heading.
     """
     df = df.copy()
     df["block"] = df["block"].map(block_label)
@@ -494,7 +497,6 @@ def display_fleet_assignments(df: pd.DataFrame) -> alt.Chart:
                 alt.Tooltip("state:N", title="Activity"),
             ],
         )
-        .properties(title={"text": "Fleet Assignments", "fontSize": 20, "anchor": "start"})
     )
 
 

@@ -260,6 +260,13 @@ class TestDisplayFleetAssignments:
         tooltip_fields = [entry.get("field") for entry in spec["encoding"]["tooltip"]]
         assert {"cabin", "block", "state"} <= set(tooltip_fields)
 
+    def test_no_chart_title_so_the_app_subheader_owns_the_heading(self, fleet_assignments_df):
+        # The app renders st.subheader("Fleet Assignments") directly above this chart. A
+        # chart-level title of the same text would double the heading (unlike the master grid,
+        # which self-titles because it has no subheader). The subheader owns the heading.
+        spec = display_fleet_assignments(fleet_assignments_df).to_dict()
+        assert "title" not in spec
+
 
 class TestDisplayAgeSpreadDetail:
     """The Age Spread drill-down: seatrade counts per age range."""

@@ -166,7 +166,8 @@ def wrangle_fleet_assignments(solution: AssignmentSolution) -> pd.DataFrame:
     block, else ``"Fleet Time"`` — the perfect complement, never modeled in the solver.
     """
     longform_df = wrangle_assignments_to_longform(solution)
-    blocks = [block for block in BLOCKS if block in {block_name(full) for full in solution.seatrades_full}]
+    solution_blocks = {block_name(full) for full in solution.seatrades_full}
+    blocks = [block for block in BLOCKS if block in solution_blocks]
 
     assigned = longform_df[longform_df["assignment"] == 1.0]
     on_seatrade = set(zip(assigned["cabin"], assigned["block"], strict=True))
