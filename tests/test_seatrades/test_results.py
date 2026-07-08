@@ -250,3 +250,11 @@ class TestWrangleSeatradeStaffing:
         assert "Kayaking" in set(result["seatrade"])
         kayaking = result[result["seatrade"] == "Kayaking"]
         assert len(kayaking) == 2  # both present blocks, all Not offered
+
+    def test_rows_follow_seatrades_full_order_not_alphabetical(self, sample_assignment_solution):
+        # display_seatrade_staffing derives its y-axis sort from this row order, so the wrangler
+        # must emit seatrades in seatrades_full order. The sample order is Archery, Sailing,
+        # Climbing — deliberately NOT alphabetical (Archery, Climbing, Sailing) — so this pins
+        # the contract: a future regroup/sort that reordered rows would flip the view's y-axis.
+        result = wrangle_seatrade_staffing(sample_assignment_solution)
+        assert list(dict.fromkeys(result["seatrade"])) == ["Archery", "Sailing", "Climbing"]

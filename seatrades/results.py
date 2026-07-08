@@ -197,6 +197,9 @@ def wrangle_seatrade_staffing(solution: AssignmentSolution) -> pd.DataFrame:
     solution actually spans. ``state`` is ``"Running"`` if *any* camper is assigned that
     seatrade that block, else ``"Not offered"`` — so a seatrade nobody picked reads as a full
     ``Not offered`` row, surfacing that there is nobody to staff it this week.
+
+    Rows are emitted in ``seatrades_full`` order; ``display_seatrade_staffing`` relies on this
+    row order for its y-axis sort, so a downstream regroup/sort would silently reorder the view.
     """
     longform_df = wrangle_assignments_to_longform(solution)
     seatrades = list(dict.fromkeys(seatrade_name(full) for full in solution.seatrades_full))
