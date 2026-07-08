@@ -1,12 +1,27 @@
 """Tests for the SolveRun service-layer seam."""
 
+import random
 import threading
 import time
 
+import numpy as np
+import pulp
 import pytest
 
-from seatrades.config import OptimizationConfig
+from seatrades.config import (
+    CamperSimulationConfig,
+    OptimizationConfig,
+    SeatradeSimulationConfig,
+)
+from seatrades.preferences import join_and_validate
+from seatrades.problem import SchedulingProblem
 from seatrades.results import SolverState
+from seatrades.simulation import (
+    simulate_camper_identity,
+    simulate_camper_preferences,
+    simulate_camper_relationships,
+    simulate_seatrade_preferences,
+)
 from seatrades.solve_run import SolveRun, detect_timeout, percent_from_elapsed
 
 
@@ -147,3 +162,52 @@ class TestSolveRunIntegration:
         assert solution.status.state == SolverState.OPTIMAL
         assert isolated_config.log_path.exists()
         assert run.progress().log_text != ""
+
+
+def _seeded_eight_cabin_problem(seed: int) -> SchedulingProblem:
+    """Deterministic 8-cabin/17-seatrade roster — a real solve that runs long enough to
+    observe streaming. Reseeds both RNGs (load-bearing: random rosters flake INFEASIBLE
+    at this scale — see the reseed gotcha in project memory)."""
+    random.seed(seed)
+    np.random.seed(seed)
+    seatrade_prefs = simulate_seatrade_preferences(SeatradeSimulationConfig(num_seatrades=17))
+    identity = simulate_camper_identity(CamperSimulationConfig())
+    camper_prefs = simulate_camper_preferences(identity, seatrade_prefs)
+    relationships = simulate_camper_relationships(identity, camper_prefs)
+    joined, setup, validated = join_and_validate(identity, camper_prefs, seatrade_prefs, relationships)
+    return SchedulingProblem(joined, setup, relationships=validated)
+
+
+@pytest.mark.slow
+class TestSolveRunStreamsLiveLog:
+    def test_log_streams_while_solving_and_parses_clean(self, tmp_path):
+        """A real, time-limited solve fills the CBC log *while running* (not only at the end),
+        and the streamed log stays parseable: no stray carriage returns and the time-limit line
+        survives, so timeout detection keeps working against streamed output.
+
+        The 8-cabin roster can't reach the gap in a few seconds, so a short time limit makes
+        this the "near-time-limit" streaming case deterministically. Gap-regex-on-streamed-log
+        is covered separately by the optimal real-solve tests, which run through this same path.
+        """
+        problem = _seeded_eight_cabin_problem(seed=0)
+        solver_cmd = pulp.apis.PULP_CBC_CMD(timeLimit=5, gapRel=0.10, msg=0)
+        config = OptimizationConfig(log_path=tmp_path / "stream.log", solver=solver_cmd)
+        run = SolveRun(problem, config)
+        run.start()
+
+        streamed_while_running = False
+        deadline = time.time() + config.solver.timeLimit + 30.0
+        while time.time() < deadline:
+            progress = run.progress()
+            if progress.running and progress.log_text != "":
+                streamed_while_running = True
+            if not progress.running:
+                break
+            time.sleep(0.02)
+
+        assert run.progress().running is False, "solve did not finish within timeout"
+        assert streamed_while_running, "log never grew while the solve was still running"
+
+        log_text = config.log_path.read_text()
+        assert "\r" not in log_text, "streamed log kept pty carriage returns"
+        assert detect_timeout(log_text), "time-limit line missing from the streamed log"

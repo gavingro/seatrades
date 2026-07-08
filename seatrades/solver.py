@@ -8,6 +8,7 @@ import pandas as pd
 import pulp
 
 from seatrades.config import OptimizationConfig
+from seatrades.live_cbc_log import live_cbc_log
 from seatrades.problem import SchedulingProblem
 from seatrades.results import AssignmentSolution, SolverStatus
 
@@ -66,7 +67,11 @@ def _extract_gap_from_log(log_path: Path) -> Optional[float]:
 def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSolution:
     """Build and solve a scheduling problem, returning an AssignmentSolution."""
     lp_problem = problem.build(config)
-    status_code = lp_problem.solve(config.solver)
+    # Tee cbc's log through a pty so it streams line-by-line instead of block-buffering
+    # to a plain file. Exiting the context drains the reader, so the log is complete
+    # before _extract_gap_from_log reads it below.
+    with live_cbc_log(config.solver, config.log_path):
+        status_code = lp_problem.solve(config.solver)
 
     assignments = _extract_camper_assignments(lp_problem.variables(), problem.campers, problem.seatrades_full)
     assignments.index.name = "camper_id"
