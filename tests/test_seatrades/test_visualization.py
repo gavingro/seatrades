@@ -13,6 +13,7 @@ from seatrades.visualization import (
     FLEET_STATE_RANGE,
     SATISFACTION_RANGE,
     STAFFING_STATE_RANGE,
+    add_display_columns,
     display_age_spread_detail,
     display_assignments,
     display_cohesion_detail,
@@ -25,7 +26,6 @@ from seatrades.visualization import (
     display_quality_summary,
     display_seatrade_staffing,
     display_sparsity_detail,
-    enrich_assignments_for_display,
     metric_label,
     normalize_to_band,
 )
@@ -543,7 +543,7 @@ class TestEnrichAssignmentsForDisplay:
                 "assigned_to_block": [assigned_to_block],
             }
         )
-        return enrich_assignments_for_display(df).iloc[0]
+        return add_display_columns(df).iloc[0]
 
     def test_ghost_text_for_unassigned_ranked_attended_cell(self):
         cell = self._one_cell(assignment=0.0, preference_rank=3, assigned_to_block=True)

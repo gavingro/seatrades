@@ -493,7 +493,7 @@ def _ghost_text(preference_rank: int, assignment: float, assigned_to_block: bool
     return ""
 
 
-def enrich_assignments_for_display(longform_df: pd.DataFrame) -> pd.DataFrame:
+def add_display_columns(longform_df: pd.DataFrame) -> pd.DataFrame:
     """Add the chart's display columns to a longform frame, without rendering anything.
 
     The data layer carries only domain facts (``assignment``, ``preference_rank``,
@@ -596,7 +596,7 @@ def display_assignments(solution: AssignmentSolution) -> alt.Chart:
         )
 
     longform_df = wrangle_assignments_to_longform(solution)
-    longform_df = enrich_assignments_for_display(longform_df)
+    longform_df = add_display_columns(longform_df)
     longform_df["block"] = longform_df["block"].map(block_label)
 
     assignment_base = alt.Chart(longform_df).encode(

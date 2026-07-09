@@ -36,7 +36,7 @@ The old `preference` column is **removed entirely** — keeping it alongside the
 reintroduce the very conflation this decision removes.
 
 "Where to paint faint ink" (the ghost-number display rule) is **not** a data-layer concern. The
-data layer carries only domain facts; the chart layer (`enrich_assignments_for_display` in
+data layer carries only domain facts; the chart layer (`add_display_columns` in
 `visualization.py`) derives the display columns (`satisfaction`, `rank_text`, `ghost_text`) from
 those facts as a pure, unit-testable helper.
 
