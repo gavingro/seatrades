@@ -102,6 +102,16 @@ class TestDoneView:
         assert log_areas, "solver log not shown in the done view"
         assert log_areas[0].value == at.session_state["solver_log"]
 
+    def test_master_grid_renders_with_the_preference_caption(self, solved_solution):
+        """After the longform schema change (issue #85), the master camper grid still renders
+        (the assigned layer's filter flipped to assignment == 1). Its single caption — emitted
+        right after the chart — decodes both the bold assigned ranks and the faint ghost numbers,
+        so its presence confirms display_assignments returned without raising on the new schema."""
+        at = _seed_done_view(solved_solution, success=True)
+
+        assert not at.exception
+        assert any("Numbers indicate camper-submitted seatrade preferences" in c.value for c in at.caption)
+
     def test_success_banner_shows_optimality_percent(self, solved_solution):
         """The green verdict banner carries the solver-optimality % inline; the donut itself
         moved down beside the Schedule Quality Overview."""

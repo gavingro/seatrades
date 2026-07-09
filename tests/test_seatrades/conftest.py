@@ -65,7 +65,9 @@ def sample_mixed_assignment_df():
         "block": ["1a", "1a", "1a"],
         "seatrade": ["Archery", "Kayaking", "Archery"],
         "assignment": [1.0, 0.0, 1.0],
-        "preference": [1, 0, 1],
+        # preference_rank is a pure camper↔seatrade fact carried on every cell, so the
+        # unassigned Kayaking row still has the rank the camper gave it — no conflated 0.
+        "preference_rank": [1, 4, 1],
     }
     return pd.DataFrame(data)
 
@@ -82,7 +84,7 @@ def seatrade_sort_df():
         "block": ["2a", "1a", "1a", "1a"],
         "seatrade": ["Archery", "Archery", "Climbing", "Archery"],
         "assignment": [1.0, 1.0, 1.0, 1.0],
-        "preference": [1, 2, 1, 1],
+        "preference_rank": [1, 2, 1, 1],
     }
     return pd.DataFrame(data)
 

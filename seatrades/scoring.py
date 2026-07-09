@@ -115,7 +115,7 @@ def _camper_cprs(assigned: pd.DataFrame) -> pd.DataFrame:
     ``cpr`` (3–6). Assigned rows carry a 1–4 preference by the top-2 guarantee and
     the preference-only constraint, so the two-block sum lands in 3–6.
     """
-    grouped = assigned.groupby(["cabin", "camper"], sort=False)["preference"]
+    grouped = assigned.groupby(["cabin", "camper"], sort=False)["preference_rank"]
     detail = grouped.agg(cpr="sum", ranks=list).reset_index()
     detail["cause"] = detail["ranks"].map(lambda ranks: f"{min(ranks)}+{max(ranks)}")
     return detail.drop(columns="ranks")

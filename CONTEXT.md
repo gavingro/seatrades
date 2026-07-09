@@ -124,7 +124,13 @@ The app exports assignments in 2 formats for different audiences:
 | Captain's Book | Camper (Cabin upload order) | Internal logistics and bookkeeping, Distribute to cabin leaders for their campers |
 | Seatrade Leaders | Block → Seatrade → Cabin → Camper | Day-of attendance at each seatrade session |
 
-Each export includes columns: camper, seatrade, assignment (0/1), preference (1-4), cabin, block.
+Each row carries: camper, seatrade, `assignment` (0/1), `preference_rank`, `assigned_to_block`, cabin, block.
+
+The longform (`wrangle_assignments_to_longform`) decomposes what was once a single conflated `preference` column into orthogonal facts (issue #85, [ADR 0010](docs/adr/0010-decompose-preference-into-orthogonal-facts.md)):
+
+- **`assignment`** (0/1) — did this camper get *this* seatrade cell?
+- **`preference_rank`** — the rank the camper *gave* this seatrade (1–4), else `999` (`UNMATCHED_PREFERENCE`) for unranked. A pure camper↔seatrade fact populated on **every** cell, so the rank a camper gave a seatrade they *didn't* get stays recoverable.
+- **`assigned_to_block`** (bool) — does this camper have *any* seatrade this block, vs being on Fleet Time? A schedule fact about the whole block, distinct from `assignment` (one cell).
 
 ## Data Flow
 
