@@ -76,16 +76,20 @@ def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFram
     assignments = solution.assignments
     df = assignments.melt(var_name="seatrade", ignore_index=False, value_name="assignment").reset_index()
 
-    def lookup_preference(row) -> int:
-        if row.assignment == 1.0:
-            row_camper_prefs = solution.camper_prefs[row.camper_id]
-            seatrade_name = row.seatrade.split("_", 1)[1]
-            if seatrade_name in row_camper_prefs:
-                return row_camper_prefs.index(seatrade_name) + 1
-            return UNMATCHED_PREFERENCE
-        return 0
+    def lookup_preference_rank(row) -> int:
+        """The rank this camper GAVE this seatrade — a pure camper↔seatrade fact.
 
-    df["preference"] = df.apply(lookup_preference, axis=1)
+        Populated on every cell regardless of assignment or block, so the rank a camper
+        gave a seatrade they *didn't* get stays recoverable. ``UNMATCHED_PREFERENCE`` for a
+        seatrade they never ranked (most cells, since each camper ranks only 4 seatrades).
+        """
+        row_camper_prefs = solution.camper_prefs[row.camper_id]
+        seatrade_name = row.seatrade.split("_", 1)[1]
+        if seatrade_name in row_camper_prefs:
+            return row_camper_prefs.index(seatrade_name) + 1
+        return UNMATCHED_PREFERENCE
+
+    df["preference_rank"] = df.apply(lookup_preference_rank, axis=1)
 
     def lookup_cabin(row) -> Optional[str]:
         if row.camper_id in solution.cabin_camper_prefs.index:
@@ -95,8 +99,14 @@ def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFram
     df["cabin"] = df.apply(lookup_cabin, axis=1)  # type: ignore[call-overload]
     df["age"] = df["camper_id"].map(solution.cabin_camper_prefs["age"])
     df["camper"] = df["camper_id"].map(solution.camper_names)
-    df = df.drop(columns="camper_id")
     df[["block", "seatrade"]] = df["seatrade"].str.split("_", expand=True)
+
+    # A schedule fact, distinct from ``assignment`` (one cell): does this camper have *any*
+    # real seatrade in this block, vs being on Fleet Time? Grouped on camper_id (names collide),
+    # so it is uniform across all of a (camper, block)'s seatrade cells.
+    df["assigned_to_block"] = df.groupby(["camper_id", "block"])["assignment"].transform("max") == 1.0
+
+    df = df.drop(columns="camper_id")
 
     return df
 

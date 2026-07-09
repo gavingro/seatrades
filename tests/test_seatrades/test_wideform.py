@@ -27,7 +27,7 @@ def longform_assigned():
             "block": "1a",
             "seatrade": "Archery",
             "assignment": 1.0,
-            "preference": 1,
+            "preference_rank": 1,
         },
         {
             "camper": "Alice",
@@ -36,7 +36,7 @@ def longform_assigned():
             "block": "2b",
             "seatrade": "Sailing",
             "assignment": 1.0,
-            "preference": 2,
+            "preference_rank": 2,
         },
         {
             "camper": "Bob",
@@ -45,7 +45,7 @@ def longform_assigned():
             "block": "1b",
             "seatrade": "Climbing",
             "assignment": 1.0,
-            "preference": 1,
+            "preference_rank": 1,
         },
         {
             "camper": "Bob",
@@ -54,7 +54,7 @@ def longform_assigned():
             "block": "2a",
             "seatrade": "Archery",
             "assignment": 1.0,
-            "preference": 3,
+            "preference_rank": 3,
         },
         # Cabin2 campers
         {
@@ -64,7 +64,7 @@ def longform_assigned():
             "block": "1a",
             "seatrade": "Sailing",
             "assignment": 1.0,
-            "preference": 1,
+            "preference_rank": 1,
         },
         {
             "camper": "Carol",
@@ -73,7 +73,7 @@ def longform_assigned():
             "block": "2b",
             "seatrade": "Archery",
             "assignment": 1.0,
-            "preference": 2,
+            "preference_rank": 2,
         },
         {
             "camper": "Dave",
@@ -82,7 +82,7 @@ def longform_assigned():
             "block": "1b",
             "seatrade": "Archery",
             "assignment": 1.0,
-            "preference": 1,
+            "preference_rank": 1,
         },
         {
             "camper": "Dave",
@@ -91,7 +91,7 @@ def longform_assigned():
             "block": "2a",
             "seatrade": "Sailing",
             "assignment": 1.0,
-            "preference": 2,
+            "preference_rank": 2,
         },
     ]
     return pd.DataFrame(rows)

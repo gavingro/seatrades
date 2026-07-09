@@ -155,6 +155,7 @@ class AssignmentsTab:
                 st.altair_chart(results_chart)
                 st.caption(f"Blocks: {BLOCK_DECODER_CAPTION}")
                 st.caption("Color = camper satisfaction (green = 1st choice pick → red = lower ranked choices). ")
+                st.caption("Numbers indicate camper-submitted seatrade preferences.")
 
                 # Schedule Quality — the report card. One slot: Overview summary or a
                 # single metric's drill-down, never both. Only reached on an optimal solve.

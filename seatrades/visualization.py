@@ -476,6 +476,40 @@ def _rank_text(preference: int) -> str:
     return str(preference)
 
 
+def _ghost_text(preference_rank: int, assignment: float, assigned_to_block: bool) -> str:
+    """The faint rank to print on an *unassigned* cell — else blank.
+
+    Drawn iff the camper ranked this seatrade (``preference_rank`` ∈ 1..4), did NOT get it
+    here (``assignment == 0``), and is on a seatrade this block (``assigned_to_block``). This
+    surfaces near-misses — e.g. a same-preference group the solver split — without touching
+    Fleet Time blocks or unranked cells.
+    """
+    if preference_rank != UNMATCHED_PREFERENCE and assignment == 0 and assigned_to_block:
+        return str(preference_rank)
+    return ""
+
+
+def enrich_assignments_for_display(longform_df: pd.DataFrame) -> pd.DataFrame:
+    """Add the chart's display columns to a longform frame, without rendering anything.
+
+    The data layer carries only domain facts (``assignment``, ``preference_rank``,
+    ``assigned_to_block``); *where to paint ink* is a chart concern, extracted here as a pure
+    function so it is unit-testable without an Altair render. Adds:
+
+    - ``satisfaction`` — the colour bucket for an assigned cell (top pick → Unranked).
+    - ``rank_text`` — the bold rank printed on an assigned cell (blank for unranked).
+    - ``ghost_text`` — the faint rank printed on an unassigned-but-ranked, attended cell (else blank).
+    """
+    df = longform_df.copy()
+    df["satisfaction"] = df["preference_rank"].map(_satisfaction_label)
+    df["rank_text"] = df["preference_rank"].map(_rank_text)
+    df["ghost_text"] = df.apply(
+        lambda row: _ghost_text(row["preference_rank"], row["assignment"], row["assigned_to_block"]),
+        axis=1,
+    )
+    return df
+
+
 def display_fleet_assignments(fleet_grid: pd.DataFrame) -> alt.Chart:
     """Render the Cabin × Block fleet-placement overview as a neutral presence heatmap.
 
@@ -558,9 +592,8 @@ def display_assignments(solution: AssignmentSolution) -> alt.Chart:
         )
 
     longform_df = wrangle_assignments_to_longform(solution)
+    longform_df = enrich_assignments_for_display(longform_df)
     longform_df["block"] = longform_df["block"].map(block_label)
-    longform_df["satisfaction"] = longform_df["preference"].map(_satisfaction_label)
-    longform_df["rank_text"] = longform_df["preference"].map(_rank_text)
 
     assignment_base = alt.Chart(longform_df).encode(
         x=alt.X("seatrade", sort=solution.seatrades_full, title=None),
@@ -569,7 +602,9 @@ def display_assignments(solution: AssignmentSolution) -> alt.Chart:
     # Neutral fill behind every cell so the grid reads on a dark theme; assigned
     # cells are then coloured by satisfaction on top.
     assignment_background = assignment_base.mark_rect(color=UNASSIGNED_COLOR, stroke="white", strokeWidth=0.3)
-    assigned_cells = assignment_base.transform_filter(alt.datum.preference > 0)
+    # Filter on assignment == 1 (not the old preference > 0): unassigned cells now carry real
+    # ranks, so preference > 0 would mis-colour a ghost cell as a real placement.
+    assigned_cells = assignment_base.transform_filter(alt.datum.assignment == 1)
     assignment_rectangles = assigned_cells.mark_rect(stroke="black", strokeWidth=0.1).encode(
         color=alt.Color(
             "satisfaction:N",
@@ -578,8 +613,14 @@ def display_assignments(solution: AssignmentSolution) -> alt.Chart:
         )
     )
     assignment_text = assigned_cells.mark_text(color="black").encode(text="rank_text:N")
+    # Faint ghost ranks on unassigned-but-ranked cells the camper attends — a near-miss the
+    # solver couldn't satisfy. Same font as the bold rank, low opacity, over the untouched
+    # neutral background (no tint), so it never reads as a real placement. Opacity is the one
+    # tuning knob, set during visual verification.
+    ghost_cells = assignment_base.transform_filter(alt.datum.ghost_text != "")
+    assignment_ghost_text = ghost_cells.mark_text(color="black", opacity=0.3).encode(text="ghost_text:N")
     assignment_chart = (
-        (assignment_background + assignment_rectangles + assignment_text)
+        (assignment_background + assignment_rectangles + assignment_text + assignment_ghost_text)
         .facet(row="cabin", column="block", spacing={"row": 2})
         .resolve_scale(y="independent")
         .properties(

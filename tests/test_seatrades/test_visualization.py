@@ -6,7 +6,7 @@ import json
 import pandas as pd
 import pytest
 
-from seatrades.results import SolverState, SolverStatus
+from seatrades.results import UNMATCHED_PREFERENCE, SolverState, SolverStatus
 from seatrades.scoring import score
 from seatrades.visualization import (
     _DETAIL_BUILDERS,
@@ -25,6 +25,7 @@ from seatrades.visualization import (
     display_quality_summary,
     display_seatrade_staffing,
     display_sparsity_detail,
+    enrich_assignments_for_display,
     metric_label,
     normalize_to_band,
 )
@@ -527,6 +528,51 @@ class TestNormalizeToBand:
         assert up_is_good == 25.0
 
 
+class TestEnrichAssignmentsForDisplay:
+    """The pure display-derivation seam: longform facts → satisfaction / rank_text / ghost_text.
+
+    Ghost text is drawn on a cell iff preference_rank ∈ 1..4 AND assignment == 0 AND
+    assigned_to_block — an unassigned seatrade the camper ranked, in a block they attend.
+    """
+
+    def _one_cell(self, assignment, preference_rank, assigned_to_block):
+        df = pd.DataFrame(
+            {
+                "assignment": [assignment],
+                "preference_rank": [preference_rank],
+                "assigned_to_block": [assigned_to_block],
+            }
+        )
+        return enrich_assignments_for_display(df).iloc[0]
+
+    def test_ghost_text_for_unassigned_ranked_attended_cell(self):
+        cell = self._one_cell(assignment=0.0, preference_rank=3, assigned_to_block=True)
+        assert cell["ghost_text"] == "3"
+
+    def test_no_ghost_text_when_assigned(self):
+        # An assigned cell shows its bold rank_text, never a ghost.
+        cell = self._one_cell(assignment=1.0, preference_rank=2, assigned_to_block=True)
+        assert cell["ghost_text"] == ""
+        assert cell["rank_text"] == "2"
+
+    def test_no_ghost_text_in_a_fleet_time_block(self):
+        # Not attending a seatrade this block (Fleet Time) → no ghost, keeping Fleet blocks blank.
+        cell = self._one_cell(assignment=0.0, preference_rank=3, assigned_to_block=False)
+        assert cell["ghost_text"] == ""
+
+    def test_no_ghost_text_for_an_unranked_cell(self):
+        # A seatrade the camper never ranked has no rank to ghost.
+        cell = self._one_cell(assignment=0.0, preference_rank=UNMATCHED_PREFERENCE, assigned_to_block=True)
+        assert cell["ghost_text"] == ""
+
+    def test_assigned_unranked_cell_reads_unranked_with_blank_text(self):
+        # Unchanged behavior: an assigned seatrade the camper never ranked buckets as "Unranked"
+        # with blank rank_text.
+        cell = self._one_cell(assignment=1.0, preference_rank=UNMATCHED_PREFERENCE, assigned_to_block=True)
+        assert cell["satisfaction"] == "Unranked"
+        assert cell["rank_text"] == ""
+
+
 class TestDisplayAssignmentsFailureGuard:
     def test_raises_on_infeasible_status(self, sample_assignment_solution):
         """display_assignments must raise ValueError when optimization was infeasible."""
@@ -598,6 +644,31 @@ class TestDisplayAssignmentsLegibility:
         """Block facet columns show compact labels (e.g. '1st·AM'), not raw codes alone."""
         spec = display_assignments(sample_assignment_solution).to_dict()
         assert "1st·AM" in json.dumps(spec, ensure_ascii=False)
+
+    def test_assigned_layer_filters_on_assignment_not_preference(self, sample_assignment_solution):
+        """The coloured/rank layers filter on assignment == 1, not the old preference > 0 — now
+        that unassigned cells carry real ranks, the old filter would mis-colour ghost cells."""
+        blob = json.dumps(display_assignments(sample_assignment_solution).to_dict())
+        assert "datum.assignment" in blob
+        assert "datum.preference" not in blob
+
+    def test_faint_ghost_text_layer_is_present(self, sample_assignment_solution):
+        """A distinct text layer prints ghost ranks faintly (reduced opacity) over the neutral
+        background, separate from the bold assigned rank_text layer."""
+        spec = display_assignments(sample_assignment_solution).to_dict()
+        text_layers = [layer for layer in spec["spec"]["layer"] if layer.get("mark", {}).get("type") == "text"]
+        ghost = [
+            layer for layer in text_layers if layer.get("encoding", {}).get("text", {}).get("field") == "ghost_text"
+        ]
+        assert ghost, "no ghost_text layer found"
+        assert ghost[0]["mark"]["opacity"] < 1.0
+
+    def test_ghost_ranks_are_computed_into_the_data(self, sample_assignment_solution):
+        """End-to-end: at least one cell carries a ghost rank (Alice ranked Sailing/Climbing but
+        got Archery in block 1a), so the layer has something to draw."""
+        spec = display_assignments(sample_assignment_solution).to_dict()
+        rows = spec["datasets"][spec["data"]["name"]] if "datasets" in spec else spec["data"]["values"]
+        assert any(row.get("ghost_text") for row in rows)
 
 
 class TestOptimalityDonut:

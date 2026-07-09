@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from seatrades.results import (
+    UNMATCHED_PREFERENCE,
     SolverState,
     SolverStatus,
     wrangle_assignments_to_longform,
@@ -123,18 +124,28 @@ class TestAssignmentSolution:
 class TestWrangleAssignmentsToLongform:
     def test_output_columns(self, sample_assignment_solution):
         result = wrangle_assignments_to_longform(sample_assignment_solution)
-        expected_cols = {"camper", "seatrade", "assignment", "preference", "cabin", "block"}
+        expected_cols = {"camper", "seatrade", "assignment", "preference_rank", "assigned_to_block", "cabin", "block"}
         assert expected_cols <= set(result.columns)
 
-    def test_assigned_rows_have_nonzero_preference(self, sample_assignment_solution):
+    def test_conflated_preference_column_is_gone(self, sample_assignment_solution):
+        # The old single ``preference`` column conflated unassigned/assigned/unranked. It is
+        # decomposed into assignment + preference_rank; leaving it would reintroduce the conflation.
+        result = wrangle_assignments_to_longform(sample_assignment_solution)
+        assert "preference" not in result.columns
+
+    def test_unassigned_ranked_cell_carries_its_rank(self, sample_assignment_solution):
+        # The core fix: an unassigned cell now records the rank the camper GAVE it, so a
+        # near-miss is recoverable. Alice (prefs Archery, Sailing, ...) got 1a_Archery, so
+        # her 1a_Sailing cell is unassigned but still carries rank 2.
+        result = wrangle_assignments_to_longform(sample_assignment_solution)
+        cell = result[(result["camper"] == "Alice") & (result["block"] == "1a") & (result["seatrade"] == "Sailing")]
+        assert cell["assignment"].item() == 0.0
+        assert cell["preference_rank"].item() == 2
+
+    def test_assigned_ranked_rows_carry_their_rank(self, sample_assignment_solution):
         result = wrangle_assignments_to_longform(sample_assignment_solution)
         assigned = result[result["assignment"] == 1.0]
-        assert (assigned["preference"] > 0).all()
-
-    def test_unassigned_rows_have_zero_preference(self, sample_assignment_solution):
-        result = wrangle_assignments_to_longform(sample_assignment_solution)
-        unassigned = result[result["assignment"] == 0.0]
-        assert (unassigned["preference"] == 0).all()
+        assert assigned["preference_rank"].isin([1, 2, 3, 4, UNMATCHED_PREFERENCE]).all()
 
     def test_cabin_lookup(self, sample_assignment_solution):
         result = wrangle_assignments_to_longform(sample_assignment_solution)
@@ -175,6 +186,70 @@ def fleet_split_solution(sample_assignment_solution):
         assignments=assignments,
         seatrades_full=seatrades_full,
     )
+
+
+@pytest.fixture
+def unranked_seatrade_solution(sample_assignment_solution):
+    """The sample plus a Diving offering nobody ranked — so cells for it carry the sentinel.
+
+    Every camper in the sample ranks all three *running* seatrades, so there are no unranked
+    cells to test. Diving is offered but on nobody's preference list — the assigned-but-unranked
+    (and unassigned-unranked) cell state.
+    """
+    assignments = sample_assignment_solution.assignments.copy()
+    assignments["1a_Diving"] = 0.0
+    seatrades_full = sample_assignment_solution.seatrades_full + ["1a_Diving"]
+    return dataclasses.replace(
+        sample_assignment_solution,
+        assignments=assignments,
+        seatrades_full=seatrades_full,
+    )
+
+
+class TestLongformScheduleAndPreferenceFacts:
+    """The decomposed cell facts: preference_rank (camper↔seatrade) vs assigned_to_block (schedule)."""
+
+    def _cell(self, result, camper, block, seatrade):
+        return result[
+            (result["camper"] == camper) & (result["block"] == block) & (result["seatrade"] == seatrade)
+        ].iloc[0]
+
+    def test_unranked_cell_carries_the_unmatched_sentinel(self, unranked_seatrade_solution):
+        # A cell for a seatrade the camper never ranked holds UNMATCHED_PREFERENCE (not 0) — the
+        # "unranked" state, kept off the display by the color/ghost filters, not by a zero rank.
+        result = wrangle_assignments_to_longform(unranked_seatrade_solution)
+        diving = result[result["seatrade"] == "Diving"]
+        assert (diving["preference_rank"] == UNMATCHED_PREFERENCE).all()
+
+    def test_ghost_rank_survives_in_the_campers_other_attended_block(self, sample_assignment_solution):
+        # Alice got Archery (her #1) in block 1a and Sailing in 2b. Her Archery rank must STILL
+        # surface in 2b — an unassigned, ranked cell in a block she attends — so a split same-pref
+        # group stays fully visible (show-even-if-fulfilled-elsewhere). This is the key decision.
+        result = wrangle_assignments_to_longform(sample_assignment_solution)
+        cell = self._cell(result, "Alice", "2b", "Archery")
+        assert cell["assignment"] == 0.0
+        assert cell["preference_rank"] == 1
+        assert bool(cell["assigned_to_block"]) is True
+
+    def test_assigned_to_block_true_where_camper_has_a_seatrade(self, fleet_split_solution):
+        # Cabin1's camper 0 is on Fleet 1: a seatrade in block 1a.
+        result = wrangle_assignments_to_longform(fleet_split_solution)
+        cell = self._cell(result, "Alice", "1a", "Archery")
+        assert bool(cell["assigned_to_block"]) is True
+
+    def test_assigned_to_block_false_in_a_fleet_time_block(self, fleet_split_solution):
+        # Camper 0 is on Fleet 1, so block 1b is Fleet Time for them — no seatrade that block.
+        result = wrangle_assignments_to_longform(fleet_split_solution)
+        block_1b = result[(result["camper"] == "Alice") & (result["block"] == "1b")]
+        assert (block_1b["assigned_to_block"] == False).all()  # noqa: E712
+
+    def test_preference_rank_populated_even_in_a_fleet_time_block(self, fleet_split_solution):
+        # preference_rank is a pure camper↔seatrade fact, so it is present even on a Fleet Time
+        # block's cells; assigned_to_block is what keeps a ghost from drawing there, not a blank rank.
+        result = wrangle_assignments_to_longform(fleet_split_solution)
+        cell = self._cell(result, "Alice", "1b", "Sailing")  # Alice ranks Sailing #2
+        assert cell["preference_rank"] == 2
+        assert bool(cell["assigned_to_block"]) is False
 
 
 class TestWrangleFleetAssignments:
