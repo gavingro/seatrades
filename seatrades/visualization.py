@@ -56,6 +56,10 @@ SATISFACTION_RANGE = ["#1a9850", "#91cf60", "#fee08b", "#fc8d59", "#d73027"]
 # Neutral fill for cells a camper is not assigned, so the grid stays visible on a dark app theme.
 UNASSIGNED_COLOR = "#99C2DF"
 
+# Opacity of the faint ghost ranks (unassigned-but-ranked cells). The one tuning knob for
+# ghost legibility on the dark theme — quiet enough not to compete with the bold assigned ranks.
+GHOST_TEXT_OPACITY = 0.3
+
 # Cohesion detail: red↔green on the *quality* (not the block) — a camper alone in a session is bad
 # (red), with any cabinmate is good (green). Blocks still ride ``detail`` so they split on the
 # tooltip; the colour just reads the x-axis level so the eye lands on the right conclusion.
@@ -480,11 +484,11 @@ def _ghost_text(preference_rank: int, assignment: float, assigned_to_block: bool
     """The faint rank to print on an *unassigned* cell — else blank.
 
     Drawn iff the camper ranked this seatrade (``preference_rank`` ∈ 1..4), did NOT get it
-    here (``assignment == 0``), and is on a seatrade this block (``assigned_to_block``). This
+    here (``assignment == 0.0``), and is on a seatrade this block (``assigned_to_block``). This
     surfaces near-misses — e.g. a same-preference group the solver split — without touching
     Fleet Time blocks or unranked cells.
     """
-    if preference_rank != UNMATCHED_PREFERENCE and assignment == 0 and assigned_to_block:
+    if preference_rank != UNMATCHED_PREFERENCE and assignment == 0.0 and assigned_to_block:
         return str(preference_rank)
     return ""
 
@@ -618,7 +622,7 @@ def display_assignments(solution: AssignmentSolution) -> alt.Chart:
     # neutral background (no tint), so it never reads as a real placement. Opacity is the one
     # tuning knob, set during visual verification.
     ghost_cells = assignment_base.transform_filter(alt.datum.ghost_text != "")
-    assignment_ghost_text = ghost_cells.mark_text(color="black", opacity=0.3).encode(text="ghost_text:N")
+    assignment_ghost_text = ghost_cells.mark_text(color="black", opacity=GHOST_TEXT_OPACITY).encode(text="ghost_text:N")
     assignment_chart = (
         (assignment_background + assignment_rectangles + assignment_text + assignment_ghost_text)
         .facet(row="cabin", column="block", spacing={"row": 2})
