@@ -311,17 +311,30 @@ class TestSchedulingProblemConstraintGroups:
         assert len(problem.constraints) == len(sp.campers)
         assert any("_guaranteed_one_of_first_two" in name for name in problem.constraints)
 
-    def test_add_cabin_max_constraints(self, scheduling_problem):
+    def test_cabin_share_cap_off_by_default(self, scheduling_problem):
+        """At the default share of 1.0 the cap is off — no constraints added."""
         sp = scheduling_problem
-        problem = pulp.LpProblem("test_cabin_max")
+        problem = pulp.LpProblem("test_cabin_share_off")
         vars_ = self._make_vars(sp)
 
-        sp._add_cabin_max_constraints(problem, vars_["camper_assignments"])
+        sp._add_cabin_share_cap_constraints(problem, vars_["camper_assignments"], OptimizationConfig())
 
-        # 1 constraint per seatrade_full × cabin
+        assert len(problem.constraints) == 0
+
+    def test_cabin_share_cap_bounds_per_seatrade(self, scheduling_problem):
+        """Below 1.0 the cap adds one per-seatrade constraint per (seatrade_full × cabin)."""
+        sp = scheduling_problem
+        problem = pulp.LpProblem("test_cabin_share_on")
+        vars_ = self._make_vars(sp)
+
+        sp._add_cabin_share_cap_constraints(
+            problem, vars_["camper_assignments"], OptimizationConfig(max_cabin_share_per_seatrade=0.5)
+        )
+
+        # 1 constraint per seatrade_full × cabin; fixture campers_max=10 → cap round(0.5*10)=5.
         expected = len(sp.seatrades_full) * len(sp.cabins)
         assert len(problem.constraints) == expected
-        assert any("_max_4_campers_to_" in name for name in problem.constraints)
+        assert any("_cabin_share_cap_5_" in name for name in problem.constraints)
 
     def test_add_block_assignment_constraints(self, scheduling_problem):
         sp = scheduling_problem
