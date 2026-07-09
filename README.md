@@ -8,89 +8,110 @@ A scheduling tool that assigns campers to seatrade activities at Keats Camps usi
 
 Try it live: [https://keats-seatrades.streamlit.app/](https://keats-seatrades.streamlit.app/)
 
+The app opens pre-loaded with mock data, so you can hit **Assign Seatrades** and see a full schedule immediately — no setup required.
+
 ## What it does
 
-The scheduling captain spends dozens of hours manually assigning hundreds of campers to their preferred seatrade activities each week. Seatrades automates this by:
+Every week, Keats Camps hosts ~250 campers across ~22 cabins. On the first day, each camper submits their top seatrade preferences, and the Scheduling Captain must sort every camper into two fleets and their preferred activities — dozens of hours of manual work. Seatrades automates this by:
 
-1. **Configuring** seatrades (capacity, blocks, preferences)
-2. **Configuring** campers (cabin assignments, demographics, preferences)
-3. **Optimizing** assignments to maximize camper preferences while balancing cabin groupings, fleet gender balance, and age diversity
-4. **Viewing** assignment results
+1. **Configuring** seatrades (capacity per session)
+2. **Configuring** campers (cabin, gender, age, ranked preferences)
+3. **Pairing** campers who should (or shouldn't) end up together
+4. **Optimizing** assignments to balance camper preferences, cabin cohesion, staffing load, and age grouping
+5. **Reviewing** the schedule and a quality report card, then exporting it
+
+## Key terms
+
+- **Seatrade** — an activity offered at camp (Sailing, Kayaking, …).
+- **Fleet** — a time-of-day grouping: Fleet 1 = Morning, Fleet 2 = Afternoon.
+- **Block** — one of the 4 time slots in a week (`1a`, `1b`, `2a`, `2b`): the digit is the half of the week, the letter is the fleet.
+- **Session** — a seatrade running in a specific fleet + block (e.g. "Sailing in 1a"). Each camper gets two sessions per week.
+- **Fleet Time** — the large-group activity a cabin does in the slot it isn't on a seatrade.
 
 ## How to Use
 
-The app has five tabs:
+The app has five tabs.
 
 ### 1. Assignments
-View the optimized results. The app comes pre-loaded with demo data so you can immediately see the optimizer in action. Results update automatically when configuration changes:
-- Assignments by camper
-- Assignments by cabin
-- Assignments by seatrade
+
+Where you run the optimizer and read the results. Click **Assign Seatrades** and a live progress bar tracks the solve (the solver log is available in an expander if you want the detail). When it finishes you get:
+
+- **The Schedule**
+    - **Fleet Assignments** — a Cabin × Block grid showing each cabin's week at a glance (on a Seatrade vs. on Fleet Time).
+    - **Seatrade Staffing Schedule** — a Seatrade × Block grid of which seatrades run each block; a fully "Not offered" row is a seatrade nobody picked.
+    - **Master grid** — every camper's two assignments, colored by satisfaction (green = 1st-choice pick → red = lower-ranked), with each camper's submitted preference numbers shown.
+- **Schedule Quality** — a report card scoring the schedule across six independent goals (see below), plus a Solver Optimality gauge. Pick "Overview" for the summary or drill into any single area.
+- **Assignment Data** — the exportable table, viewable **By Camper** or **By Seatrade**.
 
 ### 2. Seatrade Setup
+
 Configure the available seatrade activities. Upload a CSV or use the built-in simulator. For each seatrade, set:
+
 - Name
-- Minimum campers (0 = optional)
+- Minimum campers per session (0 = the session may run empty / not at all)
 - Maximum campers per session
 
 ### 3. Camper Setup
+
 Configure the campers and their preferences. Upload a CSV or use the built-in simulator. For each camper, set:
+
 - Name
 - Cabin assignment
 - Gender
-- Four seatrade preferences (required)
+- Age
+- Four ranked seatrade preferences (required)
 
 ### 4. Friends
-Pair up campers with a relationship. Type rows directly in the grid or upload a CSV:
-- **Besties** — the pair gets an identical schedule (enforced now)
-- **Friends** / **frenemies** — saved and validated, but not yet enforced
 
-A besties pair must share at least two preferred seatrades; the app flags an infeasible pair before you optimize.
+Pair up campers with a relationship. Type rows directly in the grid or upload a CSV. All three types are hard constraints enforced by the solver:
 
-### 5. Optimization Setup
-Adjust how the optimizer balances competing priorities:
-- Preference weight (how much to prioritize camper choices)
-- Cabin weight (how much to keep cabin groups together)
-- Sparsity weight (reward for fewer seatrades per fleet)
-- Timeout settings
+- **Besties** — the pair gets an identical schedule (both sessions shared)
+- **Friends** — the pair shares at least one session
+- **Frenemies** — the pair shares no sessions
 
-## Current Limitations
+Besties and friends need enough overlap in their preferred seatrades to be satisfiable; the app flags an infeasible pair (naming both campers) before you optimize.
 
-- All 4 seatrade choices are required; campers cannot be assigned to an unselected seatrade
-- No age constraint implemented yet — each seatrade may have age diversity
+### 5. Scheduling Setup
 
-## Development Status
+Tune how the optimizer balances competing priorities. The main sliders are **soft preferences** the optimizer trades off against each other:
 
-Core optimization is working with CSV import. Roadmap items and bugs are tracked in GitHub Issues.
+- **Give Campers their Favourite Picks** — push for #1–2 ranked seatrades
+- **Keep Cabinmates Together** — cabin cohesion / easier supervision
+- **Fewer seatrades to staff** — run fewer distinct seatrades (less staffing load)
+- **Keep similar ages together** — group similar-aged campers within sessions and fleets
 
-### Next
+**Advanced settings** add hard limits and solver controls: max seatrades per fleet, the age-grouping balance (fleet-wide ↔ per-session), a toggle to keep each cabin in the same fleet all week (the hand-scheduled arrangement), minimum solution quality, and the solver time limit.
 
-- Add 3 assignment views (by camper, by cabin, by seatrade) with CSV download
-- Diagnose why optimization fails to converge (show helpful error messages)
-- Make CSV upload templates more discoverable (explicit download buttons)
+## Schedule Quality metrics
 
-### Later
+After each solve the app scores the schedule (higher is always better) across:
 
-- Add age constraint to ensure seatrades have similar age ranges
-- Add constraint: single girl can't be alone in a seatrade of all boys (and vice versa)
-- Save multiple optimization scenarios for comparison
-- Google Forms integration for preference collection
-- Infer seatrade popularity from preferences and balance across protected categories
+- **Preference** — % of campers who got a #1 pick in at least one session
+- **Cohesion** — % of campers with a cabinmate in their session(s)
+- **Sparsity** — how few of the available seatrades you have to staff
+- **Age spread** — how close in age the campers in each seatrade are
+- **Within-cabin fairness** — did everyone in a cabin get similarly good picks?
+- **Between-cabin fairness** — did some whole cabins get better picks than others?
 
 ## Tech Stack
 
 - **Frontend:** Streamlit (Python)
-- **Optimizer:** Mixed-integer linear programming (PuLP)
+- **Optimizer:** Mixed-integer linear programming (PuLP + CBC)
 - **Deployment:** Streamlit Cloud (free, public)
 
 ## Deployment
 
-For MVP user testing: deploy from `main` branch, not from feature branches. This ensures:
+For MVP user testing: deploy from `main` to streamlit cloud, not from feature branches. This ensures:
+
 - Stable, tested code reaches users
-- CI/CD runs on merge to main before deployment
+- CI runs on merge to `main` before deployment
 - Clear release points for feedback
 
 Streamlit Cloud is configured to auto-deploy on push to `main`.
+
+## Development
+
+See `docs/CONTRIBUTING.md` for setup and testing, `CONTEXT.md` for the domain glossary, and `docs/adr/` for architecture decisions.
 
 ## License
 
