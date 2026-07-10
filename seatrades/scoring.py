@@ -61,10 +61,10 @@ def score(solution: AssignmentSolution) -> Scorecard:
             _preference_metric(assigned),
             _cohesion_metric(assigned),
             _sparsity_metric(longform),
+            _cabin_variety_metric(assigned),
             _age_spread_metric(assigned),
             _fairness_within_metric(assigned),
             _fairness_between_metric(assigned),
-            _cabin_variety_metric(assigned),
         ],
         optimality=solution.status.optimality,
     )

@@ -51,13 +51,13 @@ _QUALITY_GLOSSARY = """
   this is scored twice for each camper: once for each of their seatrade assignments.
 - **Sparsity** — the percentage of seatrades you have to staff of the total available seatrades.
   *Fewer is better* — less staffing load.
+- **Cabin variety** — in each seatrade session, how much does the biggest cabin dominate?
+  *Less domination is better* — many cabins mixed together, not one cabin taking over the session.
 - **Age spread** — how close in age the campers in each seatrade are. *Age range = oldest minus
   youngest* (0 = everyone the same age; 16- and 17-year-olds together = 1).
 - **Within-cabin fairness** — inside a cabin, did everyone get similarly good picks, or did one
   camper get a raw deal?
 - **Between-cabin fairness** — across cabins, did some whole cabins get better picks than others?
-- **Cabin variety** — in each seatrade session, how much does the biggest cabin dominate?
-  *Less domination is better* — many cabins mixed together, not one cabin taking over the session.
 
 Every area is framed so **higher is better**. *Fairness* areas score high when schedules
 are *even*, even if they are evenly mediocre. Preference is what shows the overall level,
