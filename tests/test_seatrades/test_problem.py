@@ -358,6 +358,23 @@ class TestSchedulingProblemConstraintGroups:
         assert not any("_cabin_share_cap_0_" in name for name in problem.constraints)
         assert any("_cabin_share_cap_1_" in name for name in problem.constraints)
 
+    def test_cabin_variety_penalty_structure(self, scheduling_problem):
+        """One non-negative excess var + one constraint per (cabin, seatrade_full), with a free
+        threshold of round(0.25 * campers_max). Fixture campers_max=10 → threshold round(2.5)=2,
+        so each constraint is ``excess >= cabin_count - 2`` (a live gradient, not a degenerate 0)."""
+        sp = scheduling_problem
+        problem = pulp.LpProblem("test_cabin_variety")
+        vars_ = self._make_vars(sp)
+
+        term = sp._cabin_variety_penalty_term(problem, vars_["camper_assignments"])
+
+        expected = len(sp.seatrades_full) * len(sp.cabins)
+        assert len(term) == expected  # one excess var per (cabin, session)
+        assert len(problem.constraints) == expected
+        assert all(var.name.startswith("cabin_excess_") for var in term)
+        # threshold surfaces as the constraint constant (excess - cabin_count + threshold >= 0).
+        assert {c.constant for c in problem.constraints.values()} == {2}
+
     def test_add_block_assignment_constraints(self, scheduling_problem):
         sp = scheduling_problem
         problem = pulp.LpProblem("test_fleet_assign")

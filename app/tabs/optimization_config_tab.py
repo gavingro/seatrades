@@ -141,7 +141,7 @@ class OptimizationConfigForm:
                     min_value=25,
                     max_value=100,
                     step=5,
-                    value=100,
+                    value=int(OptimizationConfig().max_cabin_share_per_seatrade * 100),
                     format="%d%%",
                     help=(
                         "Hard cap on how much of a single seatrade one cabin may fill. 100% = off "

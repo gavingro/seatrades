@@ -207,7 +207,7 @@ class SchedulingProblem:
             block = block_name(s)
             seatrade = seatrade_name(s)
             campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
-            campers_max = self.seatrades_prefs.loc[seatrade, "campers_max"]
+            campers_max = self._seatrade_campers_max(s)
             camper_count = pulp.lpSum([camper_assignments[c][s] for c in self.campers])
             if config.allow_empty_sessions:
                 running = seatrade_assignment[block][seatrade]
@@ -216,6 +216,10 @@ class SchedulingProblem:
             else:
                 problem += (camper_count >= campers_min, f"More_than_{campers_min}_in_{s}")
                 problem += (camper_count <= campers_max, f"Less_than_{campers_max}_in_{s}")
+
+    def _seatrade_campers_max(self, seatrade_full: str) -> int:
+        """Max capacity of the seatrade named in a ``block_seatrade`` key (a pre-solve constant)."""
+        return cast(int, self.seatrades_prefs.loc[seatrade_name(seatrade_full), "campers_max"])
 
     def _add_preference_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict) -> None:
         """Campers cannot be assigned to seatrades they didn't request."""
@@ -256,7 +260,7 @@ class SchedulingProblem:
         if config.max_cabin_share_per_seatrade >= 1.0:
             return
         for s in self.seatrades_full:
-            campers_max = cast(int, self.seatrades_prefs.loc[seatrade_name(s), "campers_max"])
+            campers_max = self._seatrade_campers_max(s)
             cap = max(1, round(config.max_cabin_share_per_seatrade * campers_max))
             for cabin in self.cabins:
                 problem += (
@@ -437,7 +441,7 @@ class SchedulingProblem:
         """
         excess_vars = []
         for s in self.seatrades_full:
-            campers_max = cast(int, self.seatrades_prefs.loc[seatrade_name(s), "campers_max"])
+            campers_max = self._seatrade_campers_max(s)
             threshold = round(self._CABIN_VARIETY_FREE_FRACTION * campers_max)
             for cabin in self.cabins:
                 cabin_count = pulp.lpSum(camper_assignments[c][s] for c in self.campers_by_cabin[cabin])
