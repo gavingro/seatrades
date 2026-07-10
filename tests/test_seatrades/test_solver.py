@@ -6,7 +6,7 @@ import pytest
 
 from seatrades.config import OptimizationConfig
 from seatrades.preferences import validate_relationships
-from seatrades.problem import SchedulingProblem
+from seatrades.problem import SchedulingProblem, seatrade_name
 from seatrades.results import (
     AssignmentSolution,
     SolverState,
@@ -778,3 +778,187 @@ class TestAgeGroupingBalanceSelectsLevel:
         assert session_focus.status.state == SolverState.OPTIMAL
         # Session-level tightening leaves at least one block age-mixed (blocks are not its concern).
         assert self._max_block_age_range(session_focus, problem) >= 3
+
+
+def _max_cabin_concentration(solution, problem, cabin):
+    """Largest number of ``cabin``'s campers sharing a single session."""
+    counts: dict[str, int] = {}
+    for cid in problem.campers_by_cabin[cabin]:
+        row = solution.assignments.loc[cid]
+        for col in row.index[row == 1]:
+            counts[col] = counts.get(col, 0) + 1
+    return max(counts.values())
+
+
+def _preference_penalty(solution, problem):
+    """Sum of assigned-seatrade preference ranks over all campers (lower = happier)."""
+    total = 0
+    for cid, prefs in problem.camper_prefs.items():
+        row = solution.assignments.loc[cid]
+        for col in row.index[row == 1]:
+            total += prefs.index(seatrade_name(col))
+    return total
+
+
+class TestCabinVarietyPenalty:
+    """cabin_variety_weight discourages one cabin from dominating a single seatrade.
+
+    One 6-camper cabin (C0) all share the ranking [A, B, C, D]. With cabin togetherness
+    pulling and variety off, the optimum packs all six into one session per half. Raising
+    cabin_variety_weight spreads that cabin across seatrades — a worse-but-valid preference
+    cost, never infeasible.
+    """
+
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["C0"] * 6,
+            "camper": [f"C0_{i}" for i in range(6)],
+            "gender": ["M", "F", "M", "F", "M", "F"],
+            "age": [13, 13, 14, 14, 15, 15],
+            "seatrade_1": ["A"] * 6,
+            "seatrade_2": ["B"] * 6,
+            "seatrade_3": ["C"] * 6,
+            "seatrade_4": ["D"] * 6,
+        }
+    )
+    # campers_max=8 → free threshold round(0.25 * 8) = 2 campers per cabin per seatrade.
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["A", "B", "C", "D"],
+            "campers_min": [0] * 4,
+            "campers_max": [8] * 4,
+        }
+    )
+
+    def _config(self, cabin_variety_weight):
+        return OptimizationConfig(
+            solver=pulp.apis.PULP_CBC_CMD(msg=0),
+            preference_weight=1,
+            cabins_weight=5,
+            sparsity_weight=0,
+            age_weight=0,
+            cabin_variety_weight=cabin_variety_weight,
+        )
+
+    def test_variety_off_packs_the_cabin_into_one_seatrade(self):
+        """Baseline: with variety off, cohesion packs all six cabinmates into one session."""
+        problem = SchedulingProblem(self._joined, self._setup)
+
+        solution = run(problem, self._config(cabin_variety_weight=0))
+
+        assert solution.status.state == SolverState.OPTIMAL
+        assert _max_cabin_concentration(solution, problem, "C0") == 6
+
+    def test_high_variety_spreads_the_cabin_at_a_worse_preference_cost(self):
+        """Raising the weight spreads the cabin across seatrades — worse-but-valid, not infeasible."""
+        problem = SchedulingProblem(self._joined, self._setup)
+
+        off = run(problem, self._config(cabin_variety_weight=0))
+        on = run(problem, self._config(cabin_variety_weight=50))
+
+        assert on.status.state == SolverState.OPTIMAL
+        assert _max_cabin_concentration(on, problem, "C0") < _max_cabin_concentration(off, problem, "C0")
+        # The spread is not free: campers drop to lower-ranked seatrades.
+        assert _preference_penalty(on, problem) > _preference_penalty(off, problem)
+
+
+class TestMaxCabinSharePerSeatrade:
+    """The optional hard cap forbids one cabin from over-filling a seatrade.
+
+    A three-bestie chain in one cabin shares an identical schedule, so all three land in
+    the same session. campers_max=8 → a 25% cap allows only round(0.25*8)=2 per cabin,
+    which the trio must exceed.
+    """
+
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["Cabin1"] * 3,
+            "camper": ["Alice", "Bob", "Cara"],
+            "gender": ["F", "M", "F"],
+            "age": [13, 14, 15],
+            "seatrade_1": ["A"] * 3,
+            "seatrade_2": ["B"] * 3,
+            "seatrade_3": ["C"] * 3,
+            "seatrade_4": ["D"] * 3,
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["A", "B", "C", "D"],
+            "campers_min": [0] * 4,
+            "campers_max": [8] * 4,
+        }
+    )
+    _relationships = pd.DataFrame(
+        {
+            "cabin_1": ["Cabin1", "Cabin1"],
+            "camper_1": ["Alice", "Bob"],
+            "cabin_2": ["Cabin1", "Cabin1"],
+            "camper_2": ["Bob", "Cara"],
+            "relationship": ["besties", "besties"],
+        }
+    )
+
+    def _config(self, share):
+        return OptimizationConfig(
+            solver=pulp.apis.PULP_CBC_CMD(msg=0),
+            max_cabin_share_per_seatrade=share,
+        )
+
+    def test_default_share_is_a_no_op(self):
+        """At the default 1.0 the cap is off — the over-filling trio still solves."""
+        problem = SchedulingProblem(self._joined, self._setup, relationships=self._relationships)
+
+        solution = run(problem, self._config(share=1.0))
+
+        assert solution.status.state == SolverState.OPTIMAL
+
+    def test_low_share_forbids_domination(self):
+        """Sliding the cap to 25% caps a cabin at 2 per seatrade — the trio is infeasible."""
+        problem = SchedulingProblem(self._joined, self._setup, relationships=self._relationships)
+
+        solution = run(problem, self._config(share=0.25))
+
+        assert solution.status.state == SolverState.INFEASIBLE
+
+
+class TestBestiesChainOverFourSolves:
+    """Regression: the old hardcoded max-4-per-cabin forced INFEASIBLE for a 5-bestie chain
+    sharing a cabin (mode B2). With the cap gone by default, it now solves."""
+
+    _joined = pd.DataFrame(
+        {
+            "cabin": ["Cabin1"] * 5,
+            "camper": [f"C{i}" for i in range(5)],
+            "gender": ["F", "M", "F", "M", "F"],
+            "age": [13, 14, 15, 16, 13],
+            "seatrade_1": ["A"] * 5,
+            "seatrade_2": ["B"] * 5,
+            "seatrade_3": ["C"] * 5,
+            "seatrade_4": ["D"] * 5,
+        }
+    )
+    _setup = pd.DataFrame(
+        {
+            "seatrade": ["A", "B", "C", "D"],
+            "campers_min": [0] * 4,
+            "campers_max": [10] * 4,
+        }
+    )
+    # Chain C0–C1–C2–C3–C4: all five merge into one besties component.
+    _relationships = pd.DataFrame(
+        {
+            "cabin_1": ["Cabin1"] * 4,
+            "camper_1": [f"C{i}" for i in range(4)],
+            "cabin_2": ["Cabin1"] * 4,
+            "camper_2": [f"C{i + 1}" for i in range(4)],
+            "relationship": ["besties"] * 4,
+        }
+    )
+
+    def test_five_besties_in_one_cabin_solves_by_default(self):
+        problem = SchedulingProblem(self._joined, self._setup, relationships=self._relationships)
+
+        solution = run(problem, OptimizationConfig(solver=pulp.apis.PULP_CBC_CMD(msg=0)))
+
+        assert solution.status.state == SolverState.OPTIMAL

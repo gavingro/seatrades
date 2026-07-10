@@ -25,6 +25,15 @@ class OptimizationConfig:
     # block_seatrade) and the fleet level (per block); 0.5 = balanced.
     age_weight: int = 1
     age_balance: float = 0.5
+    # Soft penalty discouraging one cabin from dominating a seatrade. Each seatrade gives
+    # a free threshold of round(0.25 * campers_max); each camper a cabin places beyond it
+    # adds penalty. Defaults ON at a modest weight; 0 disables. The direct counterweight to
+    # cabins_weight (cabin togetherness).
+    cabin_variety_weight: int = 3
+    # Optional hard cap on any one cabin's share of a seatrade's capacity, in [0.25, 1.0].
+    # Default 1.0 = OFF (constraint not added). Below 1.0, caps a cabin at
+    # round(share * campers_max) campers per seatrade.
+    max_cabin_share_per_seatrade: float = 1.0
     max_seatrades_per_fleet: Optional[int] = None
     # When True (default), campers_min is a conditional minimum: a session runs with a
     # count in [min, max] or doesn't run (0 campers). When False, restores the legacy

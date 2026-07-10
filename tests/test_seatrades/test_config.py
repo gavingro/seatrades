@@ -22,6 +22,8 @@ class TestOptimizationConfig:
         assert config.sparsity_weight == 2
         assert config.age_weight == 1
         assert config.age_balance == 0.5
+        assert config.cabin_variety_weight == 3
+        assert config.max_cabin_share_per_seatrade == 1.0
         assert config.max_seatrades_per_fleet is None
         assert config.force_same_fleet_all_week is False
         assert config.solver.timeLimit == 120
@@ -39,11 +41,15 @@ class TestOptimizationConfig:
             preference_weight=5,
             cabins_weight=1,
             sparsity_weight=0,
+            cabin_variety_weight=5,
+            max_cabin_share_per_seatrade=0.5,
             max_seatrades_per_fleet=4,
         )
         assert config.preference_weight == 5
         assert config.cabins_weight == 1
         assert config.sparsity_weight == 0
+        assert config.cabin_variety_weight == 5
+        assert config.max_cabin_share_per_seatrade == 0.5
         assert config.max_seatrades_per_fleet == 4
 
 

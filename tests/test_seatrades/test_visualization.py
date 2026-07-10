@@ -16,6 +16,7 @@ from seatrades.visualization import (
     add_display_columns,
     display_age_spread_detail,
     display_assignments,
+    display_cabin_variety_detail,
     display_cohesion_detail,
     display_fairness_between_detail,
     display_fairness_within_detail,
@@ -56,7 +57,7 @@ def _rule_layer_average(spec):
 
 
 class TestDisplayQualitySummary:
-    """The six-metric overview: normalized 0–100 on an ordinal x, measured value (plain units) in the tooltip."""
+    """The seven-metric overview: normalized 0–100 on an ordinal x, measured value (plain units) in the tooltip."""
 
     def test_x_is_sorted_in_scorecard_order_with_display_labels(self, sample_assignment_solution):
         """The x-axis order is derived from scorecard.metrics (single source, no parallel
@@ -122,6 +123,11 @@ class TestDisplayQualitySummary:
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
         assert "Fair between" in _summary_metric_names(spec)
 
+    def test_cabin_variety_is_plotted_on_the_summary(self, sample_assignment_solution):
+        """Cabin variety shows on the Overview summary plot (issue #109 acceptance criterion)."""
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        assert "Cabin variety" in _summary_metric_names(spec)
+
     def test_summary_axis_uses_de_jargoned_fairness_labels(self, sample_assignment_solution):
         """The plotted x labels de-jargon the two fairness metrics (owner comment #5)."""
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
@@ -154,6 +160,10 @@ def _fair_within_metric(solution):
 
 def _fair_between_metric(solution):
     return score(solution).metric("Fair between")
+
+
+def _cabin_variety_metric(solution):
+    return score(solution).metric("Cabin variety")
 
 
 class TestDisplayPreferenceDetail:
@@ -479,6 +489,47 @@ class TestDisplayFairnessBetweenDetail:
         spec = display_fairness_between_detail(_fair_between_metric(sample_assignment_solution)).to_dict()
         tooltip_fields = [entry.get("field") for enc in _flatten(spec) for entry in enc.get("tooltip", [])]
         assert "cabin" in tooltip_fields
+
+
+class TestDisplayCabinVarietyDetail:
+    """The Cabin Variety drill-down: seatrade-session counts per max cabin share."""
+
+    def test_x_encodes_max_share(self, sample_assignment_solution):
+        spec = display_cabin_variety_detail(_cabin_variety_metric(sample_assignment_solution)).to_dict()
+        x_fields = [enc["x"].get("field") for enc in _flatten(spec) if "x" in enc]
+        assert "max_share" in x_fields
+
+    def test_y_is_a_session_count(self, sample_assignment_solution):
+        spec = display_cabin_variety_detail(_cabin_variety_metric(sample_assignment_solution)).to_dict()
+        y_aggregates = [enc["y"].get("aggregate") for enc in _flatten(spec) if "y" in enc]
+        assert "count" in y_aggregates
+
+    def test_has_a_reference_line_at_the_average(self, sample_assignment_solution):
+        spec = display_cabin_variety_detail(_cabin_variety_metric(sample_assignment_solution)).to_dict()
+        marks = [layer.get("mark", {}).get("type") for layer in spec.get("layer", [])]
+        assert "rule" in marks
+
+    def test_reference_line_sits_at_the_mean_of_the_plotted_shares(self, sample_assignment_solution):
+        """The rule's x-position is the mean of the *plotted* per-session max shares — which
+        equals the rollup ``metric.raw_value`` — sourced from the plotted column so it can never
+        drift from the bars."""
+        metric = _cabin_variety_metric(sample_assignment_solution)
+        spec = display_cabin_variety_detail(metric).to_dict()
+        assert _rule_layer_average(spec) == pytest.approx(metric.detail["max_share"].mean())
+        assert _rule_layer_average(spec) == pytest.approx(metric.raw_value)
+
+    def test_session_id_rides_the_stacking_channel(self, sample_assignment_solution):
+        """Per-session id (seatrade) must ride detail (not tooltip alone) or the binned bars
+        flatten to height 1 — the vega countplot stacking trap. Guards the flatten-to-1 bug that
+        only shows in a browser."""
+        spec = display_cabin_variety_detail(_cabin_variety_metric(sample_assignment_solution)).to_dict()
+        detail_fields = [entry.get("field") for enc in _flatten(spec) for entry in enc.get("detail", [])]
+        assert "seatrade" in detail_fields
+
+    def test_tooltip_identifies_the_session(self, sample_assignment_solution):
+        spec = display_cabin_variety_detail(_cabin_variety_metric(sample_assignment_solution)).to_dict()
+        tooltip_fields = [entry.get("field") for enc in _flatten(spec) for entry in enc.get("tooltip", [])]
+        assert "seatrade" in tooltip_fields
 
 
 class TestDisplayMetricDetail:

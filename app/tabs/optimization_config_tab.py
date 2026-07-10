@@ -62,6 +62,17 @@ class OptimizationConfigForm:
                     "togetherness."
                 ),
             )
+            cabin_variety_weight = st.slider(
+                "Cabin Variety",
+                min_value=0,
+                max_value=5,
+                value=OptimizationConfig().cabin_variety_weight,
+                help=(
+                    "How hard to spread each seatrade across more cabins — fairer access, more fun "
+                    "to run. The direct counterweight to 'Keep Cabinmates Together': raising it "
+                    "stops one cabin from dominating a seatrade, but may pull cabinmates apart."
+                ),
+            )
 
             # --- Advanced: hard limits and power-user knobs ---
             with st.expander("Advanced settings (hard limits & solver controls)"):
@@ -125,9 +136,24 @@ class OptimizationConfigForm:
                     format="%d minutes",
                     help="Give up after this long and return the best schedule found so far.",
                 )
+                one_cabin_share_pct = st.slider(
+                    "Max one-cabin share of a seatrade (hard limit)",
+                    min_value=25,
+                    max_value=100,
+                    step=5,
+                    value=int(OptimizationConfig().max_cabin_share_per_seatrade * 100),
+                    format="%d%%",
+                    help=(
+                        "Hard cap on how much of a single seatrade one cabin may fill. 100% = off "
+                        "(no cap). Below 100% forbids a cabin from taking more than this share of "
+                        "any seatrade's capacity — a strict backstop beyond the 'Cabin Variety' goal."
+                    ),
+                )
 
             # "How optimal" → solver gap: 90% quality == 0.10 gap.
             optimality_gap = (100 - min_quality_pct) / 100
+            # Percent slider → fraction; 100% = 1.0 = cap off.
+            max_cabin_share_per_seatrade = one_cabin_share_pct / 100
 
             optimization_config = OptimizationConfig(
                 preference_weight=preference_weight,
@@ -135,6 +161,8 @@ class OptimizationConfigForm:
                 sparsity_weight=sparsity_weight,
                 age_weight=age_weight,
                 age_balance=age_balance,
+                cabin_variety_weight=cabin_variety_weight,
+                max_cabin_share_per_seatrade=max_cabin_share_per_seatrade,
                 max_seatrades_per_fleet=max_seatrades_per_fleet,
                 force_same_fleet_all_week=force_same_fleet_all_week,
                 solver=pulp.apis.PULP_CBC_CMD(

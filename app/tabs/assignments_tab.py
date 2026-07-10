@@ -43,7 +43,7 @@ _POLL_INTERVAL_SECONDS = 2
 _QUALITY_GLOSSARY = """
 **What do these scores mean?**
 
-**Overview** compares all six areas at once; pick an area to drill into a detailed display:
+**Overview** compares all seven areas at once; pick an area to drill into a detailed display:
 
 - **Preference** — the percentage of campers that got *good picks* (their #1 choice in at least one of their two
   seatrades).
@@ -51,6 +51,8 @@ _QUALITY_GLOSSARY = """
   this is scored twice for each camper: once for each of their seatrade assignments.
 - **Sparsity** — the percentage of seatrades you have to staff of the total available seatrades.
   *Fewer is better* — less staffing load.
+- **Cabin variety** — in each seatrade session, how much does the biggest cabin dominate?
+  *Less domination is better* — many cabins mixed together, not one cabin taking over the session.
 - **Age spread** — how close in age the campers in each seatrade are. *Age range = oldest minus
   youngest* (0 = everyone the same age; 16- and 17-year-olds together = 1).
 - **Within-cabin fairness** — inside a cabin, did everyone get similarly good picks, or did one
@@ -181,7 +183,7 @@ class AssignmentsTab:
                     key="quality_view_selector",
                 )
                 if quality_view == "Overview":
-                    # Overview shows the six-area summary alongside the Solver Optimality donut,
+                    # Overview shows the seven-area summary alongside the Solver Optimality donut,
                     # both framed as at-a-glance "summary" artifacts of the solve.
                     optimality_col, summary_col = st.columns([1, 2])
                     with optimality_col:

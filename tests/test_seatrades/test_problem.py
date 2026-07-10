@@ -311,17 +311,69 @@ class TestSchedulingProblemConstraintGroups:
         assert len(problem.constraints) == len(sp.campers)
         assert any("_guaranteed_one_of_first_two" in name for name in problem.constraints)
 
-    def test_add_cabin_max_constraints(self, scheduling_problem):
+    def test_cabin_share_cap_off_by_default(self, scheduling_problem):
+        """At the default share of 1.0 the cap is off — no constraints added."""
         sp = scheduling_problem
-        problem = pulp.LpProblem("test_cabin_max")
+        problem = pulp.LpProblem("test_cabin_share_off")
         vars_ = self._make_vars(sp)
 
-        sp._add_cabin_max_constraints(problem, vars_["camper_assignments"])
+        sp._add_cabin_share_cap_constraints(problem, vars_["camper_assignments"], OptimizationConfig())
 
-        # 1 constraint per seatrade_full × cabin
+        assert len(problem.constraints) == 0
+
+    def test_cabin_share_cap_bounds_per_seatrade(self, scheduling_problem):
+        """Below 1.0 the cap adds one per-seatrade constraint per (seatrade_full × cabin)."""
+        sp = scheduling_problem
+        problem = pulp.LpProblem("test_cabin_share_on")
+        vars_ = self._make_vars(sp)
+
+        sp._add_cabin_share_cap_constraints(
+            problem, vars_["camper_assignments"], OptimizationConfig(max_cabin_share_per_seatrade=0.5)
+        )
+
+        # 1 constraint per seatrade_full × cabin; fixture campers_max=10 → cap round(0.5*10)=5.
         expected = len(sp.seatrades_full) * len(sp.cabins)
         assert len(problem.constraints) == expected
-        assert any("_max_4_campers_to_" in name for name in problem.constraints)
+        assert any("_cabin_share_cap_5_" in name for name in problem.constraints)
+
+    def test_cabin_share_cap_floors_at_one(self, joined_campers_df):
+        """The cap never zeroes a cabin out of a seatrade — round() at tiny campers_max
+        can be 0, which would re-introduce the spurious infeasibility this feature removes."""
+        # campers_max=2 → round(0.25 * 2) = 0 without the floor.
+        tiny_setup = pd.DataFrame(
+            {
+                "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+                "campers_min": [0] * 4,
+                "campers_max": [2] * 4,
+            }
+        )
+        sp = SchedulingProblem(joined_campers_df, tiny_setup)
+        problem = pulp.LpProblem("test_cabin_share_floor")
+        vars_ = self._make_vars(sp)
+
+        sp._add_cabin_share_cap_constraints(
+            problem, vars_["camper_assignments"], OptimizationConfig(max_cabin_share_per_seatrade=0.25)
+        )
+
+        assert not any("_cabin_share_cap_0_" in name for name in problem.constraints)
+        assert any("_cabin_share_cap_1_" in name for name in problem.constraints)
+
+    def test_cabin_variety_penalty_structure(self, scheduling_problem):
+        """One non-negative excess var + one constraint per (cabin, seatrade_full), with a free
+        threshold of round(0.25 * campers_max). Fixture campers_max=10 → threshold round(2.5)=2,
+        so each constraint is ``excess >= cabin_count - 2`` (a live gradient, not a degenerate 0)."""
+        sp = scheduling_problem
+        problem = pulp.LpProblem("test_cabin_variety")
+        vars_ = self._make_vars(sp)
+
+        term = sp._cabin_variety_penalty_term(problem, vars_["camper_assignments"])
+
+        expected = len(sp.seatrades_full) * len(sp.cabins)
+        assert len(term) == expected  # one excess var per (cabin, session)
+        assert len(problem.constraints) == expected
+        assert all(var.name.startswith("cabin_excess_") for var in term)
+        # threshold surfaces as the constraint constant (excess - cabin_count + threshold >= 0).
+        assert {c.constant for c in problem.constraints.values()} == {2}
 
     def test_add_block_assignment_constraints(self, scheduling_problem):
         sp = scheduling_problem

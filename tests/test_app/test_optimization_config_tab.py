@@ -35,6 +35,39 @@ class TestAgeSliders:
         assert at.session_state["optimization_config"].age_balance == 0.9
 
 
+class TestCabinVarietySliders:
+    def test_variety_weight_slider_feeds_config(self):
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
+        at.run()
+
+        find_slider(at, "cabin variety").set_value(5)
+        at.run()
+        find_button(at, "Submit").click()
+        at.run()
+
+        assert at.session_state["optimization_config"].cabin_variety_weight == 5
+
+    def test_one_cabin_share_slider_feeds_config(self):
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
+        at.run()
+
+        find_slider(at, "max one-cabin share").set_value(50)
+        at.run()
+        find_button(at, "Submit").click()
+        at.run()
+
+        assert at.session_state["optimization_config"].max_cabin_share_per_seatrade == 0.5
+
+    def test_one_cabin_share_defaults_to_off(self):
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
+        at.run()
+
+        find_button(at, "Submit").click()
+        at.run()
+
+        assert at.session_state["optimization_config"].max_cabin_share_per_seatrade == 1.0
+
+
 class TestSameFleetToggle:
     def test_unchecked_yields_flag_false(self):
         at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)

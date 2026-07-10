@@ -1,6 +1,6 @@
 """SchedulingProblem — builds PuLP model from domain data."""
 
-from typing import Hashable, Optional
+from typing import Hashable, Optional, cast
 
 import pandas as pd
 import pulp
@@ -30,7 +30,10 @@ class SchedulingProblem:
     """
 
     VarDict = dict[Hashable, dict[str, pulp.LpVariable]]
-    _CABIN_MAX_PER_SEATRADE = 4
+    # Fraction of a seatrade's capacity a cabin may fill for free before the soft
+    # cabin-variety penalty kicks in. Fixed internal constant (not user-exposed);
+    # structural effect is "ideally >= 4 cabins fill any seatrade."
+    _CABIN_VARIETY_FREE_FRACTION = 0.25
 
     def __init__(
         self,
@@ -127,7 +130,7 @@ class SchedulingProblem:
         self._add_capacity_constraints(problem, camper_assignments, seatrade_assignment, config)
         self._add_preference_constraints(problem, camper_assignments)
         self._add_top2_guarantee_constraints(problem, camper_assignments)
-        self._add_cabin_max_constraints(problem, camper_assignments)
+        self._add_cabin_share_cap_constraints(problem, camper_assignments, config)
         self._add_besties_constraints(problem, camper_assignments)
         self._add_friends_constraints(problem, camper_assignments)
         self._add_frenemies_constraints(problem, camper_assignments)
@@ -204,7 +207,7 @@ class SchedulingProblem:
             block = block_name(s)
             seatrade = seatrade_name(s)
             campers_min = self.seatrades_prefs.loc[seatrade, "campers_min"]
-            campers_max = self.seatrades_prefs.loc[seatrade, "campers_max"]
+            campers_max = self._seatrade_campers_max(s)
             camper_count = pulp.lpSum([camper_assignments[c][s] for c in self.campers])
             if config.allow_empty_sessions:
                 running = seatrade_assignment[block][seatrade]
@@ -213,6 +216,10 @@ class SchedulingProblem:
             else:
                 problem += (camper_count >= campers_min, f"More_than_{campers_min}_in_{s}")
                 problem += (camper_count <= campers_max, f"Less_than_{campers_max}_in_{s}")
+
+    def _seatrade_campers_max(self, seatrade_full: str) -> int:
+        """Max capacity of the seatrade named in a ``block_seatrade`` key (a pre-solve constant)."""
+        return cast(int, self.seatrades_prefs.loc[seatrade_name(seatrade_full), "campers_max"])
 
     def _add_preference_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict) -> None:
         """Campers cannot be assigned to seatrades they didn't request."""
@@ -239,14 +246,26 @@ class SchedulingProblem:
                 f"{c}_guaranteed_one_of_first_two_seatrades",
             )
 
-    def _add_cabin_max_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict) -> None:
-        """At most _CABIN_MAX_PER_SEATRADE campers from the same cabin per seatrade."""
+    def _add_cabin_share_cap_constraints(
+        self, problem: pulp.LpProblem, camper_assignments: VarDict, config: OptimizationConfig
+    ) -> None:
+        """Optional hard cap on any one cabin's share of a seatrade's capacity.
+
+        Off by default: at ``max_cabin_share_per_seatrade == 1.0`` no constraint is added.
+        Below 1.0, cap each cabin at ``round(share * campers_max)`` campers per seatrade —
+        the same per-(cabin, session) sum as before, but per-seatrade and opt-in. Floored
+        at 1 so a tiny-capacity seatrade (where ``round`` would give 0) never becomes
+        unfillable — that would re-introduce the spurious infeasibility this feature removes.
+        """
+        if config.max_cabin_share_per_seatrade >= 1.0:
+            return
         for s in self.seatrades_full:
+            campers_max = self._seatrade_campers_max(s)
+            cap = max(1, round(config.max_cabin_share_per_seatrade * campers_max))
             for cabin in self.cabins:
                 problem += (
-                    pulp.lpSum([camper_assignments[c][s] for c in self.campers_by_cabin[cabin]])
-                    <= self._CABIN_MAX_PER_SEATRADE,
-                    f"{cabin}_max_{self._CABIN_MAX_PER_SEATRADE}_campers_to_{s}",
+                    pulp.lpSum([camper_assignments[c][s] for c in self.campers_by_cabin[cabin]]) <= cap,
+                    f"{cabin}_cabin_share_cap_{cap}_in_{s}",
                 )
 
     def _add_besties_constraints(self, problem: pulp.LpProblem, camper_assignments: VarDict) -> None:
@@ -408,6 +427,29 @@ class SchedulingProblem:
         fleet_term = pulp.lpSum(block_ranges) / len(self.blocks)
         return age_balance * session_term + (1 - age_balance) * fleet_term
 
+    def _cabin_variety_penalty_term(
+        self, problem: pulp.LpProblem, camper_assignments: VarDict
+    ) -> pulp.LpAffineExpression:
+        """Unweighted cabin-variety penalty: campers a cabin places in a seatrade above its
+        free threshold, summed over all (cabin, session) pairs.
+
+        Each seatrade gives a free threshold of ``round(_CABIN_VARIETY_FREE_FRACTION *
+        campers_max)`` campers per cabin; each camper beyond it adds one to the penalty. The threshold keys off
+        ``campers_max`` (a constant known pre-solve) so the term stays linear. Adds one
+        non-negative ``excess`` variable per (cabin, session); the caller scales the sum by
+        ``cabin_variety_weight``.
+        """
+        excess_vars = []
+        for s in self.seatrades_full:
+            campers_max = self._seatrade_campers_max(s)
+            threshold = round(self._CABIN_VARIETY_FREE_FRACTION * campers_max)
+            for cabin in self.cabins:
+                cabin_count = pulp.lpSum(camper_assignments[c][s] for c in self.campers_by_cabin[cabin])
+                excess = pulp.LpVariable(f"cabin_excess_{cabin}_{s}", lowBound=0)
+                problem += excess >= cabin_count - threshold
+                excess_vars.append(excess)
+        return pulp.lpSum(excess_vars)
+
     def _add_objective(
         self,
         problem: pulp.LpProblem,
@@ -416,7 +458,7 @@ class SchedulingProblem:
         seatrade_assignment: VarDict,
         config: OptimizationConfig,
     ) -> None:
-        """Minimize preference penalty, with optional cabin, sparsity, and age-grouping terms."""
+        """Minimize preference penalty, with optional cabin, sparsity, age-grouping, and cabin-variety terms."""
         objective = 0
         for c, preferences in self.camper_prefs.items():
             for block in self.blocks:
@@ -432,4 +474,6 @@ class SchedulingProblem:
                     objective += config.sparsity_weight * seatrade_assignment[block][s]
         if config.age_weight:
             objective += config.age_weight * self._age_penalty_term(problem, camper_assignments, config.age_balance)
+        if config.cabin_variety_weight:
+            objective += config.cabin_variety_weight * self._cabin_variety_penalty_term(problem, camper_assignments)
         problem += objective
