@@ -454,7 +454,7 @@ class SchedulingProblem:
         seatrade_assignment: VarDict,
         config: OptimizationConfig,
     ) -> None:
-        """Minimize preference penalty, with optional cabin, sparsity, and age-grouping terms."""
+        """Minimize preference penalty, with optional cabin, sparsity, age-grouping, and cabin-variety terms."""
         objective = 0
         for c, preferences in self.camper_prefs.items():
             for block in self.blocks:
