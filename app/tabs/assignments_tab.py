@@ -133,9 +133,10 @@ class AssignmentsTab:
             else:
                 solution = st.session_state["assigned_solution"]
 
-                # Verdict — did it work? Confirmation + the solver-optimality % inline. The
-                # Solver Optimality donut itself now lives beside the Overview summary below.
-                st.success(f"Every camper is assigned — {round(solution.status.optimality * 100)}% optimal.")
+                # Verdict — did it work? Confirmation + the solver-optimality % inline, branched
+                # on whether the result is proven or a stopped-on-time incumbent. The Solver
+                # Optimality donut itself now lives beside the Overview summary below.
+                st.success(assignment_success_banner(solution.status))
 
                 # The Schedule — here's the artifact, before any report card.
                 st.divider()
@@ -340,15 +341,40 @@ def _solve_progress_fragment() -> None:
         st.caption("This solve finishes on its own or stops at the configured time limit.")
 
 
+def assignment_success_banner(status: SolverStatus) -> str:
+    """User-facing success copy for a solve that produced a full schedule.
+
+    Branches on the stop reason so a *proven* near-optimal result is not confused with a
+    schedule the solver merely *stopped on* at the time limit: the latter is the best
+    incumbent so far, and a longer solve may improve it — say so rather than overstating
+    it with the proven "X% optimal" copy.
+    """
+    if status.timed_out:
+        return (
+            "Every camper is assigned — best schedule so far (stopped at the time limit); "
+            "a longer solve may improve it."
+        )
+    return f"Every camper is assigned — proven {round(status.optimality * 100)}% optimal."
+
+
 def assignment_failure_warning(status: SolverStatus) -> str:
     """User-facing copy for a non-optimal solve.
 
-    A crash (ERROR) surfaces its message so the Captain is never shown an
-    untrustworthy result without explanation (story #73-16); an infeasible solve
-    keeps the relax-a-hard-limit guidance.
+    Branches on the outcome: a crash (ERROR) surfaces its message so the Captain is
+    never shown an untrustworthy result without explanation (story #73-16); a timeout
+    is a *feasible* problem that ran out of time — a scale/time issue, never an
+    "unexpected error"; an infeasible solve keeps the relax-a-hard-limit guidance.
     """
     if status.state == SolverState.ERROR:
         return f"The optimizer hit an unexpected error and couldn't finish: {status.message}"
+    if status.state == SolverState.TIMEOUT:
+        return (
+            "The solver ran out of time before it could finish — this schedule may well be "
+            "possible, it just needs more time or a smaller problem. Raise the *time limit* "
+            "or loosen the *Minimum solution quality* under **Advanced settings** in "
+            "Optimization Setup, or reduce the number of cabins, seatrades, or relationships, "
+            "then assign again."
+        )
     return (
         "No schedule could satisfy all the rules this time. Try relaxing a hard limit "
         "under **Advanced settings** in Optimization Setup (e.g. raise *Max seatrades "

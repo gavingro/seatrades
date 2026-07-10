@@ -113,7 +113,15 @@ Self-contained and portable — no reference to the MILP model. Fields: assignme
 
 ### SolverStatus
 
-A field inside `AssignmentSolution` (not a separate return). Tracks the outcome of a solve. Fields: state (SolverState enum: optimal/infeasible/error), gap (optimality gap as a float), message (human-readable, e.g. infeasibility detail). Progress monitoring (percent-complete during a running solve) lives in the service layer's `SolveRun.progress()` (a `SolveProgress` snapshot computed from the CBC log + elapsed time) — not in SolverStatus. The UI only polls it and renders.
+A field inside `AssignmentSolution` (not a separate return). Tracks the outcome of a solve. Fields: state (SolverState enum), gap (optimality gap as a float), message (human-readable, e.g. error detail), and `timed_out` (the stop reason carried onto the *final* status — True when the solve stopped at the time limit rather than proving optimality). Progress monitoring (percent-complete during a running solve) lives in the service layer's `SolveRun.progress()` (a `SolveProgress` snapshot computed from the CBC log + elapsed time) — not in SolverStatus. The UI only polls it and renders.
+
+A solve ends in one of **three failure-or-success outcomes**, diagnosed differently (`SolverState.from_pulp`: PuLP code `1`→optimal, `-1`→infeasible, `0`→timeout, else error):
+
+- **Infeasible** — a hard constraint provably cannot be met; no schedule exists. (Diagnosing *which* constraint is future work — see Decisions-Log, and PRD `docs/prd/infeasibility-diagnosis.md`.)
+- **Timeout** — the problem is *feasible* but the solver ran out of time (CBC's "Not Solved" / PuLP code `0`). A distinct state, **not** an error: the UI advises more time or a smaller problem, never "an unexpected error". Likely the dominant real-world failure at production roster scale.
+- **Error** — a genuine crash (CBC binary missing, pty failure, unbounded/undefined status); the technical message is surfaced unchanged.
+
+A **success** is itself two things, split by `timed_out`: **proven** — CBC closed the optimality gap, so "proven X% optimal" is meaningful and final — vs. **stopped-on-time** — CBC hit the time limit holding the best incumbent so far, which is usable but not proven near-optimal ("a longer solve may improve it"). Overstating the second as the first would mislead; the success banner branches on the flag.
 
 ### Assignment Export
 
@@ -309,7 +317,7 @@ Resolved during grilling session 2026-05-05. Open questions marked with [OPEN].
 
 1. **`Seatrades` class → split into SchedulingProblem + solver + results.** Problem builder owns variables/constraints/objective. Solving is separate. Wrangling is separate. `SchedulingProblem` is stateful (holds parsed domain state) because the wrangler needs the same state — avoids re-parsing or building a second context object. Module is `problem.py` (not `scheduling_problem.py`). Config passed at `.build(config)` time, not init — allows rebuilding with different configs against same domain data.
 
-2. **Solver produces `AssignmentSolution`, not raw pulp object.** Clean boundary: problem goes in, solution comes out. No leaking PuLP internals. `AssignmentSolution` is self-contained and portable — holds assignments DataFrame, SolverStatus, and domain data needed by wrangling/visualization. `SolverStatus` is a field inside `AssignmentSolution` (not a separate return): state is a `SolverState` enum (optimal/infeasible/error), `gap` is the optimality gap, `message` for human-readable detail. Progress monitoring lives in the `SolveRun` seam (service layer), surfaced as `SolveProgress`; the UI only polls and renders.
+2. **Solver produces `AssignmentSolution`, not raw pulp object.** Clean boundary: problem goes in, solution comes out. No leaking PuLP internals. `AssignmentSolution` is self-contained and portable — holds assignments DataFrame, SolverStatus, and domain data needed by wrangling/visualization. `SolverStatus` is a field inside `AssignmentSolution` (not a separate return): state is a `SolverState` enum (optimal/infeasible/timeout/error — see the SolverStatus glossary entry for the three outcomes and the proven-vs-stopped-on-time success split), `gap` is the optimality gap, `message` for human-readable detail, `timed_out` the final-status stop reason. Progress monitoring lives in the `SolveRun` seam (service layer), surfaced as `SolveProgress`; the UI only polls and renders.
 
 3. **Service function `solver.run(problem, config) -> AssignmentSolution`.** UI calls one function. `solver.run` calls `problem.build(config)` internally. No solver orchestration in the presentation layer.
 

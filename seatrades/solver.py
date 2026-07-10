@@ -13,6 +13,12 @@ from seatrades.problem import SchedulingProblem
 from seatrades.results import AssignmentSolution, SolverStatus
 
 _GAP_PATTERN = re.compile(r"(?<=Gap:                            )(\d+\.?\d*)")
+_TIMEOUT_LOG_PATTERN = re.compile(r"Result - Stopped on time limit")
+
+
+def detect_timeout(log_text: str) -> bool:
+    """Whether the CBC log shows the solve stopped on its time limit."""
+    return bool(_TIMEOUT_LOG_PATTERN.search(log_text))
 
 
 def _mangle(name: str) -> str:
@@ -51,16 +57,20 @@ def _extract_camper_assignments(
     return pd.DataFrame(camper_vars).transpose()
 
 
+def _read_log_text(log_path: Path) -> str:
+    """CBC log contents, or '' if the log isn't there yet / can't be read."""
+    try:
+        return log_path.read_text()
+    except (FileNotFoundError, OSError):
+        return ""
+
+
 def _extract_gap_from_log(log_path: Path) -> Optional[float]:
     """Parse the MIP gap from the CBC solver log file.
 
     Returns the gap as a float (e.g. 0.05 for 5%) or None if not found.
     """
-    try:
-        text = log_path.read_text()
-    except (FileNotFoundError, OSError):
-        return None
-    match = _GAP_PATTERN.search(text)
+    match = _GAP_PATTERN.search(_read_log_text(log_path))
     return float(match.group(1)) if match else None
 
 
@@ -69,7 +79,7 @@ def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSol
     lp_problem = problem.build(config)
     # Tee cbc's log through a pty so it streams line-by-line instead of block-buffering
     # to a plain file. Exiting the context drains the reader, so the log is complete
-    # before _extract_gap_from_log reads it below.
+    # before we read it below.
     with live_cbc_log(config.solver, config.log_path):
         status_code = lp_problem.solve(config.solver)
 
@@ -79,6 +89,10 @@ def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSol
     solver_status = SolverStatus.from_pulp(status_code)
     if solver_status.is_optimal:
         solver_status.gap = _extract_gap_from_log(config.log_path)
+        # A gap-closed solve holds no "Stopped on time limit" line; an incumbent kept when
+        # CBC hit the limit does — carry that stop reason onto the final status so the
+        # success banner can tell a proven result from a stopped-on-time one.
+        solver_status.timed_out = detect_timeout(_read_log_text(config.log_path))
 
     # camper_id -> camper_name translation map; ids stay internal, names go out.
     camper_names = pd.Series(problem.camper_names, index=pd.Index(problem.camper_ids, name="camper_id"))

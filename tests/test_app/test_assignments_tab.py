@@ -5,6 +5,7 @@ from streamlit.testing.v1 import AppTest
 from app.tabs.assignments_tab import (
     ACTIVE_RUN_KEY,
     assignment_failure_warning,
+    assignment_success_banner,
     finalize_solve,
     render_view,
     solve_view_state,
@@ -151,6 +152,36 @@ class TestAssignmentFailureWarning:
         warning = assignment_failure_warning(status)
         assert "relaxing a hard limit" in warning
         assert "solver blew up" not in warning
+
+    def test_timeout_shows_time_size_copy_not_an_error(self):
+        """A timeout is a time/size problem — advise more time or a smaller problem, and
+        never call it an unexpected error (the whole point of splitting TIMEOUT off ERROR)."""
+        status = SolverStatus(state=SolverState.TIMEOUT, message="", timed_out=True)
+        warning = assignment_failure_warning(status)
+        assert "time limit" in warning.lower()
+        assert "unexpected error" not in warning.lower()
+        # The problem is feasible, so the infeasibility "relax a hard limit" copy is wrong here.
+        assert "relaxing a hard limit" not in warning
+
+
+class TestAssignmentSuccessBanner:
+    def test_proven_optimal_reports_the_optimality_percent(self):
+        """A gap-closed solve is proven near-optimal — state it with the percent."""
+        status = SolverStatus(state=SolverState.OPTIMAL, gap=0.08, timed_out=False)
+        banner = assignment_success_banner(status)
+        assert "Every camper is assigned" in banner
+        assert "92% optimal" in banner
+        assert "proven" in banner.lower()
+
+    def test_stopped_on_time_flags_it_as_best_so_far(self):
+        """A solve that stopped at the time limit holds only the best incumbent — say so,
+        and don't reuse the proven "X% optimal" copy that overstates its quality."""
+        status = SolverStatus(state=SolverState.OPTIMAL, gap=0.08, timed_out=True)
+        banner = assignment_success_banner(status)
+        assert "Every camper is assigned" in banner
+        assert "time limit" in banner.lower()
+        assert "longer solve" in banner.lower()
+        assert "proven" not in banner.lower()
 
 
 class TestRenderView:

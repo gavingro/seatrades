@@ -19,10 +19,16 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from seatrades import preferences
-from seatrades.config import PREF_COLS
-from seatrades.results import SolverState
+from seatrades.config import (
+    PREF_COLS,
+    CamperSimulationConfig,
+    OptimizationConfig,
+    SeatradeSimulationConfig,
+)
+from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 from tests.test_app.helpers import (
     APP_SCRIPT,
+    PRESOLVE_TIMEOUT_SECONDS,
     SOLVE_TIMEOUT_SECONDS,
     click_assign,
     poll_until_solution,
@@ -57,6 +63,46 @@ def _undersized_capacity_inputs() -> dict[str, pd.DataFrame]:
         "camper_preferences": preferences.CamperPreferences.validate(pd.DataFrame(preference_rows)),
         "camper_relationships": preferences.empty_relationships(),
     }
+
+
+def _seed_failed_solve(status: SolverStatus) -> AppTest:
+    """Seed a finished, unsuccessful solve into a fresh app and render the done view.
+
+    A timeout returns no schedule, so only the status matters — the assignments and domain
+    frames are empty. Config objects are pre-seeded so ``_initial_page_setup`` doesn't wipe
+    the seeded solution (same guard as the done-view tests). No real solve runs, so this is
+    fast — the TIMEOUT copy is a pure ``status -> message`` seam.
+    """
+    solution = AssignmentSolution(
+        assignments=pd.DataFrame(),
+        status=status,
+        cabins=[],
+        campers=[],
+        seatrades_full=[],
+        cabin_camper_prefs=pd.DataFrame(),
+        camper_prefs=pd.Series(dtype=object),
+        camper_names=pd.Series(dtype=object),
+    )
+    at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
+    at.session_state["optimization_config"] = OptimizationConfig()
+    at.session_state["seatrade_simulation_config"] = SeatradeSimulationConfig()
+    at.session_state["camper_simulation_config"] = CamperSimulationConfig()
+    at.session_state["assigned_solution"] = solution
+    at.session_state["optimization_success"] = False
+    at.session_state["solver_log"] = "Result - Stopped on time limit"
+    at.session_state["introduced"] = True
+    at.run()
+    return at
+
+
+class TestTimeoutSolveOutcome:
+    def test_timeout_renders_time_size_message_not_a_crash(self):
+        at = _seed_failed_solve(SolverStatus(state=SolverState.TIMEOUT, timed_out=True))
+
+        assert not at.exception
+        warnings = [w.value for w in at.warning]
+        assert any("time limit" in w.lower() for w in warnings), "expected the time/size message"
+        assert not any("unexpected error" in w.lower() for w in warnings)
 
 
 @pytest.mark.slow

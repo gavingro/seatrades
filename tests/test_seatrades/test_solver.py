@@ -516,6 +516,14 @@ class TestStatusCodeMapping:
         # but the field should be populated when available
         assert solution.status.gap is None or isinstance(solution.status.gap, float)
 
+    def test_optimal_solution_that_finished_is_not_flagged_timed_out(self, scheduling_problem, default_config):
+        # A small problem solves to optimality well inside the time limit, so its CBC log
+        # carries no "Stopped on time limit" line — the final status must read proven, not
+        # stopped-on-time. (The True branch is covered by detect_timeout's own unit tests.)
+        solution = run(scheduling_problem, default_config)
+        assert solution.status.state == SolverState.OPTIMAL
+        assert solution.status.timed_out is False
+
     def test_infeasible_solution_has_no_gap(self):
         joined = pd.DataFrame(
             {

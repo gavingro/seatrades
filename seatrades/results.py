@@ -16,11 +16,14 @@ UNMATCHED_PREFERENCE = 999
 class SolverState(Enum):
     OPTIMAL = "OPTIMAL"
     INFEASIBLE = "INFEASIBLE"
+    TIMEOUT = "TIMEOUT"
     ERROR = "ERROR"
 
     @classmethod
     def from_pulp(cls, status_code: int) -> "SolverState":
-        mapping = {1: cls.OPTIMAL, -1: cls.INFEASIBLE}
+        # PuLP code 0 ("Not Solved") is CBC hitting its time limit — feasible but unproven,
+        # a TIMEOUT, not a crash. Only genuinely undefined states (-2, -3, unknown) are ERROR.
+        mapping = {1: cls.OPTIMAL, -1: cls.INFEASIBLE, 0: cls.TIMEOUT}
         return mapping.get(status_code, cls.ERROR)
 
 
@@ -29,6 +32,10 @@ class SolverStatus:
     state: SolverState
     gap: Optional[float] = None
     message: str = ""
+    # Stop reason carried onto the FINAL status: True when the solve stopped at the time
+    # limit rather than proving optimality. Distinguishes a TIMEOUT from a crash, and a
+    # proven-optimal success from a stopped-on-time incumbent.
+    timed_out: bool = False
 
     @property
     def is_optimal(self) -> bool:
@@ -44,11 +51,11 @@ class SolverStatus:
     def from_pulp(cls, status_code: int) -> "SolverStatus":
         state = SolverState.from_pulp(status_code)
         if state == SolverState.ERROR:
-            pulp_messages = {0: "Not solved", -2: "Unbounded", -3: "Undefined"}
+            pulp_messages = {-2: "Unbounded", -3: "Undefined"}
             message = pulp_messages.get(status_code, f"Unknown PuLP status: {status_code}")
         else:
             message = ""
-        return cls(state=state, message=message)
+        return cls(state=state, message=message, timed_out=state == SolverState.TIMEOUT)
 
 
 @dataclass
