@@ -22,7 +22,8 @@ from seatrades.simulation import (
     simulate_camper_relationships,
     simulate_seatrade_preferences,
 )
-from seatrades.solve_run import SolveRun, detect_timeout, percent_from_elapsed
+from seatrades.solve_run import SolveRun, percent_from_elapsed
+from seatrades.solver import detect_timeout
 
 
 @pytest.fixture

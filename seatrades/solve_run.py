@@ -19,8 +19,7 @@ from seatrades.problem import SchedulingProblem
 from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 
 # Timeout detection is a CBC-log concern that lives beside the other log parsers in
-# ``solver``; imported here so ``progress()`` and existing callers (tests) still reach it.
-detect_timeout = solver.detect_timeout
+# ``solver``; ``progress()`` reaches it via ``solver.detect_timeout``.
 
 _OPTIMIZING_MESSAGE = "Optimizing seatrade assignments…"
 _TIMEOUT_MESSAGE = "Finishing up — time limit reached…"
@@ -77,7 +76,7 @@ class SolveRun:
         elapsed = time.time() - self._start_time if self._start_time is not None else 0.0
         time_limit = self._config.solver.timeLimit
         log_text = self._read_log()
-        timed_out = detect_timeout(log_text) or elapsed > time_limit
+        timed_out = solver.detect_timeout(log_text) or elapsed > time_limit
         return SolveProgress(
             running=running,
             percent=percent_from_elapsed(elapsed, time_limit),

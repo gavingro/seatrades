@@ -33,8 +33,10 @@ class SolverStatus:
     gap: Optional[float] = None
     message: str = ""
     # Stop reason carried onto the FINAL status: True when the solve stopped at the time
-    # limit rather than proving optimality. Distinguishes a TIMEOUT from a crash, and a
-    # proven-optimal success from a stopped-on-time incumbent.
+    # limit rather than proving optimality. One meaning ("hit the time limit"), two evidence
+    # sources: set from the PuLP code for a TIMEOUT (via ``from_pulp``), and from the CBC log
+    # for a stopped-on-time OPTIMAL incumbent (via ``solver.run``). Distinguishes a TIMEOUT
+    # from a crash, and a proven-optimal success from a stopped-on-time incumbent.
     timed_out: bool = False
 
     @property
