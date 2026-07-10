@@ -566,7 +566,7 @@ class TestCalibratedBandsBracketRealScenario:
     """Anchor-drift guard: on a real solve, every metric's raw value must land inside its
     calibrated [low_anchor, high_anchor]. If a later edit to the anchors, the simulation, or the
     solver pushes any metric out of band, this catches it. seed=0 is a solver-feasible mock
-    scenario at 8 cabins whose six metrics all sit strictly inside their bands, with room to
+    scenario at 8 cabins whose seven metrics all sit strictly inside their bands, with room to
     spare — the roster-dependent Sparsity/Age-spread bands sit nearest an edge (Sparsity ~1/3 up
     from its floor), as expected. Pinned to one seed on purpose: random rosters flake INFEASIBLE
     at this scale (see the reseed gotcha in project memory), so a swept assertion would be less

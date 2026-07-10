@@ -152,6 +152,7 @@ class TestDoneView:
             "Cohesion",
             "Sparsity",
             "Age spread",
+            "Cabin variety",
         ):
             assert term in _QUALITY_GLOSSARY
 
