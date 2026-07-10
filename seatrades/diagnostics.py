@@ -19,6 +19,10 @@ import pandas as pd
 
 from seatrades.config import PREF_COLS
 
+# Within a half-week every seatrade runs in both fleet blocks, so each seatrade's
+# per-session ``campers_max`` seats are offered twice per half.
+_FLEET_BLOCKS_PER_HALF = 2
+
 
 class Tier(Enum):
     """How certain a finding is. PROVEN = a necessary condition is violated, so
@@ -50,9 +54,9 @@ def diagnose(
     UI shows the honest "couldn't identify" fallback.
     """
     findings: list[Finding] = []
-    capacity = _capacity_shortfall(joined_campers, seatrade_setup, max_seatrades_per_fleet)
-    if capacity is not None:
-        findings.append(capacity)
+    capacity_finding = _capacity_shortfall(joined_campers, seatrade_setup, max_seatrades_per_fleet)
+    if capacity_finding is not None:
+        findings.append(capacity_finding)
     return findings
 
 
@@ -74,7 +78,7 @@ def _capacity_shortfall(
     caps = seatrade_setup.loc[seatrade_setup["seatrade"].isin(preferred), "campers_max"].tolist()
     if max_seatrades_per_fleet is not None:
         caps = sorted(caps, reverse=True)[:max_seatrades_per_fleet]
-    seats = 2 * sum(caps)
+    seats = _FLEET_BLOCKS_PER_HALF * sum(caps)
     if n_campers <= seats:
         return None
     return Finding(

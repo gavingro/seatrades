@@ -386,7 +386,7 @@ def assignment_failure_warning(status: SolverStatus, findings: Sequence[Finding]
     # Prepend the specific causes above the retained generic catch-all — add to it, never
     # replace it. When nothing fired, be honest rather than silent (story #73-21).
     if findings:
-        causes = "\n\n".join(f"**{f.cause}**\n\n*Fix:* {f.fix}" for f in findings)
+        causes = "\n\n".join(f"**{finding.cause}**\n\n*Fix:* {finding.fix}" for finding in findings)
         return f"{causes}\n\n{generic}"
     return f"We couldn't identify the exact cause this time. {generic}"
 
