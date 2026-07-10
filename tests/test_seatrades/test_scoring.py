@@ -16,6 +16,8 @@ from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 from seatrades.scoring import (
     AGE_SPREAD_HIGH_ANCHOR,
     AGE_SPREAD_LOW_ANCHOR,
+    CABIN_VARIETY_HIGH_ANCHOR,
+    CABIN_VARIETY_LOW_ANCHOR,
     COHESION_HIGH_ANCHOR,
     COHESION_LOW_ANCHOR,
     FAIRNESS_BETWEEN_HIGH_ANCHOR,
@@ -144,6 +146,10 @@ def _fair_within(card: Scorecard):
 
 def _fair_between(card: Scorecard):
     return card.metric("Fair between")
+
+
+def _cabin_variety(card: Scorecard):
+    return card.metric("Cabin variety")
 
 
 class TestCohesionRawValue:
@@ -296,6 +302,79 @@ class TestAgeSpreadDetail:
         assert len(detail) == 6
         archery_1a = detail[(detail["block"] == "1a") & (detail["seatrade"] == "Archery")]
         assert list(archery_1a["spread"]) == [3]
+
+
+class TestCabinVarietyRawValue:
+    def test_single_cabin_session_scores_one(self):
+        """A session with only one cabin present is fully dominated → max share 1.0 (worst)."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery")]),
+                ("Bea", "Cabin1", [("1a", "Archery")]),
+            ]
+        )
+        assert _cabin_variety(score(solution)).raw_value == 1.0
+
+    def test_perfectly_mixed_session_scores_one_over_num_cabins(self):
+        """One camper from each of 3 cabins in a session → no cabin bigger than 1/3 → 1/3."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery")]),
+                ("Bea", "Cabin2", [("1a", "Archery")]),
+                ("Cy", "Cabin3", [("1a", "Archery")]),
+            ]
+        )
+        assert _cabin_variety(score(solution)).raw_value == pytest.approx(1 / 3)
+
+    def test_matches_hand_computed_session_mean(self):
+        """Two running sessions, each weighted equally. 1a_Archery: Cabin1 has 2 of 3 campers
+        → share 2/3. 2b_Sailing: one camper each from Cabin1, Cabin2 → share 1/2. Mean over the
+        two sessions = (2/3 + 1/2)/2 = 7/12."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery"), ("2b", "Sailing")]),
+                ("Bea", "Cabin1", [("1a", "Archery")]),
+                ("Cy", "Cabin2", [("1a", "Archery"), ("2b", "Sailing")]),
+            ]
+        )
+        assert _cabin_variety(score(solution)).raw_value == pytest.approx(7 / 12)
+
+    def test_fleet_time_blocks_are_not_sessions(self):
+        """Only running seatrade sessions count. Ann is on Fleet Time in block 2 (no row there),
+        so only 1a_Archery scores — a single-cabin session → 1.0, not diluted by an empty block."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery")]),
+            ]
+        )
+        assert _cabin_variety(score(solution)).raw_value == 1.0
+
+
+class TestCabinVarietyAnchors:
+    def test_cabin_variety_metric_carries_its_anchors_flipped(self, sample_assignment_solution):
+        """Cabin Variety ships its reference band and is down-is-bad (less domination = better)."""
+        cabin_variety = _cabin_variety(score(sample_assignment_solution))
+        assert cabin_variety.low_anchor == CABIN_VARIETY_LOW_ANCHOR
+        assert cabin_variety.high_anchor == CABIN_VARIETY_HIGH_ANCHOR
+        assert cabin_variety.higher_is_better is False
+
+
+class TestCabinVarietyDetail:
+    def test_one_row_per_running_session_with_max_share(self):
+        """detail is per running session so the histogram/tooltip can name the most-dominated
+        seatrade × block. Two running sessions → 2 rows; 1a_Archery (Cabin1 2 of 3) → 2/3."""
+        solution = _roster_solution(
+            [
+                ("Ann", "Cabin1", [("1a", "Archery"), ("2b", "Sailing")]),
+                ("Bea", "Cabin1", [("1a", "Archery")]),
+                ("Cy", "Cabin2", [("1a", "Archery"), ("2b", "Sailing")]),
+            ]
+        )
+        detail = _cabin_variety(score(solution)).detail
+        assert len(detail) == 2
+        assert set(detail.columns) >= {"block", "seatrade", "max_share"}
+        archery_1a = detail[(detail["block"] == "1a") & (detail["seatrade"] == "Archery")]
+        assert list(archery_1a["max_share"]) == pytest.approx([2 / 3])
 
 
 class TestScore:

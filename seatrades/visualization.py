@@ -42,6 +42,8 @@ def _format_raw_value(name: str, value: float) -> str:
         return f"{value:.0%} of possible seatrades"
     if name == "Age spread":
         return f"{value:.1f} yr age range"
+    if name == "Cabin variety":
+        return f"{value:.0%} top-cabin share"
     return f"{value:.2f} pick-rank spread"
 
 
@@ -357,28 +359,29 @@ def _histogram_with_average(
     tooltip_title: str,
     average: float,
     title: str,
+    id_fields: tuple[str, ...] = ("cabin",),
+    count_title: str = "Cabins",
 ) -> alt.Chart:
-    """A per-cabin histogram (binned quantitative ``field`` on x, cabin count on y) with a
-    dashed reference line at ``average`` on the bars' shared x scale, so it lines up with them
-    rather than drawing its own independent axis.
+    """A histogram (binned quantitative ``field`` on x, per-datum count on y) with a dashed
+    reference line at ``average`` on the bars' shared x scale, so it lines up with them rather
+    than drawing its own independent axis.
 
-    ``cabin`` rides the ``detail`` stacking channel (not tooltip alone) so bars reach their true
-    cabin count — the same stacking gotcha as Age Spread: tooltip fields alone are pulled into
-    the ``count()`` groupby but don't stack, so bars would overplot at height 1. ``average`` is
-    passed in (not read off the metric) so each caller sources it from the plotted column and
-    the line cannot drift from the bars.
+    ``id_fields`` (the per-datum ids — one cabin, or a seatrade × block session) ride the
+    ``detail`` stacking channel (not tooltip alone) so bars reach their true count — the same
+    stacking gotcha as Age Spread: tooltip fields alone are pulled into the ``count()`` groupby
+    but don't stack, so bars would overplot at height 1. ``count_title`` names the y axis for the
+    datum grain (cabins vs seatrade-sessions). ``average`` is passed in (not read off the metric)
+    so each caller sources it from the plotted column and the line cannot drift from the bars.
     """
     bars = (
         alt.Chart(detail)
         .mark_bar(stroke="black", strokeWidth=0.2)
         .encode(
             x=alt.X(f"{field}:Q", bin=alt.Bin(maxbins=10), title=x_title),
-            y=alt.Y("count():Q", title="Cabins"),
-            detail=["cabin:N"],
-            tooltip=[
-                alt.Tooltip("cabin:N", title="Cabin"),
-                alt.Tooltip(f"{field}:Q", title=tooltip_title),
-            ],
+            y=alt.Y("count():Q", title=count_title),
+            detail=[f"{id_field}:N" for id_field in id_fields],
+            tooltip=[alt.Tooltip(f"{id_field}:N", title=id_field.capitalize()) for id_field in id_fields]
+            + [alt.Tooltip(f"{field}:Q", title=tooltip_title)],
         )
     )
     average_line = (
@@ -423,6 +426,31 @@ def display_fairness_between_detail(metric: QualityMetric) -> alt.Chart:
     )
 
 
+def display_cabin_variety_detail(metric: QualityMetric) -> alt.Chart:
+    """The Cabin Variety drill-down: how many seatrade-sessions land at each max cabin share.
+
+    x = the largest cabin's share of a session (1 = one cabin only, low = well mixed), y = count
+    of running seatrade-sessions. The reference line is the mean of the *plotted* per-session
+    shares, which equals ``metric.raw_value`` (Cabin Variety's rollup is the average of those
+    shares), but is computed from the plotted column so it can never drift from the bars.
+
+    The per-session id (``seatrade`` × ``block``) rides the ``detail`` stacking channel, not
+    tooltip alone — the vega countplot stacking trap: inside a binned bar, tooltip-only ids
+    overplot every session at height 1 and no bar reaches its true count (invisible to unit
+    tests, only shows in a browser).
+    """
+    return _histogram_with_average(
+        metric.detail,
+        field="max_share",
+        x_title="Largest cabin's share of a session (1 = one cabin only)",
+        tooltip_title="Top-cabin share",
+        average=metric.detail["max_share"].mean(),
+        title="Cabin variety — does one cabin dominate a session?",
+        id_fields=("seatrade", "block"),
+        count_title="Seatrade-sessions",
+    )
+
+
 # Name → detail-chart builder. Single source for "which metrics have a drill-down"; the
 # selectbox options are derived from the scorecard, so this keeps options and charts from
 # drifting. Add a metric's builder here when its detail chart is ready.
@@ -433,6 +461,7 @@ _DETAIL_BUILDERS = {
     "Age spread": display_age_spread_detail,
     "Fair within": display_fairness_within_detail,
     "Fair between": display_fairness_between_detail,
+    "Cabin variety": display_cabin_variety_detail,
 }
 
 

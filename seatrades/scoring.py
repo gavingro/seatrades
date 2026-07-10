@@ -64,6 +64,7 @@ def score(solution: AssignmentSolution) -> Scorecard:
             _age_spread_metric(assigned),
             _fairness_within_metric(assigned),
             _fairness_between_metric(assigned),
+            _cabin_variety_metric(assigned),
         ],
         optimality=solution.status.optimality,
     )
@@ -343,4 +344,51 @@ def _fairness_between_metric(assigned: pd.DataFrame) -> QualityMetric:
         high_anchor=FAIRNESS_BETWEEN_HIGH_ANCHOR,
         higher_is_better=False,
         detail=means,
+    )
+
+
+# Cabin Variety — mean over running sessions of the largest cabin's *realized* share of the
+# session (down-is-bad: less domination is better). Orthogonal to Cohesion: Cohesion asks
+# "do I have a cabinmate here?" (per-camper, anti-loneliness); Cabin Variety asks "does one
+# cabin dominate this session?" (per-session, anti-domination). Uses realized session size
+# (honest post-hoc measure), a deliberate mismatch with the solver's capacity-based penalty
+# threshold (#108) — the two still move together. Anchors calibrated 2026-07-09 against seeded
+# 8-cabin mock solves under the cabin-variety-on default (cabin_variety_weight=3): the solvable
+# seeds ran ~0.57–0.59 (seed 0 = 0.57). Band brackets that normal range with room to spare; a
+# badly-dominated or perfectly-mixed schedule extends past the anchors.
+CABIN_VARIETY_LOW_ANCHOR = 0.4
+CABIN_VARIETY_HIGH_ANCHOR = 0.7
+
+
+def _session_max_cabin_shares(assigned: pd.DataFrame) -> pd.DataFrame:
+    """The largest single cabin's share of each running seatrade session.
+
+    One row per running ``(block, seatrade)`` session with ``max_share`` = the biggest cabin's
+    camper count ÷ the session's realized camper count. Only assigned seatrade rows are present,
+    so Fleet Time is not a session and non-running slots are excluded. A session with only one
+    cabin present is fully dominated → ``1.0``; a session split evenly across ``n`` cabins →
+    ``1/n``. This is the per-session grain the Cabin Variety detail histogram plots.
+    """
+    cabin_counts = assigned.groupby(["block", "seatrade", "cabin"], sort=False).size()
+    session_sizes = assigned.groupby(["block", "seatrade"], sort=False).size()
+    max_cabin = cabin_counts.groupby(["block", "seatrade"], sort=False).max()
+    max_share = (max_cabin / session_sizes).rename("max_share")
+    return max_share.reset_index()
+
+
+def _cabin_variety_metric(assigned: pd.DataFrame) -> QualityMetric:
+    """The Cabin Variety metric — "does one cabin dominate a seatrade session?".
+
+    Raw value is the mean over running sessions of each session's max cabin share — every
+    running session weighted equally, regardless of camper count. Less domination is better →
+    down-is-bad; render-time ``normalize_to_band`` flips it so a well-mixed schedule reads high.
+    """
+    shares = _session_max_cabin_shares(assigned)
+    return QualityMetric(
+        name="Cabin variety",
+        raw_value=float(shares["max_share"].mean()),
+        low_anchor=CABIN_VARIETY_LOW_ANCHOR,
+        high_anchor=CABIN_VARIETY_HIGH_ANCHOR,
+        higher_is_better=False,
+        detail=shares,
     )
