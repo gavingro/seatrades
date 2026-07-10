@@ -10,6 +10,7 @@ from app.tabs.assignments_tab import (
     render_view,
     solve_view_state,
 )
+from seatrades.diagnostics import Finding, Tier
 from seatrades.results import SolverState, SolverStatus
 from seatrades.solve_run import SolveProgress
 
@@ -152,6 +153,21 @@ class TestAssignmentFailureWarning:
         warning = assignment_failure_warning(status)
         assert "relaxing a hard limit" in warning
         assert "solver blew up" not in warning
+
+    def test_infeasible_prepends_findings_above_the_generic_copy(self):
+        """A named cause + fix appears above the retained relax-a-hard-limit guidance."""
+        finding = Finding(tier=Tier.PROVEN, cause="Too many campers for the seats.", fix="Add seatrades.")
+        warning = assignment_failure_warning(SolverStatus(state=SolverState.INFEASIBLE), [finding])
+        assert "Too many campers for the seats." in warning
+        assert "Add seatrades." in warning
+        assert "relaxing a hard limit" in warning
+        assert warning.index("Too many campers") < warning.index("relaxing a hard limit")
+
+    def test_infeasible_with_no_findings_shows_honest_fallback(self):
+        """When no cause fires, admit it — then keep the generic guidance (never worse)."""
+        warning = assignment_failure_warning(SolverStatus(state=SolverState.INFEASIBLE), [])
+        assert "couldn't identify" in warning.lower()
+        assert "relaxing a hard limit" in warning
 
     def test_timeout_shows_time_size_copy_not_an_error(self):
         """A timeout is a time/size problem — advise more time or a smaller problem, and

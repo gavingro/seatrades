@@ -10,11 +10,12 @@ from seatrades.problem import SchedulingProblem, seatrade_name
 from seatrades.results import (
     AssignmentSolution,
     SolverState,
+    SolverStatus,
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
 from seatrades.simulation import simulate_camper_relationships
-from seatrades.solver import detect_timeout, run
+from seatrades.solver import detect_timeout, diagnose_infeasibility, run
 
 
 class TestDetectTimeout:
@@ -27,6 +28,59 @@ class TestDetectTimeout:
         """A normal optimal log is not a timeout."""
         log_text = "Result - Optimal solution found\nObjective value 42.0"
         assert detect_timeout(log_text) is False
+
+
+def _oversubscribed_problem() -> SchedulingProblem:
+    """12 campers all wanting 4 seatrades that seat 1 each — a capacity shortfall.
+
+    2·Σcampers_max = 2·4 = 8 seats < 12 campers, so the P1 check fires.
+    """
+    seatrades = ["Archery", "Crafts", "Climbing", "Sailing"]
+    joined_campers = pd.DataFrame(
+        [
+            {
+                "camper_id": i,
+                "cabin": "Cabin1",
+                "camper": f"Camper {i}",
+                "gender": "F",
+                "age": 14,
+                "seatrade_1": seatrades[0],
+                "seatrade_2": seatrades[1],
+                "seatrade_3": seatrades[2],
+                "seatrade_4": seatrades[3],
+            }
+            for i in range(12)
+        ]
+    )
+    seatrade_setup = pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": 1})
+    return SchedulingProblem(joined_campers, seatrade_setup)
+
+
+class TestDiagnoseInfeasibility:
+    """The single post-mortem call site: diagnosis runs only on INFEASIBLE."""
+
+    def test_names_the_capacity_cause_on_infeasible(self):
+        problem = _oversubscribed_problem()
+        findings = diagnose_infeasibility(SolverStatus(state=SolverState.INFEASIBLE), problem, OptimizationConfig())
+        assert findings, "an oversubscribed infeasible solve should be explained"
+        assert "campers" in findings[0].cause.lower()
+
+    def test_not_run_on_optimal(self):
+        problem = _oversubscribed_problem()
+        assert diagnose_infeasibility(SolverStatus(state=SolverState.OPTIMAL), problem, OptimizationConfig()) == []
+
+    def test_not_run_on_timeout(self):
+        problem = _oversubscribed_problem()
+        status = SolverStatus(state=SolverState.TIMEOUT, timed_out=True)
+        assert diagnose_infeasibility(status, problem, OptimizationConfig()) == []
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_the_capacity_shortfall(self):
+        """Reality check: the real solver returns INFEASIBLE on this fixture and the
+        capacity check agrees — proving the mode is real, not just a structural guess."""
+        solution = run(_oversubscribed_problem(), OptimizationConfig())
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Too many campers" in f.cause for f in solution.findings)
 
 
 class TestSolverRun:

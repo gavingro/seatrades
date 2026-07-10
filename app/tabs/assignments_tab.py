@@ -1,4 +1,4 @@
-from collections.abc import MutableMapping
+from collections.abc import MutableMapping, Sequence
 from typing import Any, Literal, Optional, Protocol
 
 import pandas as pd
@@ -6,6 +6,7 @@ import streamlit as st
 
 from seatrades.blocks import BLOCK_DECODER_CAPTION
 from seatrades.config import OptimizationConfig
+from seatrades.diagnostics import Finding
 from seatrades.preferences import ValidationError, join_and_validate
 from seatrades.problem import SchedulingProblem
 from seatrades.results import (
@@ -129,7 +130,8 @@ class AssignmentsTab:
         elif view_state == "done":
             # Display results
             if not st.session_state["optimization_success"]:
-                st.warning(assignment_failure_warning(st.session_state["assigned_solution"].status))
+                solution = st.session_state["assigned_solution"]
+                st.warning(assignment_failure_warning(solution.status, solution.findings))
             else:
                 solution = st.session_state["assigned_solution"]
 
@@ -357,13 +359,14 @@ def assignment_success_banner(status: SolverStatus) -> str:
     return f"Every camper is assigned — proven {round(status.optimality * 100)}% optimal."
 
 
-def assignment_failure_warning(status: SolverStatus) -> str:
+def assignment_failure_warning(status: SolverStatus, findings: Sequence[Finding] = ()) -> str:
     """User-facing copy for a non-optimal solve.
 
     Branches on the outcome: a crash (ERROR) surfaces its message so the Captain is
     never shown an untrustworthy result without explanation (story #73-16); a timeout
     is a *feasible* problem that ran out of time — a scale/time issue, never an
-    "unexpected error"; an infeasible solve keeps the relax-a-hard-limit guidance.
+    "unexpected error"; an infeasible solve prepends any diagnosed causes above the
+    retained generic guidance, or admits it couldn't pinpoint the cause when none fired.
     """
     if status.state == SolverState.ERROR:
         return f"The optimizer hit an unexpected error and couldn't finish: {status.message}"
@@ -375,11 +378,17 @@ def assignment_failure_warning(status: SolverStatus) -> str:
             "Optimization Setup, or reduce the number of cabins, seatrades, or relationships, "
             "then assign again."
         )
-    return (
+    generic = (
         "No schedule could satisfy all the rules this time. Try relaxing a hard limit "
         "under **Advanced settings** in Optimization Setup (e.g. raise *Max seatrades "
         "per fleet*), or lower the *Minimum solution quality*, then assign again."
     )
+    # Prepend the specific causes above the retained generic catch-all — add to it, never
+    # replace it. When nothing fired, be honest rather than silent (story #73-21).
+    if findings:
+        causes = "\n\n".join(f"**{f.cause}**\n\n*Fix:* {f.fix}" for f in findings)
+        return f"{causes}\n\n{generic}"
+    return f"We couldn't identify the exact cause this time. {generic}"
 
 
 def render_view(

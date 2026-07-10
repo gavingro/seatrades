@@ -1,12 +1,15 @@
 """Result data structures and wrangling functions for seatrade assignments."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import pandas as pd
 
 from seatrades.problem import BLOCKS, block_name, seatrade_name
+
+if TYPE_CHECKING:
+    from seatrades.diagnostics import Finding
 
 SEATRADE_BLOCK_COLUMNS = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
 
@@ -73,6 +76,10 @@ class AssignmentSolution:
     # camper_id; this translates them to names at the user-facing edge. No public
     # method exposes camper_id itself.
     camper_names: pd.Series
+    # Post-mortem diagnosis: ranked causes (most-certain first) of an INFEASIBLE
+    # solve, each a plain-language cause + named fix. Empty on every other outcome,
+    # and empty on an INFEASIBLE solve whose cause the checks couldn't pin down.
+    findings: list["Finding"] = field(default_factory=list)
 
 
 def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFrame:

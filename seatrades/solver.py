@@ -7,10 +7,12 @@ from typing import Optional
 import pandas as pd
 import pulp
 
+from seatrades import diagnostics
 from seatrades.config import OptimizationConfig
+from seatrades.diagnostics import Finding
 from seatrades.live_cbc_log import live_cbc_log
 from seatrades.problem import SchedulingProblem
-from seatrades.results import AssignmentSolution, SolverStatus
+from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 
 _GAP_PATTERN = re.compile(r"(?<=Gap:                            )(\d+\.?\d*)")
 _TIMEOUT_LOG_PATTERN = re.compile(r"Result - Stopped on time limit")
@@ -74,6 +76,25 @@ def _extract_gap_from_log(log_path: Path) -> Optional[float]:
     return float(match.group(1)) if match else None
 
 
+def diagnose_infeasibility(
+    status: SolverStatus, problem: SchedulingProblem, config: OptimizationConfig
+) -> list[Finding]:
+    """The single post-mortem call site: explain an infeasible solve, else nothing.
+
+    Diagnosis is a pure post-mortem — it runs *only* when the solver proved the
+    problem INFEASIBLE, never on a proven/stopped OPTIMAL result and never on a
+    TIMEOUT (which is feasible, just unfinished). Feeds the diagnostics module the
+    joined domain data the problem already parsed plus the config knobs it needs.
+    """
+    if status.state != SolverState.INFEASIBLE:
+        return []
+    return diagnostics.diagnose(
+        problem.cabin_camper_prefs.reset_index(),
+        problem.seatrades_prefs.reset_index(),
+        max_seatrades_per_fleet=config.max_seatrades_per_fleet,
+    )
+
+
 def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSolution:
     """Build and solve a scheduling problem, returning an AssignmentSolution."""
     lp_problem = problem.build(config)
@@ -106,4 +127,5 @@ def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSol
         cabin_camper_prefs=problem.cabin_camper_prefs,
         camper_prefs=problem.camper_prefs,
         camper_names=camper_names,
+        findings=diagnose_infeasibility(solver_status, problem, config),
     )

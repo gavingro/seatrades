@@ -101,7 +101,7 @@ All relationship types are hard constraints — the solver must satisfy them or 
 
 **Implementation status (slice #66).** All three types are now enforced by the solver. Besties (slice #65) equates assignment variables; friends and frenemies (slice #66) use an auxiliary binary `y[c1, c2, s]` = AND(both campers in session `s`), linearized with standard AND constraints. Friends require `sum_s y >= 1` (share at least one session); frenemies require `sum_s y == 0` (share none). See `_session_overlap_vars`, `_add_friends_constraints`, `_add_frenemies_constraints` in `problem.py`.
 
-**Feasibility is checked at validation, not solve time.** A besties pair needs two identical sessions, so its members must share at least 2 preferred seatrades; a friends pair needs one shared session, so its members must share at least 1. `validate_relationships` rejects either pair that shares too few (naming both campers) before the solver runs. Frenemies has no such precondition — forcing overlap depends on global capacity/assignment, which is the out-of-scope solver-diagnostics case. The mock generator (`simulate_camper_relationships`) seeds one pair of each type on distinct campers — same-cabin for besties/friends, cross-cabin for frenemies — so the default demo always solves.
+**Feasibility is checked at validation, not solve time.** A besties pair needs two identical sessions, so its members must share at least 2 preferred seatrades; a friends pair needs one shared session, so its members must share at least 1. `validate_relationships` rejects either pair that shares too few (naming both campers) before the solver runs. Frenemies has no such precondition — forcing overlap depends on global capacity/assignment, so it is explained *after* a failed solve by the post-mortem (§Infeasibility Diagnosis), not caught at validation. The mock generator (`simulate_camper_relationships`) seeds one pair of each type on distinct campers — same-cabin for besties/friends, cross-cabin for frenemies — so the default demo always solves.
 
 ### Assignment
 
@@ -122,6 +122,17 @@ A solve ends in one of **three failure-or-success outcomes**, diagnosed differen
 - **Error** — a genuine crash (CBC binary missing, pty failure, unbounded/undefined status); the technical message is surfaced unchanged.
 
 A **success** is itself two things, split by `timed_out`: **proven** — CBC closed the optimality gap, so "proven X% optimal" is meaningful and final — vs. **stopped-on-time** — CBC hit the time limit holding the best incumbent so far, which is usable but not proven near-optimal ("a longer solve may improve it"). Overstating the second as the first would mislead; the success banner branches on the flag.
+
+### Infeasibility Diagnosis
+
+The plain-language post-mortem of *why* an infeasible solve produced no schedule. A **pure** module (`diagnostics.py`) over the joined domain data + only the config knobs each check needs (per-seatrade `campers_min`/`campers_max`, `max_seatrades_per_fleet`, `allow_empty_sessions`) — no solver, Streamlit, or session state. It runs **only** on `INFEASIBLE` (never pre-solve, never on `OPTIMAL`/`TIMEOUT`), via the single call site `solver.diagnose_infeasibility`, and returns a **ranked list of `Finding`s** (most-certain first) carried on `AssignmentSolution.findings`. Each `Finding` has a **tier**, a plain-language **cause** naming the involved campers (by `(cabin, name)`) and seatrades, and a **named fix**. The UI *prepends* findings above the retained generic failure copy; when none fire, an honest "couldn't identify the exact cause" replaces them — never worse than today.
+
+- **Proven** — a *necessary feasibility condition* is violated, so infeasibility follows with certainty; stated as fact, pointing at the exact campers/seatrades.
+- **Suspected** — a pressure signal that likely contributed but needs global reasoning to prove; advisory, ranked, never the single answer. (Not yet shipped.)
+
+A shared derived quantity, **seatrade popularity** (how many campers list a seatrade), grounds a **dead seatrade** (`popularity < campers_min`, so it can never run), reused across checks. First proven cause shipped: **capacity shortfall** — `N > 2 · Σ campers_max` over the preferred-seatrade union (capped to the `k` largest when `max_seatrades_per_fleet=k`), because each camper fills one session per half-week and every seatrade runs in both fleet blocks of a half.
+
+Note: **per-cabin capacity limits alone cannot cause infeasibility** under the four-unique-preferences schema — the `cabin_max` (4 same-cabin campers per session) squeeze is *contributory only*, biting only in combination with global capacity, so it lives in the suspected tier, never proven.
 
 ### Assignment Export
 

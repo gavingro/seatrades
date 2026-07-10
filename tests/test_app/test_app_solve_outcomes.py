@@ -124,11 +124,16 @@ class TestInfeasibleSolveOutcome:
         # Poll the fragment to completion (assigned_solution is None until finalized).
         poll_until_solution(at, SOLVE_TIMEOUT_SECONDS)
 
-        # The solve finished as infeasible — not a crash, not a timeout.
+        # The solve finished as infeasible — not a crash, not a timeout — and the
+        # post-mortem named the capacity shortfall as a proven cause.
         solution = at.session_state["assigned_solution"]
         assert solution.status.state is SolverState.INFEASIBLE
         assert at.session_state["optimization_success"] is False
+        assert any("Too many campers" in f.cause for f in solution.findings), (
+            "the capacity-shortfall cause should be diagnosed"
+        )
 
-        # The done view shows the plain-language relax-a-hard-limit warning.
-        warnings = [w for w in at.warning if "relaxing a hard limit" in w.value]
-        assert warnings, "expected the relax-a-hard-limit failure warning"
+        # The done view prepends the named cause + fix above the retained generic warning.
+        warning = next(w.value for w in at.warning if "relaxing a hard limit" in w.value)
+        assert "Too many campers" in warning
+        assert warning.index("Too many campers") < warning.index("relaxing a hard limit")
