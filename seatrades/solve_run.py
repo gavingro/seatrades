@@ -18,9 +18,6 @@ from seatrades.config import OptimizationConfig
 from seatrades.problem import SchedulingProblem
 from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 
-# Timeout detection is a CBC-log concern that lives beside the other log parsers in
-# ``solver``; ``progress()`` reaches it via ``solver.detect_timeout``.
-
 _OPTIMIZING_MESSAGE = "Optimizing seatrade assignments…"
 _TIMEOUT_MESSAGE = "Finishing up — time limit reached…"
 

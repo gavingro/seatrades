@@ -61,7 +61,7 @@ def _read_log_text(log_path: Path) -> str:
     """CBC log contents, or '' if the log isn't there yet / can't be read."""
     try:
         return log_path.read_text()
-    except (FileNotFoundError, OSError):
+    except OSError:  # includes FileNotFoundError
         return ""
 
 

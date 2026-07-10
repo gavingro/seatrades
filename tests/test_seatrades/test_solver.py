@@ -14,7 +14,19 @@ from seatrades.results import (
     wrangle_assignments_to_wideform,
 )
 from seatrades.simulation import simulate_camper_relationships
-from seatrades.solver import run
+from seatrades.solver import detect_timeout, run
+
+
+class TestDetectTimeout:
+    def test_true_when_log_has_time_limit_line(self):
+        """CBC's time-limit line marks the solve as timed out."""
+        log_text = "Cbc0010I After 0 nodes\nResult - Stopped on time limit\nTotal time 60.0"
+        assert detect_timeout(log_text) is True
+
+    def test_false_when_log_lacks_time_limit_line(self):
+        """A normal optimal log is not a timeout."""
+        log_text = "Result - Optimal solution found\nObjective value 42.0"
+        assert detect_timeout(log_text) is False
 
 
 class TestSolverRun:
