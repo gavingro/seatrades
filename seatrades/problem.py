@@ -433,8 +433,8 @@ class SchedulingProblem:
         """Unweighted cabin-variety penalty: campers a cabin places in a seatrade above its
         free threshold, summed over all (cabin, session) pairs.
 
-        Each seatrade gives a free threshold of ``round(0.25 * campers_max)`` campers per
-        cabin; each camper beyond it adds one to the penalty. The threshold keys off
+        Each seatrade gives a free threshold of ``round(_CABIN_VARIETY_FREE_FRACTION *
+        campers_max)`` campers per cabin; each camper beyond it adds one to the penalty. The threshold keys off
         ``campers_max`` (a constant known pre-solve) so the term stays linear. Adds one
         non-negative ``excess`` variable per (cabin, session); the caller scales the sum by
         ``cabin_variety_weight``.
