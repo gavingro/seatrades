@@ -249,13 +249,15 @@ class SchedulingProblem:
 
         Off by default: at ``max_cabin_share_per_seatrade == 1.0`` no constraint is added.
         Below 1.0, cap each cabin at ``round(share * campers_max)`` campers per seatrade —
-        the same per-(cabin, session) sum as before, but per-seatrade and opt-in.
+        the same per-(cabin, session) sum as before, but per-seatrade and opt-in. Floored
+        at 1 so a tiny-capacity seatrade (where ``round`` would give 0) never becomes
+        unfillable — that would re-introduce the spurious infeasibility this feature removes.
         """
         if config.max_cabin_share_per_seatrade >= 1.0:
             return
         for s in self.seatrades_full:
             campers_max = cast(int, self.seatrades_prefs.loc[seatrade_name(s), "campers_max"])
-            cap = round(config.max_cabin_share_per_seatrade * campers_max)
+            cap = max(1, round(config.max_cabin_share_per_seatrade * campers_max))
             for cabin in self.cabins:
                 problem += (
                     pulp.lpSum([camper_assignments[c][s] for c in self.campers_by_cabin[cabin]]) <= cap,

@@ -336,6 +336,28 @@ class TestSchedulingProblemConstraintGroups:
         assert len(problem.constraints) == expected
         assert any("_cabin_share_cap_5_" in name for name in problem.constraints)
 
+    def test_cabin_share_cap_floors_at_one(self, joined_campers_df):
+        """The cap never zeroes a cabin out of a seatrade — round() at tiny campers_max
+        can be 0, which would re-introduce the spurious infeasibility this feature removes."""
+        # campers_max=2 → round(0.25 * 2) = 0 without the floor.
+        tiny_setup = pd.DataFrame(
+            {
+                "seatrade": ["Archery", "Sailing", "Climbing", "Kayaking"],
+                "campers_min": [0] * 4,
+                "campers_max": [2] * 4,
+            }
+        )
+        sp = SchedulingProblem(joined_campers_df, tiny_setup)
+        problem = pulp.LpProblem("test_cabin_share_floor")
+        vars_ = self._make_vars(sp)
+
+        sp._add_cabin_share_cap_constraints(
+            problem, vars_["camper_assignments"], OptimizationConfig(max_cabin_share_per_seatrade=0.25)
+        )
+
+        assert not any("_cabin_share_cap_0_" in name for name in problem.constraints)
+        assert any("_cabin_share_cap_1_" in name for name in problem.constraints)
+
     def test_add_block_assignment_constraints(self, scheduling_problem):
         sp = scheduling_problem
         problem = pulp.LpProblem("test_fleet_assign")
