@@ -371,8 +371,8 @@ def _session_max_cabin_shares(assigned: pd.DataFrame) -> pd.DataFrame:
     """
     cabin_counts = assigned.groupby(["block", "seatrade", "cabin"], sort=False).size()
     session_sizes = assigned.groupby(["block", "seatrade"], sort=False).size()
-    max_cabin = cabin_counts.groupby(["block", "seatrade"], sort=False).max()
-    max_share = (max_cabin / session_sizes).rename("max_share")
+    max_cabin_count = cabin_counts.groupby(["block", "seatrade"], sort=False).max()
+    max_share = (max_cabin_count / session_sizes).rename("max_share")
     return max_share.reset_index()
 
 

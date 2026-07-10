@@ -123,6 +123,11 @@ class TestDisplayQualitySummary:
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
         assert "Fair between" in _summary_metric_names(spec)
 
+    def test_cabin_variety_is_plotted_on_the_summary(self, sample_assignment_solution):
+        """Cabin variety shows on the Overview summary plot (issue #109 acceptance criterion)."""
+        spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
+        assert "Cabin variety" in _summary_metric_names(spec)
+
     def test_summary_axis_uses_de_jargoned_fairness_labels(self, sample_assignment_solution):
         """The plotted x labels de-jargon the two fairness metrics (owner comment #5)."""
         spec = display_quality_summary(score(sample_assignment_solution)).to_dict()
