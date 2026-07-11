@@ -91,7 +91,9 @@ def diagnose_infeasibility(
     return diagnostics.diagnose(
         problem.cabin_camper_prefs.reset_index(),
         problem.seatrades_prefs.reset_index(),
+        relationships=problem.relationships,
         max_seatrades_per_fleet=config.max_seatrades_per_fleet,
+        max_cabin_share_per_seatrade=config.max_cabin_share_per_seatrade,
     )
 
 

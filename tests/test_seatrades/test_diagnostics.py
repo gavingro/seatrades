@@ -6,6 +6,8 @@ does not. The reality fixtures that confirm the *solver* agrees live in the slow
 solver tests; here we assert the structural check's behaviour directly and fast.
 """
 
+from itertools import combinations
+
 import pandas as pd
 
 from seatrades.diagnostics import Tier, diagnose
@@ -67,3 +69,310 @@ def test_max_seatrades_per_fleet_tightens_the_capacity_bound():
 
     assert diagnose(campers, seatrade_setup) == [], "uncapped, the seats are ample"
     assert diagnose(campers, seatrade_setup, max_seatrades_per_fleet=2), "the fleet cap starves it"
+
+
+def _roster(rows: list[dict]) -> pd.DataFrame:
+    """Joined-campers frame from explicit (cabin, camper, prefs) rows."""
+    return pd.DataFrame(
+        [
+            {
+                "cabin": row["cabin"],
+                "camper": row["camper"],
+                "seatrade_1": row["prefs"][0],
+                "seatrade_2": row["prefs"][1],
+                "seatrade_3": row["prefs"][2],
+                "seatrade_4": row["prefs"][3],
+            }
+            for row in rows
+        ]
+    )
+
+
+# A crowd all wanting the same four popular seatrades — those stay well above any
+# campers_min, so they are "live". Reused as healthy filler around a crafted victim.
+_POPULAR = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+
+
+def _crowd(cabin: str, n: int) -> list[dict]:
+    return [{"cabin": cabin, "camper": f"Crowd {i}", "prefs": _POPULAR} for i in range(n)]
+
+
+def test_starved_seatrade_fires_when_a_campers_only_live_pick_is_one():
+    """M1: a camper whose picks are three solo-ranked niche seatrades + one popular.
+
+    The three niche seatrades are ranked by that camper alone (popularity 1 <
+    campers_min 2), so they can never run — the camper has a single live pick and
+    cannot fill two sessions. A necessary condition is violated → PROVEN.
+    """
+    victim = {"cabin": "Tillikum", "camper": "Robin", "prefs": ["Whittling", "Birding", "Poetry", "Sailing"]}
+    campers = _roster(_crowd("Spindrift", 6) + [victim])
+    all_seatrades = _POPULAR + ["Whittling", "Birding", "Poetry"]
+    seatrade_setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 2, "campers_max": 10})
+
+    findings = diagnose(campers, seatrade_setup)
+
+    assert findings, "expected a starved-seatrade finding"
+    assert findings[0].tier is Tier.PROVEN
+    assert "Robin" in findings[0].cause and "Tillikum" in findings[0].cause
+    assert "Whittling" in findings[0].cause
+
+
+def test_starved_seatrade_quiet_when_every_pick_can_run():
+    """Same roster, but the victim ranks four popular (live) seatrades → no starve."""
+    victim = {"cabin": "Tillikum", "camper": "Robin", "prefs": _POPULAR}
+    campers = _roster(_crowd("Spindrift", 6) + [victim])
+    seatrade_setup = pd.DataFrame({"seatrade": _POPULAR, "campers_min": 2, "campers_max": 10})
+
+    assert diagnose(campers, seatrade_setup) == []
+
+
+def test_top2_both_starved_fires_when_both_top_picks_cannot_run():
+    """M2: victim's top two picks are dead, but picks 3–4 are live.
+
+    Two live picks means the camper *can* be placed (M1 stays quiet), yet the top-2
+    guarantee — one of their first two choices — cannot hold. A distinct PROVEN cause.
+    """
+    victim = {"cabin": "Tillikum", "camper": "Robin", "prefs": ["Birding", "Poetry", "Sailing", "Kayaking"]}
+    campers = _roster(_crowd("Spindrift", 6) + [victim])
+    all_seatrades = _POPULAR + ["Birding", "Poetry"]
+    seatrade_setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 2, "campers_max": 10})
+
+    findings = diagnose(campers, seatrade_setup)
+
+    assert findings, "expected a top-2-starved finding"
+    top2 = [f for f in findings if "top two" in f.cause.lower() or "top-2" in f.cause.lower()]
+    assert top2, f"expected a top-2 finding, got {[f.cause for f in findings]}"
+    assert top2[0].tier is Tier.PROVEN
+    assert "Robin" in top2[0].cause
+
+
+def test_top2_starved_not_double_reported_when_camper_fully_starved():
+    """A fully-starved camper (M1) is the stronger statement — no duplicate M2."""
+    victim = {"cabin": "Tillikum", "camper": "Robin", "prefs": ["Birding", "Poetry", "Whittling", "Sailing"]}
+    campers = _roster(_crowd("Spindrift", 6) + [victim])
+    all_seatrades = _POPULAR + ["Birding", "Poetry", "Whittling"]
+    seatrade_setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 2, "campers_max": 10})
+
+    findings = [f for f in diagnose(campers, seatrade_setup) if "Robin" in f.cause]
+
+    assert len(findings) == 1, f"expected one finding for Robin, got {[f.cause for f in findings]}"
+
+
+def _relationships(pairs: list[tuple]) -> pd.DataFrame:
+    """Relationships frame from (cabin_1, camper_1, cabin_2, camper_2, type) tuples."""
+    return pd.DataFrame(pairs, columns=["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"])
+
+
+def _all_seatrades_setup(rows: list[dict]) -> pd.DataFrame:
+    """Setup where every ranked seatrade is live (campers_min 0) with ample capacity."""
+    seatrades = sorted({s for row in rows for s in row["prefs"]})
+    return pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": 10})
+
+
+def test_besties_chain_no_common_ground_fires_on_a_transitive_chain():
+    """B1: A–B–C besties chain, each pair sharing 2 seatrades, but no common pair.
+
+    Pairwise validation passes (A∩B and B∩C each ≥ 2); the whole group's
+    intersection is a single seatrade, so no identical two-session schedule exists
+    for all three — a PROVEN cause validation cannot see.
+    """
+    rows = [
+        {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+        {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+        {"cabin": "Otter", "camper": "Cy", "prefs": ["Kayaking", "Archery", "Climbing", "Dance"]},
+    ]
+    rels = _relationships(
+        [
+            ("Otter", "Ash", "Otter", "Bo", "besties"),
+            ("Otter", "Bo", "Otter", "Cy", "besties"),
+        ]
+    )
+
+    findings = diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=rels)
+
+    assert findings, "expected a besties-chain finding"
+    assert findings[0].tier is Tier.PROVEN
+    for name in ("Ash", "Bo", "Cy"):
+        assert name in findings[0].cause
+
+
+def test_besties_chain_quiet_when_group_shares_two_seatrades():
+    """A chain whose members all share two seatrades has a valid identical schedule."""
+    rows = [
+        {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+        {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+        {"cabin": "Otter", "camper": "Cy", "prefs": ["Sailing", "Kayaking", "Climbing", "Dance"]},
+    ]
+    rels = _relationships(
+        [
+            ("Otter", "Ash", "Otter", "Bo", "besties"),
+            ("Otter", "Bo", "Otter", "Cy", "besties"),
+        ]
+    )
+
+    assert diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=rels) == []
+
+
+_TRIO_SHARING_TWO = [
+    {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+    {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+    {"cabin": "Otter", "camper": "Cy", "prefs": ["Sailing", "Kayaking", "Climbing", "Dance"]},
+]
+_TRIO_BESTIES = [
+    ("Otter", "Ash", "Otter", "Bo", "besties"),
+    ("Otter", "Bo", "Otter", "Cy", "besties"),
+]
+
+
+def test_besties_group_too_big_for_seatrade_fires_when_shared_seatrades_cannot_hold_them():
+    """B3: a besties trio shares exactly two seatrades, both seating only two.
+
+    B1 stays quiet (they share two), but neither shared seatrade can hold all three
+    who must attend as one — a PROVEN capacity cause naming the group and seatrade.
+    """
+    setup = pd.DataFrame(
+        {
+            "seatrade": ["Sailing", "Kayaking", "Rowing", "Canoeing", "Archery", "Crafts", "Climbing", "Dance"],
+            "campers_min": 0,
+            "campers_max": [2, 2, 10, 10, 10, 10, 10, 10],
+        }
+    )
+
+    findings = diagnose(_roster(_TRIO_SHARING_TWO), setup, relationships=_relationships(_TRIO_BESTIES))
+
+    hits = [f for f in findings if "Ash" in f.cause and "Sailing" in f.cause]
+    assert hits, f"expected a besties-capacity finding, got {[f.cause for f in findings]}"
+    assert hits[0].tier is Tier.PROVEN
+
+
+def test_besties_group_too_big_quiet_when_shared_seatrade_has_room():
+    """The same trio and shared seatrades, seating ten — they fit together."""
+    setup = _all_seatrades_setup(_TRIO_SHARING_TWO)  # campers_max 10 everywhere
+
+    assert diagnose(_roster(_TRIO_SHARING_TWO), setup, relationships=_relationships(_TRIO_BESTIES)) == []
+
+
+def test_besties_group_too_big_for_cabin_fires_only_when_the_share_cap_is_on():
+    """B2: a same-cabin besties trio whose shared seatrades seat ten (B3 quiet).
+
+    With the opt-in cabin-share cap off (default 1.0) nothing fires. Slide it to
+    25%: each cabin is capped at round(0.25·10)=2 per seatrade, below the trio of 3
+    who must share a session — a PROVEN cause that exists only because the cap is set.
+    """
+    roster = _roster(_TRIO_SHARING_TWO)
+    setup = _all_seatrades_setup(_TRIO_SHARING_TWO)  # campers_max 10 — the session itself fits
+    rels = _relationships(_TRIO_BESTIES)
+
+    assert diagnose(roster, setup, relationships=rels) == [], "cap off by default → no B2"
+
+    findings = diagnose(roster, setup, relationships=rels, max_cabin_share_per_seatrade=0.25)
+    hits = [f for f in findings if "Ash" in f.cause and "cabin" in f.cause.lower()]
+    assert hits, f"expected a cabin-cap finding, got {[f.cause for f in findings]}"
+    assert hits[0].tier is Tier.PROVEN
+
+
+def test_besties_frenemies_contradiction_fires_when_a_frenemies_pair_is_in_a_besties_group():
+    """R1: a frenemies pair sits inside a besties chain — identical AND disjoint.
+
+    Ash–Bo–Cy are a besties chain (one group), but Ash and Cy are also frenemies.
+    Besties force identical schedules; frenemies force zero overlap — a flat
+    contradiction, so no schedule exists. PROVEN, naming the contradictory pair.
+    """
+    rels = _relationships(
+        [
+            ("Otter", "Ash", "Otter", "Bo", "besties"),
+            ("Otter", "Bo", "Otter", "Cy", "besties"),
+            ("Otter", "Ash", "Otter", "Cy", "frenemies"),
+        ]
+    )
+
+    findings = diagnose(_roster(_TRIO_SHARING_TWO), _all_seatrades_setup(_TRIO_SHARING_TWO), relationships=rels)
+
+    hits = [f for f in findings if "Ash" in f.cause and "Cy" in f.cause and "frenem" in f.cause.lower()]
+    assert hits, f"expected a besties/frenemies contradiction, got {[f.cause for f in findings]}"
+    assert hits[0].tier is Tier.PROVEN
+
+
+def test_besties_frenemies_contradiction_quiet_when_frenemies_pair_is_outside_the_group():
+    """A frenemies pair with a camper outside the besties group is no contradiction."""
+    rows = _TRIO_SHARING_TWO + [{"cabin": "Seal", "camper": "Di", "prefs": ["Rowing", "Dance", "Archery", "Crafts"]}]
+    rels = _relationships(
+        [
+            ("Otter", "Ash", "Otter", "Bo", "besties"),
+            ("Otter", "Bo", "Otter", "Cy", "besties"),
+            ("Otter", "Ash", "Seal", "Di", "frenemies"),
+        ]
+    )
+
+    findings = diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=rels)
+
+    assert not [f for f in findings if "refuse to share" in f.cause]
+
+
+_HUB = {"cabin": "Otter", "camper": "Hub", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]}
+# Four friends, each sharing exactly one distinct seatrade with the hub.
+_PINNED_FRIENDS = [
+    {"cabin": "Otter", "camper": "F1", "prefs": ["Sailing", "Archery", "Crafts", "Dance"]},
+    {"cabin": "Otter", "camper": "F2", "prefs": ["Kayaking", "Archery", "Crafts", "Dance"]},
+    {"cabin": "Otter", "camper": "F3", "prefs": ["Rowing", "Archery", "Crafts", "Dance"]},
+    {"cabin": "Otter", "camper": "F4", "prefs": ["Canoeing", "Archery", "Crafts", "Dance"]},
+]
+
+
+def _friends_of_hub(friends: list[dict]) -> pd.DataFrame:
+    return _relationships([("Otter", "Hub", f["cabin"], f["camper"], "friends") for f in friends])
+
+
+def test_friends_hub_fires_when_friends_need_more_than_two_seatrades():
+    """FH: the hub attends two seatrades, but four friends each want a different one.
+
+    No two of the hub's seatrades can share a session with all four friends, so at
+    least one friendship must break — a PROVEN 2-cover deficiency, naming hub + friends.
+    """
+    rows = [_HUB] + _PINNED_FRIENDS
+    findings = diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=_friends_of_hub(_PINNED_FRIENDS))
+
+    hits = [f for f in findings if "Hub" in f.cause and "F4" in f.cause]
+    assert hits, f"expected a friends-hub finding, got {[f.cause for f in findings]}"
+    assert hits[0].tier is Tier.PROVEN
+
+
+def test_friends_hub_quiet_when_two_seatrades_cover_every_friend():
+    """Two friends pinned to two of the hub's seatrades are coverable → no hub."""
+    rows = [_HUB] + _PINNED_FRIENDS[:2]
+    findings = diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=_friends_of_hub(_PINNED_FRIENDS[:2]))
+
+    assert not [f for f in findings if "Hub" in f.cause]
+
+
+def _frenemies_clique(cabin: str, names: list[str]) -> pd.DataFrame:
+    """Every camper in `names` marked mutual frenemies with every other (a clique)."""
+    return _relationships([(cabin, a, cabin, b, "frenemies") for a, b in combinations(names, 2)])
+
+
+def test_frenemies_clash_fires_when_a_same_cabin_clique_outnumbers_their_seatrades():
+    """FC: five same-cabin mutual frenemies who all rank the same four seatrades.
+
+    The cabin shares a block, and frenemies can't share a session, so five need five
+    distinct seatrades — but they rank only four. A pigeonhole PROVEN cause.
+    """
+    shared = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+    names = [f"Fr{i}" for i in range(5)]
+    rows = [{"cabin": "Otter", "camper": n, "prefs": shared} for n in names]
+
+    findings = diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=_frenemies_clique("Otter", names))
+
+    hits = [f for f in findings if "Otter" in f.cause and "refuse to share" in f.cause]
+    assert hits, f"expected a frenemies-clash finding, got {[f.cause for f in findings]}"
+    assert hits[0].tier is Tier.PROVEN
+
+
+def test_frenemies_clash_quiet_when_clique_fits_their_seatrades():
+    """Four mutual frenemies over four shared seatrades can each take a distinct one."""
+    shared = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+    names = [f"Fr{i}" for i in range(4)]
+    rows = [{"cabin": "Otter", "camper": n, "prefs": shared} for n in names]
+
+    findings = diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=_frenemies_clique("Otter", names))
+
+    assert not [f for f in findings if "refuse to share" in f.cause]

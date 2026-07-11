@@ -125,14 +125,26 @@ A **success** is itself two things, split by `timed_out`: **proven** — CBC clo
 
 ### Infeasibility Diagnosis
 
-The plain-language post-mortem of *why* an infeasible solve produced no schedule. A **pure** module (`diagnostics.py`) over the joined domain data + only the config knobs each check needs (the capacity check uses per-seatrade `campers_max` and `max_seatrades_per_fleet`) — no solver, Streamlit, or session state. It runs **only** on `INFEASIBLE` (never pre-solve, never on `OPTIMAL`/`TIMEOUT`), via the single call site `solver.diagnose_infeasibility`, and returns a **ranked list of `Finding`s** (most-certain first) carried on `AssignmentSolution.findings`. Each `Finding` has a **tier**, a plain-language **cause** — pointing at the specific campers (by `(cabin, name)`) or seatrades when a subset is implicated, or at the over-subscribed cohort when the whole roster is — and a **named fix**. The UI *prepends* findings above the retained generic failure copy; when none fire, an honest "couldn't identify the exact cause" replaces them — never worse than today.
+The plain-language post-mortem of *why* an infeasible solve produced no schedule. A **pure** module (`diagnostics.py`) over the joined domain data + the validated relationships + only the config knobs each check needs (`campers_max`, `campers_min`, `max_seatrades_per_fleet`, `max_cabin_share_per_seatrade`) — no solver, Streamlit, or session state. It runs **only** on `INFEASIBLE` (never pre-solve, never on `OPTIMAL`/`TIMEOUT`), via the single call site `solver.diagnose_infeasibility`, and returns a **ranked list of `Finding`s** (most-certain first) carried on `AssignmentSolution.findings`. Each `Finding` has a **tier**, a plain-language **cause** — pointing at the specific campers (by `(cabin, name)`) or seatrades when a subset is implicated, or at the over-subscribed cohort when the whole roster is — and a **named fix**. The UI *prepends* findings above the retained generic failure copy; when none fire, an honest "couldn't identify the exact cause" replaces them — never worse than today.
 
 - **Proven** — a *necessary feasibility condition* is violated, so infeasibility follows with certainty; stated as fact, pointing at the exact campers/seatrades.
 - **Suspected** — a pressure signal that likely contributed but needs global reasoning to prove; advisory, ranked, never the single answer. (Not yet shipped.)
 
-First proven cause shipped: **capacity shortfall** — `N > 2 · Σ campers_max` over the preferred-seatrade union (capped to the `k` largest when `max_seatrades_per_fleet=k`), because each camper fills one session per half-week and every seatrade runs in both fleet blocks of a half. This is a whole-cohort condition, so the cause names the over-subscribed half, not individual campers.
+A shared derived quantity underpins the starvation checks: a seatrade's **popularity** (how many campers rank it), from which a **dead seatrade** (`popularity < campers_min`, so it can never reach its floor and never runs) follows. The proven causes shipped:
 
-Note: **per-cabin capacity limits alone cannot cause infeasibility** under the four-unique-preferences schema — the `cabin_max` (4 same-cabin campers per session) squeeze is *contributory only*, biting only in combination with global capacity, so it lives in the suspected tier, never proven.
+- **Capacity shortfall** — `N > 2 · Σ campers_max` over the preferred-seatrade union (capped to the `k` largest when `max_seatrades_per_fleet=k`); a whole-cohort condition, so it names the over-subscribed half, not individuals.
+- **Starved seatrade** — a camper with fewer than two *live* (non-dead) picks can't fill their two sessions; names the camper and the dead picks.
+- **Top-2 both starved** — a placeable camper whose two top picks are both dead, so the top-2 guarantee can't hold; names the camper.
+- **Besties chain has no common ground** — a besties *group* (connected component) shares fewer than two seatrades all members rank; the transitive chain that slips pairwise validation lands here. Names the group.
+- **Besties group too big for the seatrade** — the group's shared seatrades can't all seat the whole group (`campers_max <` group size); names the group and seatrades.
+- **Besties group too big for one cabin** — *only when the opt-in `max_cabin_share_per_seatrade` cap is on*: a same-cabin besties group exceeds `round(share · campers_max)`. Off by default, so this can't fire under default config (see the per-cabin note below).
+- **Besties/frenemies contradiction** — a frenemies pair sits inside one besties group (identical *and* disjoint); names the pair.
+- **Friends hub** — a camper's friends want more distinct seatrades than the two sessions the hub attends can cover (a 2-cover deficiency); names the hub and friends. (Refinement deferred: run on the besties-merged entity.)
+- **Frenemies clash** — a same-cabin clique of mutual frenemies whose combined ranked seatrades number fewer than the clique size (pigeonhole in the block they share); names the group and cabin.
+
+Note: **per-cabin capacity limits alone cannot cause infeasibility** under the four-unique-preferences schema — the per-cabin squeeze is *contributory only*, biting only in combination with global capacity. The only per-cabin proven cause (besties group too big for one cabin) exists solely because the user opted into the `max_cabin_share_per_seatrade` hard cap; with the cap off (default) it never fires.
+
+Deferred to a later slice of the parent PRD (`docs/prd/infeasibility-diagnosis.md`): the general **matching-deficiency backstop** (Hall's condition over campers → runnable sessions, for combinations the named checks miss) and the bounded **relaxation re-solve** fallback, plus the entire **suspected** tier.
 
 ### Assignment Export
 

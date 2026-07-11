@@ -1,5 +1,8 @@
 """Tests for seatrades.solver — the solver.run() entry point."""
 
+import itertools
+from collections.abc import Sequence
+
 import pandas as pd
 import pulp
 import pytest
@@ -56,6 +59,39 @@ def _oversubscribed_problem() -> SchedulingProblem:
     return SchedulingProblem(joined_campers, seatrade_setup)
 
 
+def _roster_problem(rows: list[dict], seatrade_setup: pd.DataFrame, relationships=None) -> SchedulingProblem:
+    """Build a SchedulingProblem from explicit (cabin, camper, prefs) rows.
+
+    Fills the identity columns the solver needs (gender/age) with defaults; each
+    row supplies its four ranked seatrades so a crafted cause can be reproduced.
+    """
+    joined = pd.DataFrame(
+        [
+            {
+                "camper_id": i,
+                "cabin": row["cabin"],
+                "camper": row["camper"],
+                "gender": row.get("gender", "F"),
+                "age": row.get("age", 14),
+                "seatrade_1": row["prefs"][0],
+                "seatrade_2": row["prefs"][1],
+                "seatrade_3": row["prefs"][2],
+                "seatrade_4": row["prefs"][3],
+            }
+            for i, row in enumerate(rows)
+        ]
+    )
+    return SchedulingProblem(joined, seatrade_setup, relationships=relationships)
+
+
+_POPULAR = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+
+
+def _crowd(cabin: str, n: int) -> list[dict]:
+    """n campers all wanting the four popular seatrades — healthy filler that runs."""
+    return [{"cabin": cabin, "camper": f"Crowd {i}", "prefs": _POPULAR} for i in range(n)]
+
+
 class TestDiagnoseInfeasibility:
     """The single post-mortem call site: diagnosis runs only on INFEASIBLE."""
 
@@ -81,6 +117,179 @@ class TestDiagnoseInfeasibility:
         solution = run(_oversubscribed_problem(), OptimizationConfig())
         assert solution.status.state is SolverState.INFEASIBLE
         assert any("Too many campers" in f.cause for f in solution.findings)
+
+
+class TestStarvationReality:
+    """Slow reality fixtures: the real solver confirms M1/M2 are genuine infeasibility."""
+
+    def _starved_setup(self, niche: Sequence[str]) -> pd.DataFrame:
+        seatrades = [*_POPULAR, *niche]
+        # min campers 2: a seatrade only one camper ranks can never reach it, so it's dead.
+        return pd.DataFrame({"seatrade": seatrades, "campers_min": 2, "campers_max": 10})
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_starved_seatrade(self):
+        """M1: a camper whose four picks are all solo-ranked niche seatrades can't be placed."""
+        victim = {"cabin": "Cabin1", "camper": "Robin", "prefs": ["Whittling", "Birding", "Poetry", "Origami"]}
+        problem = _roster_problem(_crowd("Cabin1", 6) + [victim], self._starved_setup(victim["prefs"]))
+
+        solution = run(problem, OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Robin" in f.cause and "too few seatrades" in f.cause for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_top2_both_starved(self):
+        """M2: a camper whose top two picks are dead (but picks 3–4 live) breaks top-2."""
+        victim = {"cabin": "Cabin1", "camper": "Robin", "prefs": ["Whittling", "Birding", "Sailing", "Kayaking"]}
+        problem = _roster_problem(_crowd("Cabin1", 6) + [victim], self._starved_setup(["Whittling", "Birding"]))
+
+        solution = run(problem, OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Robin" in f.cause and "top two" in f.cause for f in solution.findings)
+
+
+def _besties_rel(pairs: list[tuple[str, str, str, str]]) -> pd.DataFrame:
+    """A besties relationships frame from (cabin_1, camper_1, cabin_2, camper_2) tuples."""
+    return pd.DataFrame(
+        [(*pair, "besties") for pair in pairs],
+        columns=["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"],
+    )
+
+
+class TestBestiesReality:
+    """Slow reality fixtures: the real solver confirms the besties causes B1/B2/B3."""
+
+    def test_transitive_besties_chain_slips_validation_then_named_by_postmortem(self):
+        """B1 / issue-112: a chain that is pairwise-valid but has no common pair.
+
+        Validation checks besties only pairwise, so this passes it — then the solver
+        proves INFEASIBLE and the post-mortem names the chain (the accepted trade of a
+        single post-mortem seam). Not marked slow: it must always run to guard the seam.
+        """
+        rows = [
+            {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+            {"cabin": "Otter", "camper": "Cy", "prefs": ["Kayaking", "Archery", "Climbing", "Dance"]},
+        ]
+        all_seatrades = sorted({s for row in rows for s in row["prefs"]})
+        setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 0, "campers_max": 10})
+        rels = _besties_rel([("Otter", "Ash", "Otter", "Bo"), ("Otter", "Bo", "Otter", "Cy")])
+        problem = _roster_problem(rows, setup, relationships=rels)
+
+        joined = problem.cabin_camper_prefs.reset_index()
+        validate_relationships(rels, joined)  # pairwise-valid → does not raise
+
+        solution = run(problem, OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any(all(name in f.cause for name in ("Ash", "Bo", "Cy")) for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_besties_too_big_for_seatrade(self):
+        """B3: a same-cabin besties trio whose only two shared seatrades seat two."""
+        rows = [
+            {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+            {"cabin": "Otter", "camper": "Cy", "prefs": ["Sailing", "Kayaking", "Climbing", "Dance"]},
+        ]
+        setup = pd.DataFrame(
+            {
+                "seatrade": ["Sailing", "Kayaking", "Rowing", "Canoeing", "Archery", "Crafts", "Climbing", "Dance"],
+                "campers_min": 0,
+                "campers_max": [2, 2, 10, 10, 10, 10, 10, 10],
+            }
+        )
+        rels = _besties_rel([("Otter", "Ash", "Otter", "Bo"), ("Otter", "Bo", "Otter", "Cy")])
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Ash" in f.cause and "seat fewer than" in f.cause for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_besties_too_big_for_cabin(self):
+        """B2: a same-cabin besties trio under a 25% cabin-share cap (per-cabin seats 2 < 3)."""
+        rows = [
+            {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+            {"cabin": "Otter", "camper": "Cy", "prefs": ["Sailing", "Kayaking", "Climbing", "Dance"]},
+        ]
+        all_seatrades = sorted({s for row in rows for s in row["prefs"]})
+        setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 0, "campers_max": 10})
+        rels = _besties_rel([("Otter", "Ash", "Otter", "Bo"), ("Otter", "Bo", "Otter", "Cy")])
+        config = OptimizationConfig(max_cabin_share_per_seatrade=0.25)
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), config)
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("cabin" in f.cause.lower() and "Ash" in f.cause for f in solution.findings)
+
+
+def _rel(rows: list[tuple[str, str, str, str, str]]) -> pd.DataFrame:
+    """A relationships frame from (cabin_1, camper_1, cabin_2, camper_2, type) tuples."""
+    return pd.DataFrame(rows, columns=["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"])
+
+
+class TestRelationshipCauseReality:
+    """Slow reality fixtures: the real solver confirms R1/FH/FC are genuine infeasibility."""
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_besties_frenemies_contradiction(self):
+        """R1: a besties chain with a frenemies pair inside it can't be satisfied."""
+        rows = [
+            {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+            {"cabin": "Otter", "camper": "Cy", "prefs": ["Sailing", "Kayaking", "Climbing", "Dance"]},
+        ]
+        all_seatrades = sorted({s for row in rows for s in row["prefs"]})
+        setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 0, "campers_max": 10})
+        rels = _rel(
+            [
+                ("Otter", "Ash", "Otter", "Bo", "besties"),
+                ("Otter", "Bo", "Otter", "Cy", "besties"),
+                ("Otter", "Ash", "Otter", "Cy", "frenemies"),
+            ]
+        )
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Ash" in f.cause and "Cy" in f.cause and "besties group" in f.cause for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_friends_hub(self):
+        """FH: a hub whose four friends each want a different one of its seatrades."""
+        rows = [
+            {"cabin": "Otter", "camper": "Hub", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "F1", "prefs": ["Sailing", "Archery", "Crafts", "Dance"]},
+            {"cabin": "Otter", "camper": "F2", "prefs": ["Kayaking", "Archery", "Crafts", "Dance"]},
+            {"cabin": "Otter", "camper": "F3", "prefs": ["Rowing", "Archery", "Crafts", "Dance"]},
+            {"cabin": "Otter", "camper": "F4", "prefs": ["Canoeing", "Archery", "Crafts", "Dance"]},
+        ]
+        all_seatrades = sorted({s for row in rows for s in row["prefs"]})
+        setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 0, "campers_max": 10})
+        rels = _rel([("Otter", "Hub", "Otter", f"F{i}", "friends") for i in range(1, 5)])
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Hub" in f.cause and "friends" in f.cause for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_frenemies_clash(self):
+        """FC: five same-cabin mutual frenemies sharing only four seatrades (pigeonhole)."""
+        shared = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+        names = [f"Fr{i}" for i in range(5)]
+        rows = [{"cabin": "Otter", "camper": n, "prefs": shared} for n in names]
+        setup = pd.DataFrame({"seatrade": shared, "campers_min": 0, "campers_max": 10})
+        rels = _rel([("Otter", a, "Otter", b, "frenemies") for a, b in itertools.combinations(names, 2)])
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("refuse to share" in f.cause for f in solution.findings)
 
 
 class TestSolverRun:

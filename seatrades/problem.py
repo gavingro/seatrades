@@ -62,6 +62,10 @@ class SchedulingProblem:
         self.blocks = BLOCKS
         self.seatrades_full = [f"{block}_{seatrade}" for block in self.blocks for seatrade in self.seatrades]
 
+        # Kept in domain form (composite-key columns) for the post-mortem diagnostics,
+        # which name campers by (cabin, name) rather than internal ids.
+        self.relationships = relationships
+
         # Relationships reference campers by (cabin, camper); map them to integer IDs
         # so constraints can be expressed over the camper_assignments variables.
         camper_id_by_key: dict[tuple[str, str], int] = {
