@@ -222,18 +222,18 @@ def _besties_too_big_for_seatrade(
     fewer than two seatrades are B1's territory, so they're skipped here.
     """
     prefs = _prefs_by_camper(joined_campers)
-    caps = seatrade_setup.set_index("seatrade")["campers_max"]
+    session_caps = seatrade_setup.set_index("seatrade")["campers_max"]
     findings: list[Finding] = []
     for group in _components(_pairs(relationships, "besties")):
         size = len(group)
         common = set.intersection(*(set(prefs[member]) for member in group))
         if len(common) < BESTIES_MIN_SHARED_SEATRADES:
             continue  # no common pair at all — reported by B1
-        roomy = [s for s in common if caps.get(s, 0) >= size]
+        roomy = [s for s in common if session_caps.get(s, 0) >= size]
         if len(roomy) >= BESTIES_MIN_SHARED_SEATRADES:
             continue
         labels = _join_names([_key_label(member) for member in sorted(group)])
-        cramped = sorted(s for s in common if caps.get(s, 0) < size)
+        cramped = sorted(s for s in common if session_caps.get(s, 0) < size)
         findings.append(
             Finding(
                 tier=Tier.PROVEN,

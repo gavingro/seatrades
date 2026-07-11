@@ -256,10 +256,9 @@ class SchedulingProblem:
         """Optional hard cap on any one cabin's share of a seatrade's capacity.
 
         Off by default: at ``max_cabin_share_per_seatrade == 1.0`` no constraint is added.
-        Below 1.0, cap each cabin at ``round(share * campers_max)`` campers per seatrade —
-        the same per-(cabin, session) sum as before, but per-seatrade and opt-in. Floored
-        at 1 so a tiny-capacity seatrade (where ``round`` would give 0) never becomes
-        unfillable — that would re-introduce the spurious infeasibility this feature removes.
+        Below 1.0, cap each cabin at ``cabin_seat_cap(share, campers_max)`` campers per
+        seatrade — the same per-(cabin, session) sum as before, but per-seatrade and opt-in.
+        See ``cabin_seat_cap`` for the rounding and floor-at-1 rationale.
         """
         if config.max_cabin_share_per_seatrade >= 1.0:
             return
