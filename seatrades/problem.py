@@ -5,7 +5,7 @@ from typing import Hashable, Optional, cast
 import pandas as pd
 import pulp
 
-from seatrades.config import PREF_COLS, OptimizationConfig
+from seatrades.config import PREF_COLS, OptimizationConfig, cabin_seat_cap
 
 BLOCKS = ["1a", "1b", "2a", "2b"]
 FLEET_BLOCKS = [["1a", "1b"], ["2a", "2b"]]
@@ -265,7 +265,7 @@ class SchedulingProblem:
             return
         for s in self.seatrades_full:
             campers_max = self._seatrade_campers_max(s)
-            cap = max(1, round(config.max_cabin_share_per_seatrade * campers_max))
+            cap = cabin_seat_cap(config.max_cabin_share_per_seatrade, campers_max)
             for cabin in self.cabins:
                 problem += (
                     pulp.lpSum([camper_assignments[c][s] for c in self.campers_by_cabin[cabin]]) <= cap,

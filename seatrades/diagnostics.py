@@ -21,7 +21,7 @@ from typing import Optional
 
 import pandas as pd
 
-from seatrades.config import BESTIES_MIN_SHARED_SEATRADES, PREF_COLS
+from seatrades.config import BESTIES_MIN_SHARED_SEATRADES, PREF_COLS, cabin_seat_cap
 
 # A camper keyed by their (cabin, name) composite key.
 CamperKey = tuple[str, str]
@@ -276,7 +276,7 @@ def _besties_too_big_for_cabin(
         roomy_session = [s for s in common if session_caps.get(s, 0) >= size]
         if len(roomy_session) < BESTIES_MIN_SHARED_SEATRADES:
             continue  # the session itself is too small — that's B3, not the cabin cap
-        caps = {s: _cabin_cap(max_cabin_share_per_seatrade, session_caps.get(s, 0)) for s in roomy_session}
+        caps = {s: cabin_seat_cap(max_cabin_share_per_seatrade, session_caps.get(s, 0)) for s in roomy_session}
         if sum(cap >= size for cap in caps.values()) >= BESTIES_MIN_SHARED_SEATRADES:
             continue
         (cabin,) = cabins
@@ -405,15 +405,6 @@ def _two_seatrades_cover(hub_seatrades: set[str], overlaps: list[set[str]]) -> b
         if all(chosen & overlap for overlap in overlaps):
             return True
     return not overlaps  # a hub with no friends is trivially covered
-
-
-def _cabin_cap(share: float, campers_max: int) -> int:
-    """One cabin's per-seatrade seat cap under the opt-in share limit — mirrors the solver.
-
-    Floored at 1 so a tiny-capacity seatrade never rounds to an unfillable 0 (matches
-    ``_add_cabin_share_cap_constraints`` in problem.py).
-    """
-    return max(1, round(share * campers_max))
 
 
 def _pairs(relationships: Optional[pd.DataFrame], relationship: str) -> list[tuple[CamperKey, CamperKey]]:

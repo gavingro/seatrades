@@ -146,6 +146,15 @@ def test_top2_both_starved_fires_when_both_top_picks_cannot_run():
     assert "Robin" in top2[0].cause
 
 
+def test_top2_starved_quiet_when_top_picks_can_run():
+    """A placeable camper whose top two picks are both live must not trip M2."""
+    victim = {"cabin": "Tillikum", "camper": "Robin", "prefs": _POPULAR}
+    campers = _roster(_crowd("Spindrift", 6) + [victim])
+    seatrade_setup = pd.DataFrame({"seatrade": _POPULAR, "campers_min": 2, "campers_max": 10})
+
+    assert diagnose(campers, seatrade_setup) == []
+
+
 def test_top2_starved_not_double_reported_when_camper_fully_starved():
     """A fully-starved camper (M1) is the stronger statement — no duplicate M2."""
     victim = {"cabin": "Tillikum", "camper": "Robin", "prefs": ["Birding", "Poetry", "Whittling", "Sailing"]}

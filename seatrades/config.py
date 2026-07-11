@@ -14,6 +14,17 @@ NUM_PREFERENCES = 4
 PREF_COLS = [f"seatrade_{i}" for i in range(1, NUM_PREFERENCES + 1)]
 
 
+def cabin_seat_cap(share: float, campers_max: int) -> int:
+    """One cabin's per-seatrade seat cap under the opt-in ``max_cabin_share_per_seatrade``.
+
+    Floored at 1 so a tiny-capacity seatrade (where ``round`` would give 0) never
+    becomes unfillable. Shared by the solver constraint that *enforces* the cap
+    (``_add_cabin_share_cap_constraints``) and the diagnostics post-mortem that
+    *explains* it, so the two can never round it differently.
+    """
+    return max(1, round(share * campers_max))
+
+
 @dataclass
 class OptimizationConfig:
     preference_weight: int = 4

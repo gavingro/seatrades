@@ -11,7 +11,21 @@ from seatrades.config import (
     OptimizationConfig,
     SeatradesConfig,
     SeatradeSimulationConfig,
+    cabin_seat_cap,
 )
+
+
+class TestCabinSeatCap:
+    """One cabin's per-seatrade seat cap under the opt-in share limit. The solver
+    constraint and the diagnostics post-mortem must round it identically, so they
+    share this one helper."""
+
+    def test_rounds_share_of_capacity(self):
+        assert cabin_seat_cap(0.5, 10) == 5
+
+    def test_floored_at_one_so_a_tiny_seatrade_stays_fillable(self):
+        # round(0.25 * 1) == 0 would make the seatrade unfillable; floor keeps it at 1.
+        assert cabin_seat_cap(0.25, 1) == 1
 
 
 class TestOptimizationConfig:
