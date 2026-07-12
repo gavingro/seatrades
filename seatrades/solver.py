@@ -152,19 +152,32 @@ def _relaxation_resolve(problem: SchedulingProblem, config: OptimizationConfig) 
     return []
 
 
+def _relaxed_solve_found_schedule(status_code: int) -> bool:
+    """Whether a relaxation re-solve actually produced a feasible schedule.
+
+    Only an OPTIMAL outcome means CBC returned a valid schedule — proven, or an
+    incumbent it kept when it stopped on the cap (CBC reports code 1 the instant it
+    holds a valid solution). A TIMEOUT means it found *no* usable schedule in the
+    cap, and INFEASIBLE means dropping the group didn't help; neither demonstrates a
+    schedule, so the group isn't named. Stricter than "not infeasible" on purpose — a
+    bare timeout must not overclaim PROVEN that dropping the group lets a schedule form.
+    """
+    return SolverState.from_pulp(status_code) is SolverState.OPTIMAL
+
+
 def _flips_feasible_without(problem: SchedulingProblem, config: OptimizationConfig, prefix: str) -> bool:
-    """Whether the model solves once every constraint named ``prefix*`` is dropped.
+    """Whether the model finds a schedule once every constraint named ``prefix*`` is dropped.
 
     Rebuilds a fresh model (so the probe never mutates the real one), deletes the group's
-    constraints by name, and re-solves under the bounded relaxation cap. Any non-INFEASIBLE
-    outcome — a schedule found, or even a timeout — means dropping the group relieved the
-    proven infeasibility, so the group is implicated.
+    constraints by name, and re-solves under the bounded relaxation cap. Only an OPTIMAL
+    re-solve — CBC returned an actual schedule — means dropping the group relieved the
+    infeasibility, so the group is implicated (see ``_relaxed_solve_found_schedule``).
     """
     lp = problem.build(config)
     for name in [name for name in lp.constraints if name.startswith(prefix)]:
         del lp.constraints[name]
     status_code = lp.solve(_relaxation_solver())
-    return SolverState.from_pulp(status_code) is not SolverState.INFEASIBLE
+    return _relaxed_solve_found_schedule(status_code)
 
 
 def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSolution:

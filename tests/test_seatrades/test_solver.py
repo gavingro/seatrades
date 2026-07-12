@@ -21,6 +21,7 @@ from seatrades.simulation import simulate_camper_relationships
 from seatrades.solver import (
     _RELAXATION_TIME_LIMIT_S,
     _relaxation_solver,
+    _relaxed_solve_found_schedule,
     detect_timeout,
     diagnose_infeasibility,
     run,
@@ -154,6 +155,19 @@ class TestRelaxationResolve:
         assert 5 <= _RELAXATION_TIME_LIMIT_S <= 10
         assert _relaxation_solver().timeLimit == _RELAXATION_TIME_LIMIT_S
         assert _relaxation_solver().timeLimit < OptimizationConfig().solver.timeLimit
+
+    def test_only_an_optimal_re_solve_counts_as_a_flip(self):
+        """A flip is a schedule actually found (OPTIMAL) — not a bare timeout.
+
+        CBC reports code 1 the instant it holds a valid schedule (proven or an
+        incumbent kept at the cap), and code 0 only when it found *no* usable
+        schedule in the cap. So a timeout is not evidence the group lets a schedule
+        form — naming it there would overclaim PROVEN. Only OPTIMAL is a real flip;
+        TIMEOUT (no schedule) and still-INFEASIBLE (drop didn't help) are not.
+        """
+        assert _relaxed_solve_found_schedule(1)  # OPTIMAL — a schedule was found
+        assert not _relaxed_solve_found_schedule(0)  # TIMEOUT — no schedule found
+        assert not _relaxed_solve_found_schedule(-1)  # INFEASIBLE — drop didn't help
 
     def test_not_invoked_when_a_named_cause_already_fired(self, monkeypatch):
         """A named cause short-circuits the fallback — the re-solve never runs."""
