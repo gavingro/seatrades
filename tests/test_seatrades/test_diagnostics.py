@@ -60,15 +60,16 @@ def test_capacity_shortfall_quiet_on_a_healthy_baseline():
 def test_max_seatrades_per_fleet_tightens_the_capacity_bound():
     """A fleet cap shrinks the usable seats: only its k busiest seatrades run.
 
-    10 campers, 4 seatrades seating 2 → 2·8 = 16 seats is roomy. But capping a
-    fleet to its 2 largest seatrades leaves 2·(2+2) = 8 seats < 10 → now infeasible.
+    5 campers, 4 seatrades seating 2 → 2·8 = 16 seats, and the demand-2 matching
+    fits comfortably, so nothing fires uncapped. But capping a fleet to its single
+    busiest seatrade leaves 2·2 = 4 seats < 5 campers → P1's capacity bound fires.
     """
     seatrades = ["Archery", "Crafts", "Climbing", "Sailing"]
-    campers = _campers_all_preferring(seatrades, n=10)
+    campers = _campers_all_preferring(seatrades, n=5)
     seatrade_setup = pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": 2})
 
     assert diagnose(campers, seatrade_setup) == [], "uncapped, the seats are ample"
-    assert diagnose(campers, seatrade_setup, max_seatrades_per_fleet=2), "the fleet cap starves it"
+    assert diagnose(campers, seatrade_setup, max_seatrades_per_fleet=1), "the fleet cap starves it"
 
 
 def _roster(rows: list[dict]) -> pd.DataFrame:
@@ -385,3 +386,54 @@ def test_frenemies_clash_quiet_when_clique_fits_their_seatrades():
     findings = diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=_frenemies_clique("Otter", names))
 
     assert not [f for f in findings if "refuse to share" in f.cause]
+
+
+def test_matching_backstop_fires_on_a_subset_deficiency_the_named_checks_miss():
+    """Backstop: 5 campers all ranking the same 4 seatrades that each seat one.
+
+    Each camper needs two distinct sessions; the four seatrades run in both blocks,
+    offering 2·4 = 8 seats, but five campers demand 2·5 = 10. No named check sees it —
+    P1 compares 5 campers to 8 seats (demand-1) and stays quiet, the picks are all live
+    (M1/M2 quiet), and there are no relationships. The matching backstop catches the
+    demand-2 shortfall and names the deficient campers. PROVEN (a necessary condition).
+    """
+    seatrades = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+    campers = _campers_all_preferring(seatrades, n=5)
+    seatrade_setup = pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": 1})
+
+    findings = diagnose(campers, seatrade_setup)
+
+    assert findings, "expected a matching-deficiency finding"
+    assert findings[0].tier is Tier.PROVEN
+    assert "Camper 0" in findings[0].cause and "Camper 4" in findings[0].cause
+
+
+def test_matching_backstop_quiet_on_a_healthy_baseline():
+    """The same five campers, but every picked seatrade seats ten → 2·40 seats each.
+
+    The demand-2 matching fits with room to spare, so a necessary condition holds and
+    the backstop stays silent — it must never false-positive on a feasible roster.
+    """
+    seatrades = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+    campers = _campers_all_preferring(seatrades, n=5)
+    seatrade_setup = pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": 10})
+
+    assert diagnose(campers, seatrade_setup) == []
+
+
+def test_matching_backstop_does_not_run_when_a_named_check_already_fired():
+    """Gating: 12 campers, 4 seatrades seating one — both P1 and the backstop apply.
+
+    P1 (capacity shortfall) fires on the demand-1 count, and the demand-2 backstop
+    would too, but the backstop runs *only* when the named checks come up empty. So
+    exactly one finding returns — the named P1 cause — never a duplicate backstop line.
+    """
+    seatrades = ["Archery", "Crafts", "Climbing", "Sailing"]
+    campers = _campers_all_preferring(seatrades, n=12)
+    seatrade_setup = pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": 1})
+
+    findings = diagnose(campers, seatrade_setup)
+
+    assert len(findings) == 1, f"expected only the named P1 finding, got {[f.cause for f in findings]}"
+    assert "Too many campers" in findings[0].cause
+    assert "can't all be placed" not in findings[0].cause

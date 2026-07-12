@@ -9,13 +9,27 @@ import pulp
 
 from seatrades import diagnostics
 from seatrades.config import OptimizationConfig
-from seatrades.diagnostics import Finding
+from seatrades.diagnostics import Finding, Tier
 from seatrades.live_cbc_log import live_cbc_log
 from seatrades.problem import SchedulingProblem
 from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 
 _GAP_PATTERN = re.compile(r"(?<=Gap:                            )(\d+\.?\d*)")
 _TIMEOUT_LOG_PATTERN = re.compile(r"Result - Stopped on time limit")
+
+# CBC proves infeasibility fast once the model is instantiated, so each relaxation
+# re-solve is capped well below the full solve budget: a still-infeasible drop returns
+# quickly, a now-feasible one finds a schedule. A bounded probe, not the real solve.
+_RELAXATION_TIME_LIMIT_S = 8
+
+# Each relationship group's hard constraints share a name prefix in the built model,
+# and the pairs it was built from live on the problem. Dropping a group and re-solving
+# tests whether that group alone is what makes the problem infeasible.
+_RELATIONSHIP_GROUPS = [
+    ("besties", "besties_", "besties_pairs"),
+    ("friends", "friends_", "friends_pairs"),
+    ("frenemies", "frenemies_", "frenemies_pairs"),
+]
 
 
 def detect_timeout(log_text: str) -> bool:
@@ -88,13 +102,69 @@ def diagnose_infeasibility(
     """
     if status.state != SolverState.INFEASIBLE:
         return []
-    return diagnostics.diagnose(
+    findings = diagnostics.diagnose(
         problem.cabin_camper_prefs.reset_index(),
         problem.seatrades_prefs.reset_index(),
         relationships=problem.relationships,
         max_seatrades_per_fleet=config.max_seatrades_per_fleet,
         max_cabin_share_per_seatrade=config.max_cabin_share_per_seatrade,
     )
+    # The pure checks (named + matching backstop) explained it — no re-solve needed.
+    if findings:
+        return findings
+    # Last resort: they came up empty, so drop each relationship group in turn and see
+    # if the solve flips feasible, pointing at the group that makes it infeasible.
+    return _relaxation_resolve(problem, config)
+
+
+def _relaxation_solver() -> pulp.apis.LpSolver:
+    """A short-capped CBC for relaxation re-solves — bounded, not the full solve budget."""
+    return pulp.apis.PULP_CBC_CMD(timeLimit=_RELAXATION_TIME_LIMIT_S, msg=0)
+
+
+def _relaxation_resolve(problem: SchedulingProblem, config: OptimizationConfig) -> list[Finding]:
+    """Drop one relationship group at a time; if the solve flips feasible, name the group.
+
+    Runs only when the pure checks found nothing. Removing a group and getting a feasible
+    solve proves that group is load-bearing for the infeasibility (it belongs to a minimal
+    infeasible subset), so the finding is PROVEN — it names the group, not exact campers.
+    Skips groups the problem has no pairs for, and stops at the first group that flips.
+    """
+    for group, prefix, pairs_attr in _RELATIONSHIP_GROUPS:
+        if not getattr(problem, pairs_attr):
+            continue
+        if not _flips_feasible_without(problem, config, prefix):
+            continue
+        return [
+            Finding(
+                tier=Tier.PROVEN,
+                cause=(
+                    f"Removing the {group} relationships lets a schedule form, so those "
+                    f"relationships are what make this infeasible — some combination of them "
+                    "can't all be satisfied together, though no single named cause pins it down."
+                ),
+                fix=(
+                    f"Review the {group} links and drop or loosen one — the exact pair the "
+                    "named checks couldn't isolate is somewhere in that group."
+                ),
+            )
+        ]
+    return []
+
+
+def _flips_feasible_without(problem: SchedulingProblem, config: OptimizationConfig, prefix: str) -> bool:
+    """Whether the model solves once every constraint named ``prefix*`` is dropped.
+
+    Rebuilds a fresh model (so the probe never mutates the real one), deletes the group's
+    constraints by name, and re-solves under the bounded relaxation cap. Any non-INFEASIBLE
+    outcome — a schedule found, or even a timeout — means dropping the group relieved the
+    proven infeasibility, so the group is implicated.
+    """
+    lp = problem.build(config)
+    for name in [name for name in lp.constraints if name.startswith(prefix)]:
+        del lp.constraints[name]
+    status_code = lp.solve(_relaxation_solver())
+    return SolverState.from_pulp(status_code) is not SolverState.INFEASIBLE
 
 
 def run(problem: SchedulingProblem, config: OptimizationConfig) -> AssignmentSolution:

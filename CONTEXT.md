@@ -144,7 +144,12 @@ A shared derived quantity underpins the starvation checks: a seatrade's **popula
 
 Note: **per-cabin capacity limits alone cannot cause infeasibility** under the four-unique-preferences schema — the per-cabin squeeze is *contributory only*, biting only in combination with global capacity. The only per-cabin proven cause (besties group too big for one cabin) exists solely because the user opted into the `max_cabin_share_per_seatrade` hard cap; with the cap off (default) it never fires.
 
-Deferred to a later slice of the parent PRD (`docs/prd/infeasibility-diagnosis.md`): the general **matching-deficiency backstop** (Hall's condition over campers → runnable sessions, for combinations the named checks miss) and the bounded **relaxation re-solve** fallback, plus the entire **suspected** tier.
+Two **as-needed fallbacks** run *only when every named check comes up empty* (so a named cause is never duplicated), catching combinations the specific checks miss:
+
+- **Matching-deficiency backstop** (pure, in `diagnostics.py`) — a max-flow / Hall's-condition check over the camper → live-seatrade graph: each camper needs two distinct live picks, each seatrade offers `2 · campers_max` seats. When no assignment seats everyone twice it names the deficient camper set (the source side of the min cut). It generalises capacity shortfall to demand-2 *subsets*, ignores all besties/frenemies/balance coupling, and — being a necessary condition — never false-positives. Proven.
+- **Relaxation re-solve** (needs the solver, so at the `solver.diagnose_infeasibility` call site) — the last resort when even the backstop is silent: drop one relationship group (besties, then friends, then frenemies) and re-solve under a bounded ~8s cap (CBC proves infeasibility fast, so this is a cheap probe, not the full solve). If the solve flips feasible, that group is load-bearing for the infeasibility, so it's named. Proven — it names the *group*, not exact campers.
+
+Deferred to a later slice of the parent PRD (`docs/prd/infeasibility-diagnosis.md`): the entire **suspected** tier.
 
 ### Assignment Export
 

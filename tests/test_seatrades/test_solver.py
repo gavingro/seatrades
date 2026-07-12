@@ -18,7 +18,13 @@ from seatrades.results import (
     wrangle_assignments_to_wideform,
 )
 from seatrades.simulation import simulate_camper_relationships
-from seatrades.solver import detect_timeout, diagnose_infeasibility, run
+from seatrades.solver import (
+    _RELAXATION_TIME_LIMIT_S,
+    _relaxation_solver,
+    detect_timeout,
+    diagnose_infeasibility,
+    run,
+)
 
 
 class TestDetectTimeout:
@@ -117,6 +123,83 @@ class TestDiagnoseInfeasibility:
         solution = run(_oversubscribed_problem(), OptimizationConfig())
         assert solution.status.state is SolverState.INFEASIBLE
         assert any("Too many campers" in f.cause for f in solution.findings)
+
+
+def _frenemies_cycle_problem() -> SchedulingProblem:
+    """Five same-cabin frenemies wired in a 5-cycle, ranking only two live seatrades.
+
+    Their two other picks (C, D) are dead (``campers_min`` 6 > their popularity 5), so
+    they can use only A and B. A cabin shares one block, so the five must take distinct
+    seatrades where they are adjacent — but a 5-cycle needs three colours and only two
+    seatrades exist, so it is infeasible. The cycle is *not* a clique, so the frenemies
+    clash check stays quiet, and the backstop ignores frenemies coupling, so it too is
+    quiet — leaving the relaxation re-solve as the only thing that can name the cause.
+    """
+    names = [f"Fr{i}" for i in range(5)]
+    rows = [{"cabin": "Otter", "camper": n, "prefs": ["A", "B", "C", "D"]} for n in names]
+    setup = pd.DataFrame({"seatrade": ["A", "B", "C", "D"], "campers_min": [0, 0, 6, 6], "campers_max": 10})
+    cycle = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 0)]
+    rels = pd.DataFrame(
+        [("Otter", names[a], "Otter", names[b], "frenemies") for a, b in cycle],
+        columns=["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"],
+    )
+    return _roster_problem(rows, setup, relationships=rels)
+
+
+class TestRelaxationResolve:
+    """The as-needed fallback: drop a relationship group, see if the solve flips feasible."""
+
+    def test_resolve_is_time_capped_not_the_full_limit(self):
+        """The re-solve uses a bounded ~5–10s cap, never the full solve time budget."""
+        assert 5 <= _RELAXATION_TIME_LIMIT_S <= 10
+        assert _relaxation_solver().timeLimit == _RELAXATION_TIME_LIMIT_S
+        assert _relaxation_solver().timeLimit < OptimizationConfig().solver.timeLimit
+
+    def test_not_invoked_when_a_named_cause_already_fired(self, monkeypatch):
+        """A named cause short-circuits the fallback — the re-solve never runs."""
+        monkeypatch.setattr(
+            "seatrades.solver._relaxation_resolve",
+            lambda *_args, **_kwargs: pytest.fail("relaxation re-solve ran despite a named cause"),
+        )
+        findings = diagnose_infeasibility(
+            SolverStatus(state=SolverState.INFEASIBLE), _oversubscribed_problem(), OptimizationConfig()
+        )
+        assert any("Too many campers" in f.cause for f in findings)
+
+    @pytest.mark.slow
+    def test_flips_feasible_re_solve_names_the_dropped_group(self):
+        """Reality: an infeasibility no pure check sees, named by dropping frenemies.
+
+        The real solver proves INFEASIBLE, the named checks and backstop come up empty
+        (``diagnose`` returns nothing on its own), and dropping the frenemies group flips
+        the solve feasible — so the fallback names frenemies as the load-bearing group.
+        """
+        problem = _frenemies_cycle_problem()
+        solution = run(problem, OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert solution.findings, "the relaxation re-solve should name a cause"
+        assert any("frenemies" in f.cause for f in solution.findings)
+
+
+class TestMatchingBackstopReality:
+    """Slow reality fixture: the real solver confirms the matching-backstop deficiency."""
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_subset_deficiency_the_named_checks_miss(self):
+        """Five campers over four seatrades seating one — 2·4 = 8 seats < 2·5 demand.
+
+        Every named check stays quiet (the demand-1 capacity bound sees 5 ≤ 8, the picks
+        are all live, no relationships), so only the matching backstop catches the
+        demand-2 shortfall. The real solver agrees it is INFEASIBLE and the backstop names
+        the deficient campers — proving the mode is real, not just a structural guess.
+        """
+        rows = [{"cabin": "Otter", "camper": f"Camper {i}", "prefs": ["A", "B", "C", "D"]} for i in range(5)]
+        setup = pd.DataFrame({"seatrade": ["A", "B", "C", "D"], "campers_min": 0, "campers_max": 1})
+        solution = run(_roster_problem(rows, setup), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("can't all be placed" in f.cause and "Camper 0" in f.cause for f in solution.findings)
 
 
 class TestStarvationReality:

@@ -9,8 +9,10 @@ A finding is a proven or suspected *cause* in the Captain's language plus a name
 fix. Each proven cause is a necessary feasibility condition confirmed against the
 real model; if the check fires, no schedule exists. This module ships the proven
 tier — capacity shortfall, the two starvation checks, the besties/friends/frenemies
-relationship checks; the suspected tier and the matching-deficiency backstop are a
-later slice of the parent PRD.
+relationship checks — plus a general matching-deficiency backstop that runs only when
+those come up empty. The suspected tier is a later slice of the parent PRD; the bounded
+relaxation re-solve (the other as-needed fallback) needs the solver, so it lives at the
+service-layer call site, not here.
 """
 
 from collections import defaultdict
@@ -25,6 +27,10 @@ from seatrades.config import BESTIES_MIN_SHARED_SEATRADES, PREF_COLS, cabin_seat
 
 # A camper keyed by their (cabin, name) composite key.
 CamperKey = tuple[str, str]
+
+# A node in the matching-backstop flow network: the source/sink and seatrades are
+# plain strings, campers are their (cabin, name) key.
+FlowNode = tuple[str, str] | str
 
 # Within a half-week every seatrade runs in both fleet blocks, so each seatrade's
 # per-session ``campers_max`` seats are offered twice per half.
@@ -76,7 +82,120 @@ def diagnose(
     findings.extend(_besties_frenemies_contradiction(relationships))
     findings.extend(_friends_hub(joined_campers, relationships))
     findings.extend(_frenemies_clash(joined_campers, relationships))
-    return findings
+    if findings:
+        return findings
+    # Only when every cheap named check comes up empty: a general matching-deficiency
+    # backstop that catches shortfalls the individual checks miss and names its own culprits.
+    return _matching_deficiency_backstop(joined_campers, seatrade_setup)
+
+
+def _matching_deficiency_backstop(joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame) -> list[Finding]:
+    """The catch-all: a set of campers that needs more distinct seats than exist.
+
+    Ignoring all besties/frenemies/balance coupling, each camper still needs two
+    distinct *live* preferred seatrades, and a seatrade offers ``2 · campers_max``
+    seats across the half (it runs in both fleet blocks). If no assignment can seat
+    every camper twice, no schedule exists — a necessary condition (Hall's), so it
+    never false-positives. Names the deficient campers (the source side of the min cut).
+    """
+    dead = _dead_seatrades(joined_campers, seatrade_setup)
+    session_caps = seatrade_setup.set_index("seatrade")["campers_max"]
+    prefs = _prefs_by_camper(joined_campers)
+    live_prefs = {camper: [s for s in picks if s not in dead] for camper, picks in prefs.items()}
+    seats = {
+        s: _FLEET_BLOCKS_PER_HALF * int(session_caps.get(s, 0)) for s in {s for ps in live_prefs.values() for s in ps}
+    }
+
+    deficient = _unmatchable_campers(live_prefs, seats)
+    if not deficient:
+        return []
+    labels = _join_names([_key_label(camper) for camper in sorted(deficient)])
+    return [
+        Finding(
+            tier=Tier.PROVEN,
+            cause=(
+                f"These {len(deficient)} campers can't all be placed: {labels} need two seatrades "
+                "each, but the seatrades they picked don't offer enough seats between them to seat "
+                "them all twice — no schedule can fit them."
+            ),
+            fix=(
+                "Raise *max campers* on the seatrades this group picked, add seatrades they'd want, "
+                "or lower those seatrades' *min campers* so more of their picks can run."
+            ),
+        )
+    ]
+
+
+def _unmatchable_campers(live_prefs: dict[CamperKey, list[str]], seats: dict[str, int]) -> set[CamperKey]:
+    """Campers that can't all get two distinct seats, via max-flow / Hall's condition.
+
+    Flow network: source → each camper (cap 2) → each live preferred seatrade (cap 1)
+    → sink (cap ``seats[s]``). A matching seats everyone iff the max flow saturates
+    ``2 · n_campers``. When it can't, the deficient set is the campers still reachable
+    from the source in the residual graph (the source side of the min cut). Empty set
+    means everyone fits — no finding.
+    """
+    source, sink = "__source__", "__sink__"
+    capacity: dict[FlowNode, dict[FlowNode, int]] = defaultdict(lambda: defaultdict(int))
+    for camper, picks in live_prefs.items():
+        capacity[source][camper] += 2
+        for s in picks:
+            capacity[camper][s] = 1
+    for s, cap in seats.items():
+        capacity[s][sink] = cap
+
+    _max_flow(capacity, source, sink)
+    if sum(capacity[source][camper] for camper in live_prefs) == 0:
+        return set()  # residual source→camper edges all used up ⇒ everyone matched
+    reachable = _residual_reachable(capacity, source)
+    return {camper for camper in live_prefs if camper in reachable}
+
+
+def _max_flow(capacity: dict[FlowNode, dict[FlowNode, int]], source: FlowNode, sink: FlowNode) -> None:
+    """Edmonds-Karp max flow, mutating ``capacity`` in place to leave residuals.
+
+    Repeatedly finds a shortest augmenting path (BFS) and pushes flow along it,
+    decrementing forward residuals and incrementing reverse ones. On return,
+    ``capacity`` holds the residual graph the deficient-set extraction reads.
+    """
+    while True:
+        parent = {source: source}
+        queue = [source]
+        while queue and sink not in parent:
+            node = queue.pop(0)
+            for nxt, cap in capacity[node].items():
+                if cap > 0 and nxt not in parent:
+                    parent[nxt] = node
+                    queue.append(nxt)
+        if sink not in parent:
+            return
+        path = _path_nodes(parent, sink)
+        bottleneck = min(capacity[parent[n]][n] for n in path)
+        for n in path:
+            capacity[parent[n]][n] -= bottleneck
+            capacity[n][parent[n]] += bottleneck
+
+
+def _path_nodes(parent: dict[FlowNode, FlowNode], sink: FlowNode) -> list[FlowNode]:
+    """The nodes of the augmenting path from just-after-source to sink."""
+    nodes: list[FlowNode] = []
+    node = sink
+    while parent[node] != node:
+        nodes.append(node)
+        node = parent[node]
+    return nodes
+
+
+def _residual_reachable(capacity: dict[FlowNode, dict[FlowNode, int]], source: FlowNode) -> set[FlowNode]:
+    """Nodes reachable from the source along edges with residual capacity left."""
+    seen, queue = {source}, [source]
+    while queue:
+        node = queue.pop(0)
+        for nxt, cap in capacity[node].items():
+            if cap > 0 and nxt not in seen:
+                seen.add(nxt)
+                queue.append(nxt)
+    return seen
 
 
 def _capacity_shortfall(
