@@ -127,11 +127,13 @@ def _suspected_findings(
     relationships: Optional[pd.DataFrame],
     force_same_fleet_all_week: bool,
 ) -> list[Finding]:
-    """Advisory pressure hints, ranked by likelihood (most-likely first).
+    """Advisory pressure hints, in a fixed advisory order.
 
     Each signal is a *pressure* — tight but not provably impossible, needing global
-    reasoning to confirm — so it stays advisory, never a certainty. Cutoffs are the
-    conservative placeholders in ``config`` (research spike #115 replaces the numbers).
+    reasoning to confirm — so it stays advisory, never a certainty. The real ranking is
+    proven-before-suspected (the certain causes lead); a within-tier ordering by
+    likelihood needs comparable, calibrated cutoffs, so it lands with research spike #115.
+    Cutoffs are the conservative placeholders in ``config`` (#115 replaces the numbers).
     """
     findings: list[Finding] = []
     findings.extend(_top2_oversubscription(joined_campers, seatrade_setup))
@@ -152,10 +154,10 @@ def _top2_oversubscription(joined_campers: pd.DataFrame, seatrade_setup: pd.Data
     """
     top1, top2 = PREF_COLS[0], PREF_COLS[1]
     top_demand = pd.concat([joined_campers[top1], joined_campers[top2]]).value_counts()
-    session_caps = seatrade_setup.set_index("seatrade")["campers_max"]
+    seats_by_seatrade = _seats_by_seatrade(seatrade_setup)
     findings: list[Finding] = []
     for seatrade, demand in top_demand.items():
-        seats = _FLEET_BLOCKS_PER_HALF * int(session_caps.get(seatrade, 0))
+        seats = int(seats_by_seatrade.get(seatrade, 0))
         if seats == 0 or demand < SUSPECTED_TOP2_OVERSUBSCRIPTION_FACTOR * seats:
             continue
         findings.append(
@@ -181,16 +183,18 @@ def _cabin_clustering(joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame
     seatrade *first* yet those seats can't hold the cabin, cohesion fights capacity — a
     pressure, not a proof: they can still be split off their first pick, so it's advisory.
     """
-    session_caps = seatrade_setup.set_index("seatrade")["campers_max"]
+    seats_by_seatrade = _seats_by_seatrade(seatrade_setup)
     top1 = PREF_COLS[0]
     findings: list[Finding] = []
     for cabin, group in joined_campers.groupby("cabin"):
         cabin_size = len(group)
         top_counts = group[top1].value_counts()
         top_seatrade, top_count = top_counts.idxmax(), int(top_counts.max())
-        seats = _FLEET_BLOCKS_PER_HALF * int(session_caps.get(top_seatrade, 0))
         if top_count < SUSPECTED_CABIN_CLUSTERING_MIN_CAMPERS:
             continue  # too small a group to be worth flagging — err toward silence
+        seats = int(seats_by_seatrade.get(top_seatrade, 0))
+        if seats == 0:
+            continue  # top pick isn't in the setup catalog — nothing to size against
         if top_count < SUSPECTED_CABIN_CLUSTERING_SHARE * cabin_size or top_count <= seats:
             continue
         findings.append(
@@ -322,12 +326,10 @@ def _matching_deficiency_backstop(joined_campers: pd.DataFrame, seatrade_setup: 
     never false-positives. Names the deficient campers (the source side of the min cut).
     """
     dead = _dead_seatrades(joined_campers, seatrade_setup)
-    session_caps = seatrade_setup.set_index("seatrade")["campers_max"]
+    seats_by_seatrade = _seats_by_seatrade(seatrade_setup)
     prefs = _prefs_by_camper(joined_campers)
     live_prefs = {camper: [s for s in picks if s not in dead] for camper, picks in prefs.items()}
-    seats = {
-        s: _FLEET_BLOCKS_PER_HALF * int(session_caps.get(s, 0)) for s in {s for ps in live_prefs.values() for s in ps}
-    }
+    seats = {s: int(seats_by_seatrade.get(s, 0)) for s in {s for ps in live_prefs.values() for s in ps}}
 
     deficient = _unmatchable_campers(live_prefs, seats)
     if not deficient:
@@ -802,6 +804,16 @@ def _popularity(joined_campers: pd.DataFrame) -> pd.Series:
     """How many campers rank each seatrade."""
     picks = joined_campers[PREF_COLS].to_numpy().ravel()
     return pd.Series(picks).value_counts()
+
+
+def _seats_by_seatrade(seatrade_setup: pd.DataFrame) -> pd.Series:
+    """Each seatrade's total half-week seats, keyed by seatrade.
+
+    A seatrade runs in both fleet blocks each half, so it offers its per-session
+    ``campers_max`` twice. The one place this ``2 · campers_max`` decision lives —
+    read via ``.get(seatrade, 0)`` (0 for a seatrade absent from the setup catalog).
+    """
+    return _FLEET_BLOCKS_PER_HALF * seatrade_setup.set_index("seatrade")["campers_max"].astype(int)
 
 
 def _camper_label(row) -> str:

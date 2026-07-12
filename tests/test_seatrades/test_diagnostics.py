@@ -639,3 +639,16 @@ def test_cabin_clustering_quiet_when_the_shared_seatrade_can_hold_the_cabin():
     )
 
     assert diagnose(campers, caps) == []
+
+
+def test_cabin_clustering_quiet_when_the_top_pick_is_absent_from_the_setup():
+    """A cabin funnelling into a seatrade not in the catalog sizes against nothing → silent.
+
+    Prefs are validated against the catalog in production, so this can't arise there; the
+    seats==0 guard just keeps the hint from firing a nonsense "seats only 0" if that ever
+    loosens (err toward silence). The three real picks are roomy, so no proven check fires.
+    """
+    campers = _one_cabin("Spindrift", ["Ghost", "Kayaking", "Rowing", "Canoeing"], n=10)
+    caps = pd.DataFrame({"seatrade": ["Kayaking", "Rowing", "Canoeing"], "campers_min": 0, "campers_max": 20})
+
+    assert diagnose(campers, caps) == []
