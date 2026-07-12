@@ -62,7 +62,9 @@ log_date_format = "%Y-%m-%d %H:%M:%S"
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-extend-exclude = ["temp.py"]
+# scratchpad/ holds throwaway spike harnesses (see docs/prd/*-spike-*.md), not shipped
+# code — kept out of the working tree's lint gate the same way it's kept out of git.
+extend-exclude = ["temp.py", "scratchpad"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "ARG", "B"]
@@ -78,6 +80,7 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 check_untyped_defs = true
 plugins = ["pandera.mypy"]
+exclude = ["scratchpad/"]
 
 [[tool.mypy.overrides]]
 module = "pulp.*"

@@ -395,21 +395,21 @@ def _cross_cabin_frenemies(cabin_a: str, a_names: list[str], cabin_b: str, b_nam
 
 
 def test_cross_cabin_frenemies_overlap_flags_a_tight_multi_cabin_group():
-    """S2: four mutual frenemies split across two cabins, all ranking the same four.
+    """S2: eight mutual frenemies split across two cabins, all ranking the same four.
 
-    Keeping every cross-cabin pair out of a shared session is tight against only four
-    ranked seatrades — but whether it actually breaks depends on block/fleet placement
-    (they may land in different blocks anyway), so it surfaces as an advisory hint, not
-    a proof. No same-cabin edge exists, so the proven same-cabin clash stays silent.
+    The check fires when group size reaches ``SUSPECTED_FRENEMIES_CLUSTERING_RATIO`` (2.0,
+    calibrated by spike #115) times the distinct seatrades they rank — here 8 campers over
+    4 ranked seatrades = ratio 2.0, right at the empirical feasible→infeasible boundary.
+    Whether it actually breaks depends on block/fleet placement (they may land in different
+    blocks anyway), so it surfaces as an advisory hint, not a proof. No same-cabin edge
+    exists, so the proven same-cabin clash stays silent.
     """
     shared = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
-    rows = [
-        {"cabin": "Otter", "camper": "A1", "prefs": shared},
-        {"cabin": "Otter", "camper": "A2", "prefs": shared},
-        {"cabin": "Seal", "camper": "B1", "prefs": shared},
-        {"cabin": "Seal", "camper": "B2", "prefs": shared},
-    ]
-    rels = _cross_cabin_frenemies("Otter", ["A1", "A2"], "Seal", ["B1", "B2"])
+    a_names = ["A1", "A2", "A3", "A4"]
+    b_names = ["B1", "B2", "B3", "B4"]
+    rows = [{"cabin": "Otter", "camper": name, "prefs": shared} for name in a_names]
+    rows += [{"cabin": "Seal", "camper": name, "prefs": shared} for name in b_names]
+    rels = _cross_cabin_frenemies("Otter", a_names, "Seal", b_names)
 
     suspected = _suspected(diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=rels))
 
@@ -460,15 +460,16 @@ _ROOMY_SETUP = pd.DataFrame(
 
 
 def test_gender_balance_vs_same_fleet_flags_a_dominant_gender_when_locked():
-    """S3: seven of eight cabins are boys and the same-fleet-all-week lock is ON.
+    """S3: nine of ten cabins are boys and the same-fleet-all-week lock is ON.
 
     Gender balance wants each gender's cabins split evenly across the blocks, but the
     lock pins every cabin's fleet across both halves — so a gender holding most cabins
-    strains that split. It's a pressure, not a proof (the split may still work out), so
-    it's advisory, and only when the opt-in lock is engaged.
+    strains that split. Fires at ``SUSPECTED_GENDER_DOMINANCE_SHARE`` (0.9, raised by spike
+    #115 above the 0.875 healthy baseline), so 9/10 = 0.9 clears it. It's a pressure, not a
+    proof (the split may still work out), so it's advisory, and only when the lock is on.
     """
-    genders = {f"Cabin{i}": "male" for i in range(7)}
-    genders["Cabin7"] = "female"
+    genders = {f"Cabin{i}": "male" for i in range(9)}
+    genders["Cabin9"] = "female"
 
     suspected = _suspected(diagnose(_gendered_cabins(genders), _ROOMY_SETUP, force_same_fleet_all_week=True))
 
@@ -478,8 +479,8 @@ def test_gender_balance_vs_same_fleet_flags_a_dominant_gender_when_locked():
 
 def test_gender_balance_vs_same_fleet_quiet_without_the_lock():
     """The same lopsided roster is fine when the fleet lock is off — balance has slack."""
-    genders = {f"Cabin{i}": "male" for i in range(7)}
-    genders["Cabin7"] = "female"
+    genders = {f"Cabin{i}": "male" for i in range(9)}
+    genders["Cabin9"] = "female"
 
     assert diagnose(_gendered_cabins(genders), _ROOMY_SETUP) == []
 
