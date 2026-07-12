@@ -15,7 +15,7 @@ relaxation re-solve (the other as-needed fallback) needs the solver, so it lives
 service-layer call site, not here.
 """
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from enum import Enum
 from itertools import combinations
@@ -29,7 +29,9 @@ from seatrades.config import BESTIES_MIN_SHARED_SEATRADES, PREF_COLS, cabin_seat
 CamperKey = tuple[str, str]
 
 # A node in the matching-backstop flow network: the source/sink and seatrades are
-# plain strings, campers are their (cabin, name) key.
+# plain strings, campers are their (cabin, name) key. Campers (tuples) never collide
+# with seatrades (strings); the source/sink sentinels assume no seatrade is literally
+# named ``__source__``/``__sink__``.
 FlowNode = tuple[str, str] | str
 
 # Within a half-week every seatrade runs in both fleet blocks, so each seatrade's
@@ -160,9 +162,9 @@ def _max_flow(capacity: dict[FlowNode, dict[FlowNode, int]], source: FlowNode, s
     """
     while True:
         parent = {source: source}
-        queue = [source]
+        queue = deque([source])
         while queue and sink not in parent:
-            node = queue.pop(0)
+            node = queue.popleft()
             for nxt, cap in capacity[node].items():
                 if cap > 0 and nxt not in parent:
                     parent[nxt] = node
@@ -188,9 +190,9 @@ def _path_nodes(parent: dict[FlowNode, FlowNode], sink: FlowNode) -> list[FlowNo
 
 def _residual_reachable(capacity: dict[FlowNode, dict[FlowNode, int]], source: FlowNode) -> set[FlowNode]:
     """Nodes reachable from the source along edges with residual capacity left."""
-    seen, queue = {source}, [source]
+    seen, queue = {source}, deque([source])
     while queue:
-        node = queue.pop(0)
+        node = queue.popleft()
         for nxt, cap in capacity[node].items():
             if cap > 0 and nxt not in seen:
                 seen.add(nxt)
