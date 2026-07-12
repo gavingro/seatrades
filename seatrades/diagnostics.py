@@ -13,7 +13,7 @@ relationship checks — plus a general matching-deficiency backstop that runs on
 those come up empty. It also ships the suspected tier: advisory *pressure* hints (top-2
 oversubscription, cabin clustering, cross-cabin frenemies overlap, gender-balance vs. the
 same-fleet lock, balance vs. minimum) appended below the proven findings, behind the
-conservative placeholder thresholds in ``config`` (research spike #115 tunes the numbers).
+conservative thresholds in ``config`` (calibrated against real solves by spike #115).
 The bounded relaxation re-solve (the other as-needed fallback) needs the solver, so it
 lives at the service-layer call site, not here.
 """
@@ -132,8 +132,8 @@ def _suspected_findings(
     Each signal is a *pressure* — tight but not provably impossible, needing global
     reasoning to confirm — so it stays advisory, never a certainty. The real ranking is
     proven-before-suspected (the certain causes lead); a within-tier ordering by
-    likelihood needs comparable, calibrated cutoffs, so it lands with research spike #115.
-    Cutoffs are the conservative placeholders in ``config`` (#115 replaces the numbers).
+    likelihood needs comparable, calibrated cutoffs and is still future work.
+    Cutoffs are the conservative thresholds in ``config`` (calibrated by spike #115).
     """
     findings: list[Finding] = []
     findings.extend(_top2_oversubscription(joined_campers, seatrade_setup))
@@ -149,7 +149,7 @@ def _top2_oversubscription(joined_campers: pd.DataFrame, seatrade_setup: pd.Data
 
     Everyone is promised a top-2 pick, but a seatrade offers only ``2·campers_max``
     seats across the half. When the campers ranking it first or second outnumber that
-    by the placeholder factor, the promise is under real pressure — advisory, since
+    by the configured factor, the promise is under real pressure — advisory, since
     whether it actually breaks depends on how the rest of the schedule shakes out.
     """
     top1, top2 = PREF_COLS[0], PREF_COLS[1]
@@ -179,7 +179,7 @@ def _cabin_clustering(joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame
 
     A cabin attends together in the one block it occupies each half, so keeping a cohesive
     cabin together in a seatrade needs that seatrade to hold them across its two blocks
-    (``2·campers_max`` seats). When at least the placeholder share of a cabin ranks the same
+    (``2·campers_max`` seats). When at least the configured share of a cabin ranks the same
     seatrade *first* yet those seats can't hold the cabin, cohesion fights capacity — a
     pressure, not a proof: they can still be split off their first pick, so it's advisory.
     """
@@ -287,7 +287,7 @@ def _balance_vs_minimum(joined_campers: pd.DataFrame, seatrade_setup: pd.DataFra
 
     Gender balance spreads a cabin's campers across the two blocks, so a seatrade's demand
     lands split roughly in half. A seatrade whose whole following only just clears its
-    ``campers_min`` (under the placeholder factor of it) can fall below the floor in a block
+    ``campers_min`` (under the configured factor of it) can fall below the floor in a block
     once split, so it may fail to run there. Restricted to *live* seatrades (a following that
     can't even clear the floor overall is the proven starvation case), so this stays a
     distinct advisory pressure, not a certainty.
