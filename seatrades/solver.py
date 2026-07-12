@@ -108,13 +108,16 @@ def diagnose_infeasibility(
         relationships=problem.relationships,
         max_seatrades_per_fleet=config.max_seatrades_per_fleet,
         max_cabin_share_per_seatrade=config.max_cabin_share_per_seatrade,
+        force_same_fleet_all_week=config.force_same_fleet_all_week,
     )
-    # The pure checks (named + matching backstop) explained it — no re-solve needed.
-    if findings:
+    # A proven cause (named or matching backstop) settles it — no re-solve needed.
+    if any(finding.tier is Tier.PROVEN for finding in findings):
         return findings
-    # Last resort: they came up empty, so drop each relationship group in turn and see
-    # if the solve flips feasible, pointing at the group that makes it infeasible.
-    return _relaxation_resolve(problem, config)
+    # No proven cause — the pure checks came up empty (any findings here are advisory
+    # pressure hints, which must not suppress the fallback). Last resort: drop each
+    # relationship group in turn and see if the solve flips feasible, pointing at the
+    # group that makes it infeasible; keep the advisory hints below whatever it names.
+    return _relaxation_resolve(problem, config) + findings
 
 
 def _relaxation_solver() -> pulp.apis.LpSolver:

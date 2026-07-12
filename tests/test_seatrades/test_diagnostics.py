@@ -388,6 +388,137 @@ def test_frenemies_clash_quiet_when_clique_fits_their_seatrades():
     assert not [f for f in findings if "refuse to share" in f.cause]
 
 
+# A complete bipartite set of frenemies edges between two cabins' campers — one
+# connected cross-cabin group with no same-cabin edge (so the proven clash stays quiet).
+def _cross_cabin_frenemies(cabin_a: str, a_names: list[str], cabin_b: str, b_names: list[str]) -> pd.DataFrame:
+    return _relationships([(cabin_a, a, cabin_b, b, "frenemies") for a in a_names for b in b_names])
+
+
+def test_cross_cabin_frenemies_overlap_flags_a_tight_multi_cabin_group():
+    """S2: four mutual frenemies split across two cabins, all ranking the same four.
+
+    Keeping every cross-cabin pair out of a shared session is tight against only four
+    ranked seatrades — but whether it actually breaks depends on block/fleet placement
+    (they may land in different blocks anyway), so it surfaces as an advisory hint, not
+    a proof. No same-cabin edge exists, so the proven same-cabin clash stays silent.
+    """
+    shared = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+    rows = [
+        {"cabin": "Otter", "camper": "A1", "prefs": shared},
+        {"cabin": "Otter", "camper": "A2", "prefs": shared},
+        {"cabin": "Seal", "camper": "B1", "prefs": shared},
+        {"cabin": "Seal", "camper": "B2", "prefs": shared},
+    ]
+    rels = _cross_cabin_frenemies("Otter", ["A1", "A2"], "Seal", ["B1", "B2"])
+
+    suspected = _suspected(diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=rels))
+
+    assert suspected, "expected a cross-cabin frenemies pressure hint"
+    assert any("frenem" in f.cause.lower() for f in suspected)
+
+
+def test_cross_cabin_frenemies_overlap_quiet_when_they_rank_many_seatrades():
+    """Same four cross-cabin frenemies, but their picks span eight seatrades → slack."""
+    rows = [
+        {"cabin": "Otter", "camper": "A1", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+        {"cabin": "Otter", "camper": "A2", "prefs": ["Archery", "Crafts", "Climbing", "Dance"]},
+        {"cabin": "Seal", "camper": "B1", "prefs": ["Sailing", "Archery", "Rowing", "Dance"]},
+        {"cabin": "Seal", "camper": "B2", "prefs": ["Kayaking", "Crafts", "Climbing", "Canoeing"]},
+    ]
+    rels = _cross_cabin_frenemies("Otter", ["A1", "A2"], "Seal", ["B1", "B2"])
+
+    assert diagnose(_roster(rows), _all_seatrades_setup(rows), relationships=rels) == []
+
+
+def _gendered_cabins(cabin_genders: dict[str, str], per_cabin: int = 2) -> pd.DataFrame:
+    """Roster of small cabins, each all-one-gender, all ranking the same four seatrades.
+
+    Small cabins ranking roomy seatrades keep every capacity/cohesion signal quiet, so
+    only the gender-balance signal can speak. Carries the ``gender`` column production
+    data always has (the plain ``_roster`` helper omits it).
+    """
+    rows = []
+    for cabin, gender in cabin_genders.items():
+        for i in range(per_cabin):
+            rows.append(
+                {
+                    "cabin": cabin,
+                    "camper": f"{cabin} {i}",
+                    "gender": gender,
+                    "seatrade_1": "Sailing",
+                    "seatrade_2": "Kayaking",
+                    "seatrade_3": "Rowing",
+                    "seatrade_4": "Canoeing",
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+_ROOMY_SETUP = pd.DataFrame(
+    {"seatrade": ["Sailing", "Kayaking", "Rowing", "Canoeing"], "campers_min": 0, "campers_max": 10}
+)
+
+
+def test_gender_balance_vs_same_fleet_flags_a_dominant_gender_when_locked():
+    """S3: seven of eight cabins are boys and the same-fleet-all-week lock is ON.
+
+    Gender balance wants each gender's cabins split evenly across the blocks, but the
+    lock pins every cabin's fleet across both halves — so a gender holding most cabins
+    strains that split. It's a pressure, not a proof (the split may still work out), so
+    it's advisory, and only when the opt-in lock is engaged.
+    """
+    genders = {f"Cabin{i}": "male" for i in range(7)}
+    genders["Cabin7"] = "female"
+
+    suspected = _suspected(diagnose(_gendered_cabins(genders), _ROOMY_SETUP, force_same_fleet_all_week=True))
+
+    assert suspected, "expected a gender-balance-vs-fleet hint"
+    assert any("fleet" in f.cause.lower() for f in suspected)
+
+
+def test_gender_balance_vs_same_fleet_quiet_without_the_lock():
+    """The same lopsided roster is fine when the fleet lock is off — balance has slack."""
+    genders = {f"Cabin{i}": "male" for i in range(7)}
+    genders["Cabin7"] = "female"
+
+    assert diagnose(_gendered_cabins(genders), _ROOMY_SETUP) == []
+
+
+def test_gender_balance_vs_same_fleet_quiet_when_genders_are_balanced():
+    """Locked, but an even boy/girl cabin split balances comfortably → no hint."""
+    genders = {f"Cabin{i}": ("male" if i % 2 else "female") for i in range(8)}
+
+    assert diagnose(_gendered_cabins(genders), _ROOMY_SETUP, force_same_fleet_all_week=True) == []
+
+
+def test_balance_vs_minimum_flags_a_seatrade_whose_demand_barely_clears_its_floor():
+    """S5: Sailing needs 5 to run but only 6 campers rank it.
+
+    Gender balance splits a cabin's campers across the two blocks, so a seatrade's demand
+    lands split roughly in half — and a seatrade whose whole following (6) barely clears its
+    floor (5) can drop below it in a block once split, so it may not run there. A pressure,
+    not a proof (the split may fall its way), and Sailing is *live* — its 6 fans clear the
+    floor overall — so this is distinct from a starved (dead) seatrade. Advisory.
+    """
+    seatrades = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+    campers = _campers_all_preferring(seatrades, n=6)
+    setup = pd.DataFrame({"seatrade": seatrades, "campers_min": [5, 0, 0, 0], "campers_max": 10})
+
+    suspected = _suspected(diagnose(campers, setup))
+
+    assert suspected, "expected a balance-vs-minimum hint"
+    assert any("Sailing" in f.cause for f in suspected)
+
+
+def test_balance_vs_minimum_quiet_when_demand_comfortably_clears_the_floor():
+    """Twelve campers rank Sailing against a floor of five → 12 ≥ 2·5, room to split."""
+    seatrades = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+    campers = _campers_all_preferring(seatrades, n=12)
+    setup = pd.DataFrame({"seatrade": seatrades, "campers_min": [5, 0, 0, 0], "campers_max": 10})
+
+    assert diagnose(campers, setup) == []
+
+
 def test_matching_backstop_fires_on_a_subset_deficiency_the_named_checks_miss():
     """Backstop: 5 campers all ranking the same 4 seatrades that each seat one.
 
@@ -426,14 +557,85 @@ def test_matching_backstop_does_not_run_when_a_named_check_already_fired():
 
     P1 (capacity shortfall) fires on the demand-1 count, and the demand-2 backstop
     would too, but the backstop runs *only* when the named checks come up empty. So
-    exactly one finding returns — the named P1 cause — never a duplicate backstop line.
+    exactly one *proven* finding returns — the named P1 cause — never a duplicate
+    backstop line. (Advisory suspected hints may sit below it; they aren't proven.)
     """
     seatrades = ["Archery", "Crafts", "Climbing", "Sailing"]
     campers = _campers_all_preferring(seatrades, n=12)
     seatrade_setup = pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": 1})
 
-    findings = diagnose(campers, seatrade_setup)
+    proven = [f for f in diagnose(campers, seatrade_setup) if f.tier is Tier.PROVEN]
 
-    assert len(findings) == 1, f"expected only the named P1 finding, got {[f.cause for f in findings]}"
-    assert "Too many campers" in findings[0].cause
-    assert "can't all be placed" not in findings[0].cause
+    assert len(proven) == 1, f"expected only the named P1 finding, got {[f.cause for f in proven]}"
+    assert "Too many campers" in proven[0].cause
+    assert "can't all be placed" not in proven[0].cause
+
+
+# --- Suspected tier: advisory pressure hints (issue #114) --------------------
+# Each signal fires an advisory SUSPECTED hint on pressure and stays silent on a
+# comfortably-feasible baseline (no coupling to a solve outcome — that would flake).
+
+
+def _suspected(findings):
+    """Just the advisory (suspected-tier) findings."""
+    return [f for f in findings if f.tier is Tier.SUSPECTED]
+
+
+def test_top2_oversubscription_flags_a_seatrade_far_more_want_than_it_seats():
+    """S4: 20 campers all rank Sailing first; Sailing seats only 2·5 across the half.
+
+    20 top-1 fans against 10 seats clears the conservative oversubscription factor,
+    while every other seatrade is roomy — so no proven shortfall or starvation fires
+    and the pressure surfaces only as an advisory SUSPECTED hint, never a certainty.
+    """
+    seatrades = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+    campers = _campers_all_preferring(seatrades, n=20)
+    caps = pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": [5, 20, 20, 20]})
+
+    suspected = _suspected(diagnose(campers, caps))
+
+    assert suspected, "expected a suspected top-2 oversubscription hint"
+    assert any("Sailing" in f.cause for f in suspected)
+
+
+def test_top2_oversubscription_quiet_when_seats_meet_demand():
+    """Same 20 campers, but Sailing now seats 2·20 — demand sits well under the factor."""
+    seatrades = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+    campers = _campers_all_preferring(seatrades, n=20)
+    caps = pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": 20})
+
+    assert diagnose(campers, caps) == []
+
+
+def _one_cabin(cabin: str, prefs: list[str], n: int) -> pd.DataFrame:
+    """n campers of one cabin who all rank the same four seatrades in the same order."""
+    return _roster([{"cabin": cabin, "camper": f"{cabin} {i}", "prefs": prefs} for i in range(n)])
+
+
+def test_cabin_clustering_flags_a_cabin_funnelling_into_one_small_seatrade():
+    """S1: 10 campers of one cabin all rank Sailing first, which seats only 4.
+
+    2·4 = 8 seats can't hold the cohesive cabin across both its blocks, so keeping them
+    together fights the capacity — a per-cabin cohesion pressure. Sailing's 10 first-choice
+    fans stay under the global top-2 factor (1.5·8 = 12), so *only* the cabin hint fires.
+    Their other three picks are roomy, so no proven shortfall — it stays advisory.
+    """
+    campers = _one_cabin("Spindrift", ["Sailing", "Kayaking", "Rowing", "Canoeing"], n=10)
+    caps = pd.DataFrame(
+        {"seatrade": ["Sailing", "Kayaking", "Rowing", "Canoeing"], "campers_min": 0, "campers_max": [4, 20, 20, 20]}
+    )
+
+    suspected = _suspected(diagnose(campers, caps))
+
+    assert suspected, "expected a suspected cabin-clustering hint"
+    assert any("Spindrift" in f.cause and "Sailing" in f.cause for f in suspected)
+
+
+def test_cabin_clustering_quiet_when_the_shared_seatrade_can_hold_the_cabin():
+    """Same cabin, but Sailing now seats 6 → 2·6 = 12 ≥ 10, so they fit together."""
+    campers = _one_cabin("Spindrift", ["Sailing", "Kayaking", "Rowing", "Canoeing"], n=10)
+    caps = pd.DataFrame(
+        {"seatrade": ["Sailing", "Kayaking", "Rowing", "Canoeing"], "campers_min": 0, "campers_max": [6, 20, 20, 20]}
+    )
+
+    assert diagnose(campers, caps) == []

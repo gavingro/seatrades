@@ -6,7 +6,7 @@ import streamlit as st
 
 from seatrades.blocks import BLOCK_DECODER_CAPTION
 from seatrades.config import OptimizationConfig
-from seatrades.diagnostics import Finding
+from seatrades.diagnostics import Finding, Tier
 from seatrades.preferences import ValidationError, join_and_validate
 from seatrades.problem import SchedulingProblem
 from seatrades.results import (
@@ -384,11 +384,26 @@ def assignment_failure_warning(status: SolverStatus, findings: Sequence[Finding]
         "per fleet*), or lower the *Minimum solution quality*, then assign again."
     )
     # Prepend the specific causes above the retained generic catch-all — add to it, never
-    # replace it. When nothing fired, be honest rather than silent (story #73-21).
-    if findings:
-        causes = "\n\n".join(f"**{finding.cause}**\n\n*Fix:* {finding.fix}" for finding in findings)
-        return f"{causes}\n\n{generic}"
-    return f"We couldn't identify the exact cause this time. {generic}"
+    # replace it. Proven causes lead as certainties; suspected pressures follow, clearly
+    # marked as maybes so they're never mistaken for the single answer. When nothing fired,
+    # be honest rather than silent (story #73-21).
+    proven = [finding for finding in findings if finding.tier is Tier.PROVEN]
+    suspected = [finding for finding in findings if finding.tier is Tier.SUSPECTED]
+    sections: list[str] = []
+    if proven:
+        sections.append("\n\n".join(f"**{finding.cause}**\n\n*Fix:* {finding.fix}" for finding in proven))
+    elif suspected:
+        # No proven cause — lead with the honest "we couldn't pin it down" so the maybes
+        # below are never presented as the definite answer (story #73-15).
+        sections.append("We couldn't pin down a definite cause, but a few things look tight:")
+    if suspected:
+        hints = "\n".join(f"- *{finding.cause}* *(Try: {finding.fix})*" for finding in suspected)
+        sections.append(
+            f"*Possible contributing pressures (not certain — these may or may not be the cause):*\n\n{hints}"
+        )
+    if not sections:
+        return f"We couldn't identify the exact cause this time. {generic}"
+    return "\n\n".join(sections) + f"\n\n{generic}"
 
 
 def render_view(

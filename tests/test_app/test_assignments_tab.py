@@ -169,6 +169,28 @@ class TestAssignmentFailureWarning:
         assert "couldn't identify" in warning.lower()
         assert "relaxing a hard limit" in warning
 
+    def test_suspected_hints_render_below_proven_and_marked_as_maybe(self):
+        """Suspected hints sit below the proven cause, flagged as uncertain pressures."""
+        proven = Finding(tier=Tier.PROVEN, cause="Too many campers for the seats.", fix="Add seatrades.")
+        hint = Finding(tier=Tier.SUSPECTED, cause="Cabin Otter clusters on Sailing.", fix="Raise its max.")
+        warning = assignment_failure_warning(SolverStatus(state=SolverState.INFEASIBLE), [proven, hint])
+
+        assert "Cabin Otter clusters on Sailing." in warning
+        assert warning.index("Too many campers") < warning.index("Cabin Otter clusters")
+        assert warning.index("Cabin Otter clusters") < warning.index("relaxing a hard limit")
+        # Textually distinct from a proven cause — clearly a "maybe", not a certainty.
+        assert "not certain" in warning.lower() or "may" in warning.lower()
+
+    def test_suspected_only_is_never_the_single_answer(self):
+        """With no proven cause, hints appear but are framed as unconfirmed, never THE answer."""
+        hint = Finding(tier=Tier.SUSPECTED, cause="Cabin Otter clusters on Sailing.", fix="Raise its max.")
+        warning = assignment_failure_warning(SolverStatus(state=SolverState.INFEASIBLE), [hint])
+
+        assert "Cabin Otter clusters on Sailing." in warning
+        assert "relaxing a hard limit" in warning  # generic catch-all retained
+        # Honest framing: we couldn't pin down a definite cause.
+        assert "couldn't" in warning.lower() or "not certain" in warning.lower()
+
     def test_timeout_shows_time_size_copy_not_an_error(self):
         """A timeout is a time/size problem — advise more time or a smaller problem, and
         never call it an unexpected error (the whole point of splitting TIMEOUT off ERROR)."""

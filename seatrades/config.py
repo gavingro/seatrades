@@ -118,6 +118,38 @@ BESTIES_MIN_SHARED_SEATRADES = 2
 # many preferred seatrades to have any session they could both occupy.
 FRIENDS_MIN_SHARED_SEATRADES = 1
 
+# --- Suspected-tier placeholder thresholds (issue #114) ----------------------
+# Cutoffs for the advisory "pressure" hints the diagnostics post-mortem shows on an
+# INFEASIBLE solve. These are deliberately CONSERVATIVE placeholders — chosen to err
+# toward silence so a hint never fires on comfortably-feasible input. Research spike
+# #115 replaces the values empirically; the checks read these constants, so the spike
+# tunes numbers without reshaping the checks.
+
+# Top-2 oversubscription: a seatrade is under pressure when the campers who rank it
+# first or second outnumber its half-week seats (2·campers_max) by at least this factor.
+SUSPECTED_TOP2_OVERSUBSCRIPTION_FACTOR = 1.5
+
+# Cabin clustering: a cabin funnels its cohesion into one seatrade when at least this
+# share of the cabin ranks the same seatrade *first* — pressure only when that seatrade
+# also can't seat the whole cabin across both its blocks (2·campers_max). A per-cabin
+# cohesion pressure, distinct from the global top-2 scarcity signal above. Floored to a
+# substantial cohesive group (real cabins are 8–12) so a tiny cabin never cries wolf.
+SUSPECTED_CABIN_CLUSTERING_SHARE = 0.75
+SUSPECTED_CABIN_CLUSTERING_MIN_CAMPERS = 8
+
+# Cross-cabin frenemies overlap: a frenemies group spanning cabins is under pressure
+# when its size reaches this multiple of the distinct seatrades its members rank.
+SUSPECTED_FRENEMIES_CLUSTERING_RATIO = 1.0
+
+# Gender-balance vs. the same-fleet-all-week lock: with force_same_fleet_all_week ON,
+# one gender holding at least this share of cabins strains the even split across fleets.
+SUSPECTED_GENDER_DOMINANCE_SHARE = 0.75
+
+# Balance vs. minimum: gender balance splits a seatrade's demand across ~2 blocks, so a
+# live seatrade whose popularity is under this multiple of its campers_min risks falling
+# below the floor in a block once split.
+SUSPECTED_BALANCE_MIN_POPULARITY_FACTOR = 2.0
+
 
 class CamperRelationships(DataFrameModel):
     """Camper social relationships — pairs of campers with a relationship type.

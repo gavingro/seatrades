@@ -10,9 +10,12 @@ fix. Each proven cause is a necessary feasibility condition confirmed against th
 real model; if the check fires, no schedule exists. This module ships the proven
 tier — capacity shortfall, the two starvation checks, the besties/friends/frenemies
 relationship checks — plus a general matching-deficiency backstop that runs only when
-those come up empty. The suspected tier is a later slice of the parent PRD; the bounded
-relaxation re-solve (the other as-needed fallback) needs the solver, so it lives at the
-service-layer call site, not here.
+those come up empty. It also ships the suspected tier: advisory *pressure* hints (top-2
+oversubscription, cabin clustering, cross-cabin frenemies overlap, gender-balance vs. the
+same-fleet lock, balance vs. minimum) appended below the proven findings, behind the
+conservative placeholder thresholds in ``config`` (research spike #115 tunes the numbers).
+The bounded relaxation re-solve (the other as-needed fallback) needs the solver, so it
+lives at the service-layer call site, not here.
 """
 
 from collections import defaultdict, deque
@@ -23,7 +26,17 @@ from typing import Optional
 
 import pandas as pd
 
-from seatrades.config import BESTIES_MIN_SHARED_SEATRADES, PREF_COLS, cabin_seat_cap
+from seatrades.config import (
+    BESTIES_MIN_SHARED_SEATRADES,
+    PREF_COLS,
+    SUSPECTED_BALANCE_MIN_POPULARITY_FACTOR,
+    SUSPECTED_CABIN_CLUSTERING_MIN_CAMPERS,
+    SUSPECTED_CABIN_CLUSTERING_SHARE,
+    SUSPECTED_FRENEMIES_CLUSTERING_RATIO,
+    SUSPECTED_GENDER_DOMINANCE_SHARE,
+    SUSPECTED_TOP2_OVERSUBSCRIPTION_FACTOR,
+    cabin_seat_cap,
+)
 
 # A camper keyed by their (cabin, name) composite key.
 CamperKey = tuple[str, str]
@@ -63,13 +76,30 @@ def diagnose(
     relationships: Optional[pd.DataFrame] = None,
     max_seatrades_per_fleet: Optional[int] = None,
     max_cabin_share_per_seatrade: float = 1.0,
+    force_same_fleet_all_week: bool = False,
 ) -> list[Finding]:
     """Rank the causes of an infeasible solve, most-certain first.
 
-    Runs the cheap named checks over the inputs + config knobs and returns their
-    findings (proven before suspected). An empty list means no cause fired — the
-    UI shows the honest "couldn't identify" fallback.
+    Runs the cheap named checks over the inputs + config knobs, then appends the
+    advisory suspected-tier pressure hints *below* them (proven before suspected, so
+    the certain causes always lead). An empty list means nothing fired — the UI shows
+    the honest "couldn't identify" fallback.
     """
+    proven = _proven_findings(
+        joined_campers, seatrade_setup, relationships, max_seatrades_per_fleet, max_cabin_share_per_seatrade
+    )
+    suspected = _suspected_findings(joined_campers, seatrade_setup, relationships, force_same_fleet_all_week)
+    return proven + suspected
+
+
+def _proven_findings(
+    joined_campers: pd.DataFrame,
+    seatrade_setup: pd.DataFrame,
+    relationships: Optional[pd.DataFrame],
+    max_seatrades_per_fleet: Optional[int],
+    max_cabin_share_per_seatrade: float,
+) -> list[Finding]:
+    """The certain causes: named necessary-condition checks, else the matching backstop."""
     findings: list[Finding] = []
     capacity_finding = _capacity_shortfall(joined_campers, seatrade_setup, max_seatrades_per_fleet)
     if capacity_finding is not None:
@@ -89,6 +119,197 @@ def diagnose(
     # Only when every cheap named check comes up empty: a general matching-deficiency
     # backstop that catches shortfalls the individual checks miss and names its own culprits.
     return _matching_deficiency_backstop(joined_campers, seatrade_setup)
+
+
+def _suspected_findings(
+    joined_campers: pd.DataFrame,
+    seatrade_setup: pd.DataFrame,
+    relationships: Optional[pd.DataFrame],
+    force_same_fleet_all_week: bool,
+) -> list[Finding]:
+    """Advisory pressure hints, ranked by likelihood (most-likely first).
+
+    Each signal is a *pressure* — tight but not provably impossible, needing global
+    reasoning to confirm — so it stays advisory, never a certainty. Cutoffs are the
+    conservative placeholders in ``config`` (research spike #115 replaces the numbers).
+    """
+    findings: list[Finding] = []
+    findings.extend(_top2_oversubscription(joined_campers, seatrade_setup))
+    findings.extend(_cabin_clustering(joined_campers, seatrade_setup))
+    findings.extend(_cross_cabin_frenemies_overlap(joined_campers, relationships))
+    findings.extend(_gender_balance_vs_same_fleet(joined_campers, force_same_fleet_all_week))
+    findings.extend(_balance_vs_minimum(joined_campers, seatrade_setup))
+    return findings
+
+
+def _top2_oversubscription(joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame) -> list[Finding]:
+    """S4: seatrades far more campers rank in their top two than the seatrade can seat.
+
+    Everyone is promised a top-2 pick, but a seatrade offers only ``2·campers_max``
+    seats across the half. When the campers ranking it first or second outnumber that
+    by the placeholder factor, the promise is under real pressure — advisory, since
+    whether it actually breaks depends on how the rest of the schedule shakes out.
+    """
+    top1, top2 = PREF_COLS[0], PREF_COLS[1]
+    top_demand = pd.concat([joined_campers[top1], joined_campers[top2]]).value_counts()
+    session_caps = seatrade_setup.set_index("seatrade")["campers_max"]
+    findings: list[Finding] = []
+    for seatrade, demand in top_demand.items():
+        seats = _FLEET_BLOCKS_PER_HALF * int(session_caps.get(seatrade, 0))
+        if seats == 0 or demand < SUSPECTED_TOP2_OVERSUBSCRIPTION_FACTOR * seats:
+            continue
+        findings.append(
+            Finding(
+                tier=Tier.SUSPECTED,
+                cause=(
+                    f"{seatrade} is a top-two pick for {int(demand)} campers but seats only {seats} "
+                    "across the week — far more campers want it early than can get it, so the top-2 "
+                    "promise is under pressure here."
+                ),
+                fix=f"Raise *max campers* on {seatrade}, or add a similar seatrade to draw off demand.",
+            )
+        )
+    return findings
+
+
+def _cabin_clustering(joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame) -> list[Finding]:
+    """S1: a cabin most of whose campers funnel their first choice into one small seatrade.
+
+    A cabin attends together in the one block it occupies each half, so keeping a cohesive
+    cabin together in a seatrade needs that seatrade to hold them across its two blocks
+    (``2·campers_max`` seats). When at least the placeholder share of a cabin ranks the same
+    seatrade *first* yet those seats can't hold the cabin, cohesion fights capacity — a
+    pressure, not a proof: they can still be split off their first pick, so it's advisory.
+    """
+    session_caps = seatrade_setup.set_index("seatrade")["campers_max"]
+    top1 = PREF_COLS[0]
+    findings: list[Finding] = []
+    for cabin, group in joined_campers.groupby("cabin"):
+        cabin_size = len(group)
+        top_counts = group[top1].value_counts()
+        top_seatrade, top_count = top_counts.idxmax(), int(top_counts.max())
+        seats = _FLEET_BLOCKS_PER_HALF * int(session_caps.get(top_seatrade, 0))
+        if top_count < SUSPECTED_CABIN_CLUSTERING_MIN_CAMPERS:
+            continue  # too small a group to be worth flagging — err toward silence
+        if top_count < SUSPECTED_CABIN_CLUSTERING_SHARE * cabin_size or top_count <= seats:
+            continue
+        findings.append(
+            Finding(
+                tier=Tier.SUSPECTED,
+                cause=(
+                    f"Cabin {cabin} clusters on {top_seatrade}: {int(top_count)} of its {cabin_size} "
+                    f"campers rank it first, but it seats only {seats} across the week — the cabin can't "
+                    "stay together there, so keeping them together strains against the capacity."
+                ),
+                fix=(
+                    f"Raise *max campers* on {top_seatrade}, add a similar seatrade to spread the cabin, "
+                    "or accept some of the cabin will be split off their first choice."
+                ),
+            )
+        )
+    return findings
+
+
+def _cross_cabin_frenemies_overlap(
+    joined_campers: pd.DataFrame, relationships: Optional[pd.DataFrame]
+) -> list[Finding]:
+    """S2: a frenemies group spanning cabins that rank too few seatrades to spread over.
+
+    The proven clash only fires on a *same-cabin* clique (guaranteed to share a block);
+    a group spread across cabins may land in different blocks and satisfy itself, so it
+    can't be proven — but when the group has as many members as the distinct seatrades
+    they collectively rank, keeping every pair apart is under real pressure. Advisory.
+    Since each camper ranks four distinct seatrades, the union is always ≥ 4, so this
+    only fires on genuinely large, tightly-clustered groups — conservative by construction.
+    """
+    prefs = _prefs_by_camper(joined_campers)
+    findings: list[Finding] = []
+    for group in _components(_pairs(relationships, "frenemies")):
+        cabins = {cabin for cabin, _ in group}
+        if len(cabins) < 2:
+            continue  # single-cabin groups are the proven clash's territory
+        union = set().union(*(set(prefs[member]) for member in group))
+        if len(group) < SUSPECTED_FRENEMIES_CLUSTERING_RATIO * len(union):
+            continue
+        labels = _join_names([_key_label(member) for member in sorted(group)])
+        findings.append(
+            Finding(
+                tier=Tier.SUSPECTED,
+                cause=(
+                    f"{labels} are {len(group)} frenemies across {len(cabins)} cabins who between them "
+                    f"rank only {len(union)} seatrades — keeping every pair out of a shared session leaves "
+                    "little room, so this may be part of why no schedule fits."
+                ),
+                fix="Drop a frenemies link, or add seatrades for them to rank so they can spread apart.",
+            )
+        )
+    return findings
+
+
+def _gender_balance_vs_same_fleet(joined_campers: pd.DataFrame, force_same_fleet_all_week: bool) -> list[Finding]:
+    """S3: one gender dominating the cabins while the same-fleet-all-week lock is on.
+
+    Gender balance spreads each gender's cabins evenly across the blocks; the opt-in lock
+    pins every cabin to one fleet for the whole week, cutting the freedom to balance. When
+    one gender holds most cabins, that even split is strained. Only meaningful with the lock
+    engaged, and only a pressure — the split may still resolve — so it stays advisory.
+    """
+    if not force_same_fleet_all_week or "gender" not in joined_campers.columns:
+        return []
+    cabin_genders = joined_campers.groupby("cabin")["gender"].agg(lambda genders: genders.mode()[0])
+    n_cabins = len(cabin_genders)
+    gender_counts = cabin_genders.value_counts()
+    dominant_gender, dominant = str(gender_counts.idxmax()), int(gender_counts.max())
+    if dominant < SUSPECTED_GENDER_DOMINANCE_SHARE * n_cabins:
+        return []
+    return [
+        Finding(
+            tier=Tier.SUSPECTED,
+            cause=(
+                f"{dominant} of your {n_cabins} cabins are {dominant_gender}, and *keep each cabin in the "
+                "same fleet all week* is switched on — that lock leaves little room to balance one "
+                "dominant gender evenly across the blocks, which may be adding to the pressure."
+            ),
+            fix=(
+                "Switch off *Keep each cabin in the same fleet all week* under Advanced settings, or "
+                "even out the gender mix across cabins."
+            ),
+        )
+    ]
+
+
+def _balance_vs_minimum(joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame) -> list[Finding]:
+    """S5: a live seatrade whose following barely clears its floor, which balance may split.
+
+    Gender balance spreads a cabin's campers across the two blocks, so a seatrade's demand
+    lands split roughly in half. A seatrade whose whole following only just clears its
+    ``campers_min`` (under the placeholder factor of it) can fall below the floor in a block
+    once split, so it may fail to run there. Restricted to *live* seatrades (a following that
+    can't even clear the floor overall is the proven starvation case), so this stays a
+    distinct advisory pressure, not a certainty.
+    """
+    popularity = _popularity(joined_campers)
+    mins = seatrade_setup.set_index("seatrade")["campers_min"]
+    findings: list[Finding] = []
+    for seatrade, campers_min in mins.items():
+        floor = int(campers_min)
+        fans = int(popularity.get(seatrade, 0))
+        if floor <= 0 or fans < floor:
+            continue  # no floor, or dead already (the proven starvation case)
+        if fans >= SUSPECTED_BALANCE_MIN_POPULARITY_FACTOR * floor:
+            continue
+        findings.append(
+            Finding(
+                tier=Tier.SUSPECTED,
+                cause=(
+                    f"Only {fans} campers rank {seatrade}, which needs {floor} to run — balancing cabins "
+                    "across the blocks splits that demand, so it can drop below its minimum in a block and "
+                    "not run there, which may be contributing to the failure."
+                ),
+                fix=f"Lower *min campers* on {seatrade}, or draw more campers to it, so it can run once split.",
+            )
+        )
+    return findings
 
 
 def _matching_deficiency_backstop(joined_campers: pd.DataFrame, seatrade_setup: pd.DataFrame) -> list[Finding]:

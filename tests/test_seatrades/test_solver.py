@@ -8,6 +8,7 @@ import pulp
 import pytest
 
 from seatrades.config import OptimizationConfig
+from seatrades.diagnostics import Finding, Tier
 from seatrades.preferences import validate_relationships
 from seatrades.problem import SchedulingProblem, seatrade_name
 from seatrades.results import (
@@ -179,6 +180,25 @@ class TestRelaxationResolve:
             SolverStatus(state=SolverState.INFEASIBLE), _oversubscribed_problem(), OptimizationConfig()
         )
         assert any("Too many campers" in f.cause for f in findings)
+
+    def test_advisory_hints_alone_do_not_suppress_the_relaxation_resolve(self, monkeypatch):
+        """Suspected pressure hints aren't a proven cause, so the fallback still runs.
+
+        When only advisory hints fire, the proven relaxation result must lead and the
+        hints ride below it — a suspected-only diagnosis must never short-circuit the
+        re-solve the way a proven named cause does.
+        """
+        hint = Finding(tier=Tier.SUSPECTED, cause="something looks tight", fix="ease it")
+        named = Finding(tier=Tier.PROVEN, cause="dropping frenemies lets a schedule form", fix="drop a link")
+        monkeypatch.setattr("seatrades.solver.diagnostics.diagnose", lambda *_a, **_k: [hint])
+        monkeypatch.setattr("seatrades.solver._relaxation_resolve", lambda *_a, **_k: [named])
+
+        findings = diagnose_infeasibility(
+            SolverStatus(state=SolverState.INFEASIBLE), _oversubscribed_problem(), OptimizationConfig()
+        )
+
+        assert findings[0] is named, "the proven relaxation result should lead"
+        assert hint in findings, "the advisory hint should ride below the proven cause"
 
     @pytest.mark.slow
     def test_flips_feasible_re_solve_names_the_dropped_group(self):
