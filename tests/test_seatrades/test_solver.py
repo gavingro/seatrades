@@ -20,6 +20,7 @@ from seatrades.results import (
 )
 from seatrades.simulation import simulate_camper_relationships
 from seatrades.solver import (
+    _RELATIONSHIP_GROUPS,
     _RELAXATION_TIME_LIMIT_S,
     _relaxation_solver,
     _relaxed_solve_found_schedule,
@@ -169,6 +170,37 @@ class TestRelaxationResolve:
         assert _relaxed_solve_found_schedule(1)  # OPTIMAL — a schedule was found
         assert not _relaxed_solve_found_schedule(0)  # TIMEOUT — no schedule found
         assert not _relaxed_solve_found_schedule(-1)  # INFEASIBLE — drop didn't help
+
+    def test_relationship_group_prefixes_match_built_constraint_names(self):
+        """Each ``_RELATIONSHIP_GROUPS`` prefix must name real constraints in the model.
+
+        The relaxation re-solve deletes a group's constraints by ``name.startswith(prefix)``
+        and its ``pairs_attr`` off the problem. Both are an unenforced convention shared with
+        ``problem.py``'s constraint naming — if a prefix (or attr) drifts, ``_flips_feasible_without``
+        silently deletes nothing, never flips feasible, and the fallback names no cause with no
+        error. Guard the contract: with a pair of every relationship type present, each prefix
+        matches ≥1 constraint and each ``pairs_attr`` is non-empty.
+        """
+        rows = [
+            {"cabin": "Otter", "camper": "a", "prefs": ["A", "B", "C", "D"]},
+            {"cabin": "Otter", "camper": "b", "prefs": ["A", "B", "C", "D"]},
+            {"cabin": "Otter", "camper": "c", "prefs": ["A", "B", "C", "D"]},
+            {"cabin": "Otter", "camper": "d", "prefs": ["A", "B", "C", "D"]},
+            {"cabin": "Seal", "camper": "e", "prefs": ["A", "B", "C", "D"]},
+        ]
+        setup = pd.DataFrame({"seatrade": ["A", "B", "C", "D"], "campers_min": 0, "campers_max": 10})
+        rels = _rel(
+            [
+                ("Otter", "a", "Otter", "b", "besties"),
+                ("Otter", "c", "Otter", "d", "friends"),
+                ("Seal", "e", "Otter", "a", "frenemies"),
+            ]
+        )
+        problem = _roster_problem(rows, setup, relationships=rels)
+        lp = problem.build(OptimizationConfig())
+        for _group, prefix, pairs_attr in _RELATIONSHIP_GROUPS:
+            assert getattr(problem, pairs_attr), f"no {pairs_attr} on the problem"
+            assert any(name.startswith(prefix) for name in lp.constraints), f"no constraint named {prefix}*"
 
     def test_not_invoked_when_a_named_cause_already_fired(self, monkeypatch):
         """A named cause short-circuits the fallback — the re-solve never runs."""
