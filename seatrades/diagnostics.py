@@ -263,14 +263,14 @@ def _gender_balance_vs_same_fleet(joined_campers: pd.DataFrame, force_same_fleet
     cabin_genders = joined_campers.groupby("cabin")["gender"].agg(lambda genders: genders.mode()[0])
     n_cabins = len(cabin_genders)
     gender_counts = cabin_genders.value_counts()
-    dominant_gender, dominant = str(gender_counts.idxmax()), int(gender_counts.max())
-    if dominant < SUSPECTED_GENDER_DOMINANCE_SHARE * n_cabins:
+    dominant_gender, dominant_count = str(gender_counts.idxmax()), int(gender_counts.max())
+    if dominant_count < SUSPECTED_GENDER_DOMINANCE_SHARE * n_cabins:
         return []
     return [
         Finding(
             tier=Tier.SUSPECTED,
             cause=(
-                f"{dominant} of your {n_cabins} cabins are {dominant_gender}, and *keep each cabin in the "
+                f"{dominant_count} of your {n_cabins} cabins are {dominant_gender}, and *keep each cabin in the "
                 "same fleet all week* is switched on — that lock leaves little room to balance one "
                 "dominant gender evenly across the blocks, which may be adding to the pressure."
             ),
