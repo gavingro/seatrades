@@ -1,12 +1,15 @@
 """Result data structures and wrangling functions for seatrade assignments."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import pandas as pd
 
 from seatrades.problem import BLOCKS, block_name, seatrade_name
+
+if TYPE_CHECKING:
+    from seatrades.diagnostics import Finding
 
 SEATRADE_BLOCK_COLUMNS = ["Seatrade 1a", "Seatrade 1b", "Seatrade 2a", "Seatrade 2b"]
 
@@ -16,11 +19,14 @@ UNMATCHED_PREFERENCE = 999
 class SolverState(Enum):
     OPTIMAL = "OPTIMAL"
     INFEASIBLE = "INFEASIBLE"
+    TIMEOUT = "TIMEOUT"
     ERROR = "ERROR"
 
     @classmethod
     def from_pulp(cls, status_code: int) -> "SolverState":
-        mapping = {1: cls.OPTIMAL, -1: cls.INFEASIBLE}
+        # PuLP code 0 ("Not Solved") is CBC hitting its time limit — feasible but unproven,
+        # a TIMEOUT, not a crash. Only genuinely undefined states (-2, -3, unknown) are ERROR.
+        mapping = {1: cls.OPTIMAL, -1: cls.INFEASIBLE, 0: cls.TIMEOUT}
         return mapping.get(status_code, cls.ERROR)
 
 
@@ -29,6 +35,12 @@ class SolverStatus:
     state: SolverState
     gap: Optional[float] = None
     message: str = ""
+    # Stop reason carried onto the FINAL status: True when the solve stopped at the time
+    # limit rather than proving optimality. One meaning ("hit the time limit"), two evidence
+    # sources: set from the PuLP code for a TIMEOUT (via ``from_pulp``), and from the CBC log
+    # for a stopped-on-time OPTIMAL incumbent (via ``solver.run``). Distinguishes a TIMEOUT
+    # from a crash, and a proven-optimal success from a stopped-on-time incumbent.
+    timed_out: bool = False
 
     @property
     def is_optimal(self) -> bool:
@@ -44,11 +56,11 @@ class SolverStatus:
     def from_pulp(cls, status_code: int) -> "SolverStatus":
         state = SolverState.from_pulp(status_code)
         if state == SolverState.ERROR:
-            pulp_messages = {0: "Not solved", -2: "Unbounded", -3: "Undefined"}
+            pulp_messages = {-2: "Unbounded", -3: "Undefined"}
             message = pulp_messages.get(status_code, f"Unknown PuLP status: {status_code}")
         else:
             message = ""
-        return cls(state=state, message=message)
+        return cls(state=state, message=message, timed_out=state == SolverState.TIMEOUT)
 
 
 @dataclass
@@ -64,6 +76,10 @@ class AssignmentSolution:
     # camper_id; this translates them to names at the user-facing edge. No public
     # method exposes camper_id itself.
     camper_names: pd.Series
+    # Post-mortem diagnosis: ranked causes (most-certain first) of an INFEASIBLE
+    # solve, each a plain-language cause + named fix. Empty on every other outcome,
+    # and empty on an INFEASIBLE solve whose cause the checks couldn't pin down.
+    findings: list["Finding"] = field(default_factory=list)
 
 
 def wrangle_assignments_to_longform(solution: AssignmentSolution) -> pd.DataFrame:

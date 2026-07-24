@@ -19,10 +19,16 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from seatrades import preferences
-from seatrades.config import PREF_COLS
-from seatrades.results import SolverState
+from seatrades.config import (
+    PREF_COLS,
+    CamperSimulationConfig,
+    OptimizationConfig,
+    SeatradeSimulationConfig,
+)
+from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 from tests.test_app.helpers import (
     APP_SCRIPT,
+    PRESOLVE_TIMEOUT_SECONDS,
     SOLVE_TIMEOUT_SECONDS,
     click_assign,
     poll_until_solution,
@@ -59,6 +65,96 @@ def _undersized_capacity_inputs() -> dict[str, pd.DataFrame]:
     }
 
 
+# Eight seatrades so the transitive-besties trio can each rank four with pairwise —
+# but not group-wide — overlap. Roomy capacity so only the relationship is infeasible.
+_REL_SEATRADES = ["Sailing", "Kayaking", "Rowing", "Canoeing", "Archery", "Crafts", "Climbing", "Dance"]
+# The chain: each pair shares two seatrades (passes pairwise validation), but all
+# three share only "Kayaking" — no identical two-session schedule exists for the group.
+_CHAIN = {
+    "Ash": ["Sailing", "Kayaking", "Rowing", "Canoeing"],
+    "Bo": ["Sailing", "Kayaking", "Archery", "Crafts"],
+    "Cy": ["Kayaking", "Archery", "Climbing", "Dance"],
+}
+
+
+def _transitive_besties_inputs() -> dict[str, pd.DataFrame]:
+    """A capacity-feasible week made infeasible only by a transitive besties chain.
+
+    The chain passes ``validate_relationships`` (which checks besties pairwise) and
+    fails at solve time — the case the post-mortem exists to explain. All frames pass
+    their schemas and cross-references.
+    """
+    seatrade_preferences = pd.DataFrame({"seatrade": _REL_SEATRADES, "campers_min": 0, "campers_max": 10})
+
+    identity_rows = []
+    preference_rows = []
+    for cabin, gender in _CABINS:
+        for i in range(_CAMPERS_PER_CABIN):
+            camper = f"{cabin} Camper {i}"
+            identity_rows.append({"cabin": cabin, "camper": camper, "gender": gender, "age": 14})
+            preference_rows.append({"camper": camper, **dict(zip(PREF_COLS, _REL_SEATRADES[:4], strict=True))})
+    # The first three Puffin campers (identity/preference rows share order) become the
+    # transitive-besties trio; give them the chain preferences.
+    puffin = _CABINS[0][0]
+    trio_names = [f"{puffin} Camper {i}" for i in range(3)]
+    for idx, prefs in enumerate(_CHAIN.values()):
+        preference_rows[idx] = {"camper": trio_names[idx], **dict(zip(PREF_COLS, prefs, strict=True))}
+
+    relationships = pd.DataFrame(
+        [
+            {"cabin_1": puffin, "camper_1": a, "cabin_2": puffin, "camper_2": b, "relationship": "besties"}
+            for a, b in ((trio_names[0], trio_names[1]), (trio_names[1], trio_names[2]))
+        ]
+    )
+
+    return {
+        "seatrade_preferences": preferences.SeatradesConfig.validate(seatrade_preferences),
+        "camper_identity": preferences.CamperIdentity.validate(pd.DataFrame(identity_rows)),
+        "camper_preferences": preferences.CamperPreferences.validate(pd.DataFrame(preference_rows)),
+        "camper_relationships": relationships,
+    }
+
+
+def _seed_failed_solve(status: SolverStatus) -> AppTest:
+    """Seed a finished, unsuccessful solve into a fresh app and render the done view.
+
+    A timeout returns no schedule, so only the status matters — the assignments and domain
+    frames are empty. Config objects are pre-seeded so ``_initial_page_setup`` doesn't wipe
+    the seeded solution (same guard as the done-view tests). No real solve runs, so this is
+    fast — the TIMEOUT copy is a pure ``status -> message`` seam.
+    """
+    solution = AssignmentSolution(
+        assignments=pd.DataFrame(),
+        status=status,
+        cabins=[],
+        campers=[],
+        seatrades_full=[],
+        cabin_camper_prefs=pd.DataFrame(),
+        camper_prefs=pd.Series(dtype=object),
+        camper_names=pd.Series(dtype=object),
+    )
+    at = AppTest.from_file(APP_SCRIPT, default_timeout=PRESOLVE_TIMEOUT_SECONDS)
+    at.session_state["optimization_config"] = OptimizationConfig()
+    at.session_state["seatrade_simulation_config"] = SeatradeSimulationConfig()
+    at.session_state["camper_simulation_config"] = CamperSimulationConfig()
+    at.session_state["assigned_solution"] = solution
+    at.session_state["optimization_success"] = False
+    at.session_state["solver_log"] = "Result - Stopped on time limit"
+    at.session_state["introduced"] = True
+    at.run()
+    return at
+
+
+class TestTimeoutSolveOutcome:
+    def test_timeout_renders_time_size_message_not_a_crash(self):
+        at = _seed_failed_solve(SolverStatus(state=SolverState.TIMEOUT, timed_out=True))
+
+        assert not at.exception
+        warnings = [w.value for w in at.warning]
+        assert any("time limit" in w.lower() for w in warnings), "expected the time/size message"
+        assert not any("unexpected error" in w.lower() for w in warnings)
+
+
 @pytest.mark.slow
 class TestInfeasibleSolveOutcome:
     def test_infeasible_solve_renders_failure_warning(self):
@@ -78,11 +174,45 @@ class TestInfeasibleSolveOutcome:
         # Poll the fragment to completion (assigned_solution is None until finalized).
         poll_until_solution(at, SOLVE_TIMEOUT_SECONDS)
 
-        # The solve finished as infeasible — not a crash, not a timeout.
+        # The solve finished as infeasible — not a crash, not a timeout — and the
+        # post-mortem named the capacity shortfall as a proven cause.
         solution = at.session_state["assigned_solution"]
         assert solution.status.state is SolverState.INFEASIBLE
         assert at.session_state["optimization_success"] is False
+        assert any("Too many campers" in f.cause for f in solution.findings), (
+            "the capacity-shortfall cause should be diagnosed"
+        )
 
-        # The done view shows the plain-language relax-a-hard-limit warning.
-        warnings = [w for w in at.warning if "relaxing a hard limit" in w.value]
-        assert warnings, "expected the relax-a-hard-limit failure warning"
+        # The done view prepends the named cause + fix above the retained generic warning.
+        warning = next(w.value for w in at.warning if "relaxing a hard limit" in w.value)
+        assert "Too many campers" in warning
+        assert warning.index("Too many campers") < warning.index("relaxing a hard limit")
+
+
+@pytest.mark.slow
+class TestInfeasibleRelationshipOutcome:
+    def test_transitive_besties_chain_renders_named_cause_above_generic_text(self):
+        """A relationship-only infeasibility: the post-mortem names the chain in the UI."""
+        at = AppTest.from_file(APP_SCRIPT, default_timeout=SOLVE_TIMEOUT_SECONDS)
+
+        at.run()
+        assert not at.exception
+        for key, frame in _transitive_besties_inputs().items():
+            at.session_state[key] = frame
+        at.session_state["introduced"] = True
+
+        click_assign(at)
+        assert not at.exception
+        poll_until_solution(at, SOLVE_TIMEOUT_SECONDS)
+
+        solution = at.session_state["assigned_solution"]
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any(all(f"Camper {i}" in finding.cause for i in range(3)) for finding in solution.findings), (
+            "the besties chain should be named"
+        )
+
+        # The named cause + fix is prepended above the retained generic guidance.
+        warning = next(w.value for w in at.warning if "relaxing a hard limit" in w.value)
+        assert "besties group" in warning
+        assert "*Fix:*" in warning
+        assert warning.index("besties group") < warning.index("relaxing a hard limit")

@@ -1,4 +1,4 @@
-from collections.abc import MutableMapping
+from collections.abc import MutableMapping, Sequence
 from typing import Any, Literal, Optional, Protocol
 
 import pandas as pd
@@ -6,6 +6,7 @@ import streamlit as st
 
 from seatrades.blocks import BLOCK_DECODER_CAPTION
 from seatrades.config import OptimizationConfig
+from seatrades.diagnostics import Finding, Tier
 from seatrades.preferences import ValidationError, join_and_validate
 from seatrades.problem import SchedulingProblem
 from seatrades.results import (
@@ -129,13 +130,15 @@ class AssignmentsTab:
         elif view_state == "done":
             # Display results
             if not st.session_state["optimization_success"]:
-                st.warning(assignment_failure_warning(st.session_state["assigned_solution"].status))
+                solution = st.session_state["assigned_solution"]
+                st.warning(assignment_failure_warning(solution.status, solution.findings))
             else:
                 solution = st.session_state["assigned_solution"]
 
-                # Verdict — did it work? Confirmation + the solver-optimality % inline. The
-                # Solver Optimality donut itself now lives beside the Overview summary below.
-                st.success(f"Every camper is assigned — {round(solution.status.optimality * 100)}% optimal.")
+                # Verdict — did it work? Confirmation + the solver-optimality % inline, branched
+                # on whether the result is proven or a stopped-on-time incumbent. The Solver
+                # Optimality donut itself now lives beside the Overview summary below.
+                st.success(assignment_success_banner(solution.status))
 
                 # The Schedule — here's the artifact, before any report card.
                 st.divider()
@@ -340,20 +343,67 @@ def _solve_progress_fragment() -> None:
         st.caption("This solve finishes on its own or stops at the configured time limit.")
 
 
-def assignment_failure_warning(status: SolverStatus) -> str:
+def assignment_success_banner(status: SolverStatus) -> str:
+    """User-facing success copy for a solve that produced a full schedule.
+
+    Branches on the stop reason so a *proven* near-optimal result is not confused with a
+    schedule the solver merely *stopped on* at the time limit: the latter is the best
+    incumbent so far, and a longer solve may improve it — say so rather than overstating
+    it with the proven "X% optimal" copy.
+    """
+    if status.timed_out:
+        return (
+            "Every camper is assigned — best schedule so far (stopped at the time limit); "
+            "a longer solve may improve it."
+        )
+    return f"Every camper is assigned — proven {round(status.optimality * 100)}% optimal."
+
+
+def assignment_failure_warning(status: SolverStatus, findings: Sequence[Finding] = ()) -> str:
     """User-facing copy for a non-optimal solve.
 
-    A crash (ERROR) surfaces its message so the Captain is never shown an
-    untrustworthy result without explanation (story #73-16); an infeasible solve
-    keeps the relax-a-hard-limit guidance.
+    Branches on the outcome: a crash (ERROR) surfaces its message so the Captain is
+    never shown an untrustworthy result without explanation (story #73-16); a timeout
+    is a *feasible* problem that ran out of time — a scale/time issue, never an
+    "unexpected error"; an infeasible solve prepends any diagnosed causes above the
+    retained generic guidance, or admits it couldn't pinpoint the cause when none fired.
     """
     if status.state == SolverState.ERROR:
         return f"The optimizer hit an unexpected error and couldn't finish: {status.message}"
-    return (
+    if status.state == SolverState.TIMEOUT:
+        return (
+            "The solver ran out of time before it could finish — this schedule may well be "
+            "possible, it just needs more time or a smaller problem. Raise the *time limit* "
+            "or loosen the *Minimum solution quality* under **Advanced settings** in "
+            "Optimization Setup, or reduce the number of cabins, seatrades, or relationships, "
+            "then assign again."
+        )
+    generic = (
         "No schedule could satisfy all the rules this time. Try relaxing a hard limit "
         "under **Advanced settings** in Optimization Setup (e.g. raise *Max seatrades "
         "per fleet*), or lower the *Minimum solution quality*, then assign again."
     )
+    # Prepend the specific causes above the retained generic catch-all — add to it, never
+    # replace it. Proven causes lead as certainties; suspected pressures follow, clearly
+    # marked as maybes so they're never mistaken for the single answer. When nothing fired,
+    # be honest rather than silent (story #73-21).
+    proven = [finding for finding in findings if finding.tier is Tier.PROVEN]
+    suspected = [finding for finding in findings if finding.tier is Tier.SUSPECTED]
+    sections: list[str] = []
+    if proven:
+        sections.append("\n\n".join(f"**{finding.cause}**\n\n*Fix:* {finding.fix}" for finding in proven))
+    elif suspected:
+        # No proven cause — lead with the honest "we couldn't pin it down" so the maybes
+        # below are never presented as the definite answer (story #73-15).
+        sections.append("We couldn't pin down a definite cause, but a few things look tight:")
+    if suspected:
+        hints = "\n".join(f"- *{finding.cause}* *(Try: {finding.fix})*" for finding in suspected)
+        sections.append(
+            f"*Possible contributing pressures (not certain — these may or may not be the cause):*\n\n{hints}"
+        )
+    if not sections:
+        return f"We couldn't identify the exact cause this time. {generic}"
+    return "\n\n".join(sections) + f"\n\n{generic}"
 
 
 def render_view(

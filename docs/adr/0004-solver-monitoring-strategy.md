@@ -16,7 +16,7 @@ The original implementation used a manual `while` loop with `time.sleep(2)`, a `
 
 The monitoring splits into two layers:
 
-1. **Service layer** (`solve_run.py`) — the `SolveRun` seam runs the solve in a background thread, reads the CBC log, and exposes `progress()` (a `SolveProgress` snapshot: running, percent, message, log_text, timed_out) and `result()`. Percent is computed here (time-based, via the pure `percent_from_elapsed`/`detect_timeout` helpers), not stored on `SolverStatus`. No Streamlit imports.
+1. **Service layer** (`solve_run.py`) — the `SolveRun` seam runs the solve in a background thread, reads the CBC log, and exposes `progress()` (a `SolveProgress` snapshot: running, percent, message, log_text, timed_out) and `result()`. Percent is computed here (time-based, via the pure `percent_from_elapsed` helper), not stored on `SolverStatus`. The CBC-log parsers themselves (`detect_timeout`, the gap regex) live in `solver.py` beside the other log parsers; `progress()` calls `solver.detect_timeout` (#110). No Streamlit imports.
 2. **UI layer** (`app/tabs/`) — polls `SolveRun.progress()`/`result()` and renders progress widgets. Never touches the log file or manages threads.
 
 ## Live streaming: give cbc a pty (#100)
@@ -46,5 +46,5 @@ of scope (`pty` is Unix-only).
 - Exactly one solve runs at a time: the active run's presence both drives the polling fragment and disables the Assign button, so concurrent CBC solves are impossible (resolves the #61 OOM risk).
 - `finalize_solve` stashes the final CBC log into `session_state` as the run is cleared, so the done view keeps a collapsed (chronological, non-live) "solver logs" expander for post-solve inspection after a solve or timeout — the live stream only exists while the run is in flight (and streams line-by-line via the pty tee above, not block-buffered).
 - `SolveProgress` and `SolverStatus` are plain dataclasses with no Streamlit dependency — testable without the UI (`tests/test_seatrades/test_solve_run.py`). The fragment's lifetime/guard logic is pulled into pure functions (`solve_view_state`, `finalize_solve`) tested without driving Streamlit timers (`tests/test_app/test_assignments_tab.py`, `test_assignments_guard.py`).
-- Log-parsing regex and thread management moved from `assignments_tab.py` to `solve_run.py` (`SolveRun`).
+- Thread management moved from `assignments_tab.py` to `solve_run.py` (`SolveRun`); the CBC-log parsing regexes (`detect_timeout`, gap) live in `solver.py` beside the other log parsers (#110), called from `solve_run.py`.
 - Future: if a solver with callback support replaces PuLP, the service layer can switch to callbacks without changing the UI layer.

@@ -5,7 +5,7 @@ from typing import Hashable, Optional, cast
 import pandas as pd
 import pulp
 
-from seatrades.config import PREF_COLS, OptimizationConfig
+from seatrades.config import PREF_COLS, OptimizationConfig, cabin_seat_cap
 
 BLOCKS = ["1a", "1b", "2a", "2b"]
 FLEET_BLOCKS = [["1a", "1b"], ["2a", "2b"]]
@@ -61,6 +61,10 @@ class SchedulingProblem:
         self.seatrades = seatrade_setup["seatrade"]
         self.blocks = BLOCKS
         self.seatrades_full = [f"{block}_{seatrade}" for block in self.blocks for seatrade in self.seatrades]
+
+        # Kept in domain form (composite-key columns) for the post-mortem diagnostics,
+        # which name campers by (cabin, name) rather than internal ids.
+        self.relationships = relationships
 
         # Relationships reference campers by (cabin, camper); map them to integer IDs
         # so constraints can be expressed over the camper_assignments variables.
@@ -252,16 +256,15 @@ class SchedulingProblem:
         """Optional hard cap on any one cabin's share of a seatrade's capacity.
 
         Off by default: at ``max_cabin_share_per_seatrade == 1.0`` no constraint is added.
-        Below 1.0, cap each cabin at ``round(share * campers_max)`` campers per seatrade —
-        the same per-(cabin, session) sum as before, but per-seatrade and opt-in. Floored
-        at 1 so a tiny-capacity seatrade (where ``round`` would give 0) never becomes
-        unfillable — that would re-introduce the spurious infeasibility this feature removes.
+        Below 1.0, cap each cabin at ``cabin_seat_cap(share, campers_max)`` campers per
+        seatrade — the same per-(cabin, session) sum as before, but per-seatrade and opt-in.
+        See ``cabin_seat_cap`` for the rounding and floor-at-1 rationale.
         """
         if config.max_cabin_share_per_seatrade >= 1.0:
             return
         for s in self.seatrades_full:
             campers_max = self._seatrade_campers_max(s)
-            cap = max(1, round(config.max_cabin_share_per_seatrade * campers_max))
+            cap = cabin_seat_cap(config.max_cabin_share_per_seatrade, campers_max)
             for cabin in self.cabins:
                 problem += (
                     pulp.lpSum([camper_assignments[c][s] for c in self.campers_by_cabin[cabin]]) <= cap,

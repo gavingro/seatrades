@@ -16,14 +16,17 @@ from seatrades.results import (
 
 
 class TestSolverState:
-    def test_has_three_members(self):
-        assert set(SolverState.__members__.keys()) == {"OPTIMAL", "INFEASIBLE", "ERROR"}
+    def test_has_four_members(self):
+        assert set(SolverState.__members__.keys()) == {"OPTIMAL", "INFEASIBLE", "TIMEOUT", "ERROR"}
 
     def test_optimal_value(self):
         assert SolverState.OPTIMAL.value == "OPTIMAL"
 
     def test_infeasible_value(self):
         assert SolverState.INFEASIBLE.value == "INFEASIBLE"
+
+    def test_timeout_value(self):
+        assert SolverState.TIMEOUT.value == "TIMEOUT"
 
     def test_error_value(self):
         assert SolverState.ERROR.value == "ERROR"
@@ -34,8 +37,10 @@ class TestSolverState:
     def test_from_pulp_infeasible(self):
         assert SolverState.from_pulp(-1) == SolverState.INFEASIBLE
 
-    def test_from_pulp_unsolved_maps_to_error(self):
-        assert SolverState.from_pulp(0) == SolverState.ERROR
+    def test_from_pulp_unsolved_maps_to_timeout(self):
+        # PuLP code 0 ("Not Solved") is what CBC returns on hitting its time limit — a
+        # feasible-but-unproven solve, not a crash. It must read as TIMEOUT, not ERROR.
+        assert SolverState.from_pulp(0) == SolverState.TIMEOUT
 
     def test_from_pulp_unbounded_maps_to_error(self):
         assert SolverState.from_pulp(-2) == SolverState.ERROR
@@ -71,10 +76,16 @@ class TestSolverStatus:
         assert status.state == SolverState.INFEASIBLE
         assert status.message == ""
 
-    def test_from_pulp_error_includes_message(self):
+    def test_from_pulp_timeout_carries_timed_out_flag(self):
+        # Code 0 is a timeout: a distinct TIMEOUT state carrying the timed-out flag, so the
+        # UI can show a time/size message instead of an "unexpected error" crash.
         status = SolverStatus.from_pulp(0)
-        assert status.state == SolverState.ERROR
-        assert "not solved" in status.message.lower()
+        assert status.state == SolverState.TIMEOUT
+        assert status.timed_out is True
+
+    def test_timed_out_defaults_false(self):
+        # A plain optimal status has not timed out unless told so — the banner's "proven" case.
+        assert SolverStatus(state=SolverState.OPTIMAL).timed_out is False
 
     def test_from_pulp_unbounded_includes_message(self):
         status = SolverStatus.from_pulp(-2)

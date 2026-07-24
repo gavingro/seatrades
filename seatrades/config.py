@@ -14,6 +14,17 @@ NUM_PREFERENCES = 4
 PREF_COLS = [f"seatrade_{i}" for i in range(1, NUM_PREFERENCES + 1)]
 
 
+def cabin_seat_cap(share: float, campers_max: int) -> int:
+    """One cabin's per-seatrade seat cap under the opt-in ``max_cabin_share_per_seatrade``.
+
+    Floored at 1 so a tiny-capacity seatrade (where ``round`` would give 0) never
+    becomes unfillable. Shared by the solver constraint that *enforces* the cap
+    (``_add_cabin_share_cap_constraints``) and the diagnostics post-mortem that
+    *explains* it, so the two can never round it differently.
+    """
+    return max(1, round(share * campers_max))
+
+
 @dataclass
 class OptimizationConfig:
     preference_weight: int = 4
@@ -106,6 +117,57 @@ BESTIES_MIN_SHARED_SEATRADES = 2
 # A friends pair needs one shared session, so its members must share at least this
 # many preferred seatrades to have any session they could both occupy.
 FRIENDS_MIN_SHARED_SEATRADES = 1
+
+# --- Suspected-tier thresholds (issue #114, calibrated by spike #115) --------
+# Cutoffs for the advisory "pressure" hints the diagnostics post-mortem shows on an
+# INFEASIBLE solve. Each errs toward silence so a hint never fires on comfortably-feasible
+# input. Research spike #115 replaced #114's placeholders with these empirically-measured
+# values — the checks read the same constants, so the spike tuned numbers without reshaping
+# the checks. Method: dial each pressure axis up over real CBC solves and read the
+# feasible→infeasible flip and the healthy-roster baseline (25 random 8-cabin rosters).
+# Evidence + per-signal discriminating power: docs/prd/suspected-threshold-spike-115.md.
+
+# Top-2 oversubscription: a seatrade is under pressure when the campers who rank it
+# first or second outnumber its half-week seats (2·campers_max) by at least this factor.
+# Spike: healthy rosters top out at raw 1.17; feasible-but-strained runs to 3.67; hard
+# infeasibility only from ~4.0. 1.5 is the "above healthy noise" line — a moderate
+# discriminator that flags genuine early-demand concentration well before it breaks.
+SUSPECTED_TOP2_OVERSUBSCRIPTION_FACTOR = 1.5
+
+# Cabin clustering: a cabin funnels its cohesion into one seatrade when at least this
+# share of the cabin ranks the same seatrade *first* — pressure only when that seatrade
+# also can't seat the whole cabin across both its blocks (2·campers_max). A per-cabin
+# cohesion pressure, distinct from the global top-2 scarcity signal above. Floored to a
+# substantial cohesive group (real cabins are 8–12) so a tiny cabin never cries wolf.
+# Spike: random healthy rosters never cluster (raw 0.0), so any firing is already
+# abnormal — a weak *infeasibility* predictor (never infeasible in the sweep) but the only
+# signal that provoked solver timeouts, so it usefully flags strain. Kept conservative.
+SUSPECTED_CABIN_CLUSTERING_SHARE = 0.75
+SUSPECTED_CABIN_CLUSTERING_MIN_CAMPERS = 8
+
+# Cross-cabin frenemies overlap: a frenemies group spanning cabins is under pressure
+# when its size reaches this multiple of the distinct seatrades its members rank.
+# Spike: the sharpest discriminator — clean flip, feasible through ratio 2.0, infeasible
+# from 2.25. #114's placeholder 1.0 fired across the feasible 1.0–2.0 band (cried wolf);
+# 2.0 sits right at the empirical boundary.
+SUSPECTED_FRENEMIES_CLUSTERING_RATIO = 2.0
+
+# Gender-balance vs. the same-fleet-all-week lock: with force_same_fleet_all_week ON,
+# one gender holding at least this share of cabins strains the even split across fleets.
+# Spike: WEAKEST signal / top drop candidate — the same-fleet lock provably can't make a
+# feasible week infeasible (balance is lower-bound-only and symmetric across halves), and
+# healthy rosters already reach 0.875, so #114's 0.75 fired below the healthy baseline.
+# Raised to 0.9 to minimize false alarms until the signal is dropped.
+SUSPECTED_GENDER_DOMINANCE_SHARE = 0.9
+
+# Balance vs. minimum: gender balance splits a seatrade's demand across ~2 blocks, so a
+# live seatrade whose popularity is under this multiple of its campers_min risks falling
+# below the floor in a block once split.
+# Spike: weak discriminator / drop candidate — never infeasible even at ratio 1.0
+# (popularity == floor), because campers who'd lose a split-out seatrade fall back to their
+# other live picks; the genuine failure is already the Proven starvation check. Kept at the
+# conservative 2.0 (only hint when the margin over the floor is under 2×).
+SUSPECTED_BALANCE_MIN_POPULARITY_FACTOR = 2.0
 
 
 class CamperRelationships(DataFrameModel):

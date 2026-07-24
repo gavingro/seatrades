@@ -5,10 +5,12 @@ from streamlit.testing.v1 import AppTest
 from app.tabs.assignments_tab import (
     ACTIVE_RUN_KEY,
     assignment_failure_warning,
+    assignment_success_banner,
     finalize_solve,
     render_view,
     solve_view_state,
 )
+from seatrades.diagnostics import Finding, Tier
 from seatrades.results import SolverState, SolverStatus
 from seatrades.solve_run import SolveProgress
 
@@ -151,6 +153,73 @@ class TestAssignmentFailureWarning:
         warning = assignment_failure_warning(status)
         assert "relaxing a hard limit" in warning
         assert "solver blew up" not in warning
+
+    def test_infeasible_prepends_findings_above_the_generic_copy(self):
+        """A named cause + fix appears above the retained relax-a-hard-limit guidance."""
+        finding = Finding(tier=Tier.PROVEN, cause="Too many campers for the seats.", fix="Add seatrades.")
+        warning = assignment_failure_warning(SolverStatus(state=SolverState.INFEASIBLE), [finding])
+        assert "Too many campers for the seats." in warning
+        assert "Add seatrades." in warning
+        assert "relaxing a hard limit" in warning
+        assert warning.index("Too many campers") < warning.index("relaxing a hard limit")
+
+    def test_infeasible_with_no_findings_shows_honest_fallback(self):
+        """When no cause fires, admit it — then keep the generic guidance (never worse)."""
+        warning = assignment_failure_warning(SolverStatus(state=SolverState.INFEASIBLE), [])
+        assert "couldn't identify" in warning.lower()
+        assert "relaxing a hard limit" in warning
+
+    def test_suspected_hints_render_below_proven_and_marked_as_maybe(self):
+        """Suspected hints sit below the proven cause, flagged as uncertain pressures."""
+        proven = Finding(tier=Tier.PROVEN, cause="Too many campers for the seats.", fix="Add seatrades.")
+        hint = Finding(tier=Tier.SUSPECTED, cause="Cabin Otter clusters on Sailing.", fix="Raise its max.")
+        warning = assignment_failure_warning(SolverStatus(state=SolverState.INFEASIBLE), [proven, hint])
+
+        assert "Cabin Otter clusters on Sailing." in warning
+        assert warning.index("Too many campers") < warning.index("Cabin Otter clusters")
+        assert warning.index("Cabin Otter clusters") < warning.index("relaxing a hard limit")
+        # Textually distinct from a proven cause — clearly a "maybe", not a certainty.
+        assert "not certain" in warning.lower() or "may" in warning.lower()
+
+    def test_suspected_only_is_never_the_single_answer(self):
+        """With no proven cause, hints appear but are framed as unconfirmed, never THE answer."""
+        hint = Finding(tier=Tier.SUSPECTED, cause="Cabin Otter clusters on Sailing.", fix="Raise its max.")
+        warning = assignment_failure_warning(SolverStatus(state=SolverState.INFEASIBLE), [hint])
+
+        assert "Cabin Otter clusters on Sailing." in warning
+        assert "relaxing a hard limit" in warning  # generic catch-all retained
+        # Honest framing: we couldn't pin down a definite cause.
+        assert "couldn't" in warning.lower() or "not certain" in warning.lower()
+
+    def test_timeout_shows_time_size_copy_not_an_error(self):
+        """A timeout is a time/size problem — advise more time or a smaller problem, and
+        never call it an unexpected error (the whole point of splitting TIMEOUT off ERROR)."""
+        status = SolverStatus(state=SolverState.TIMEOUT, message="", timed_out=True)
+        warning = assignment_failure_warning(status)
+        assert "time limit" in warning.lower()
+        assert "unexpected error" not in warning.lower()
+        # The problem is feasible, so the infeasibility "relax a hard limit" copy is wrong here.
+        assert "relaxing a hard limit" not in warning
+
+
+class TestAssignmentSuccessBanner:
+    def test_proven_optimal_reports_the_optimality_percent(self):
+        """A gap-closed solve is proven near-optimal — state it with the percent."""
+        status = SolverStatus(state=SolverState.OPTIMAL, gap=0.08, timed_out=False)
+        banner = assignment_success_banner(status)
+        assert "Every camper is assigned" in banner
+        assert "92% optimal" in banner
+        assert "proven" in banner.lower()
+
+    def test_stopped_on_time_flags_it_as_best_so_far(self):
+        """A solve that stopped at the time limit holds only the best incumbent — say so,
+        and don't reuse the proven "X% optimal" copy that overstates its quality."""
+        status = SolverStatus(state=SolverState.OPTIMAL, gap=0.08, timed_out=True)
+        banner = assignment_success_banner(status)
+        assert "Every camper is assigned" in banner
+        assert "time limit" in banner.lower()
+        assert "longer solve" in banner.lower()
+        assert "proven" not in banner.lower()
 
 
 class TestRenderView:

@@ -1,20 +1,444 @@
 """Tests for seatrades.solver — the solver.run() entry point."""
 
+import itertools
+from collections.abc import Sequence
+
 import pandas as pd
 import pulp
 import pytest
 
 from seatrades.config import OptimizationConfig
+from seatrades.diagnostics import Finding, Tier
 from seatrades.preferences import validate_relationships
 from seatrades.problem import SchedulingProblem, seatrade_name
 from seatrades.results import (
     AssignmentSolution,
     SolverState,
+    SolverStatus,
     wrangle_assignments_to_longform,
     wrangle_assignments_to_wideform,
 )
 from seatrades.simulation import simulate_camper_relationships
-from seatrades.solver import run
+from seatrades.solver import (
+    _RELATIONSHIP_GROUPS,
+    _RELAXATION_TIME_LIMIT_S,
+    _relaxation_solver,
+    _relaxed_solve_found_schedule,
+    detect_timeout,
+    diagnose_infeasibility,
+    run,
+)
+
+
+class TestDetectTimeout:
+    def test_true_when_log_has_time_limit_line(self):
+        """CBC's time-limit line marks the solve as timed out."""
+        log_text = "Cbc0010I After 0 nodes\nResult - Stopped on time limit\nTotal time 60.0"
+        assert detect_timeout(log_text) is True
+
+    def test_false_when_log_lacks_time_limit_line(self):
+        """A normal optimal log is not a timeout."""
+        log_text = "Result - Optimal solution found\nObjective value 42.0"
+        assert detect_timeout(log_text) is False
+
+
+def _oversubscribed_problem() -> SchedulingProblem:
+    """12 campers all wanting 4 seatrades that seat 1 each — a capacity shortfall.
+
+    2·Σcampers_max = 2·4 = 8 seats < 12 campers, so the P1 check fires.
+    """
+    seatrades = ["Archery", "Crafts", "Climbing", "Sailing"]
+    joined_campers = pd.DataFrame(
+        [
+            {
+                "camper_id": i,
+                "cabin": "Cabin1",
+                "camper": f"Camper {i}",
+                "gender": "F",
+                "age": 14,
+                "seatrade_1": seatrades[0],
+                "seatrade_2": seatrades[1],
+                "seatrade_3": seatrades[2],
+                "seatrade_4": seatrades[3],
+            }
+            for i in range(12)
+        ]
+    )
+    seatrade_setup = pd.DataFrame({"seatrade": seatrades, "campers_min": 0, "campers_max": 1})
+    return SchedulingProblem(joined_campers, seatrade_setup)
+
+
+def _roster_problem(rows: list[dict], seatrade_setup: pd.DataFrame, relationships=None) -> SchedulingProblem:
+    """Build a SchedulingProblem from explicit (cabin, camper, prefs) rows.
+
+    Fills the identity columns the solver needs (gender/age) with defaults; each
+    row supplies its four ranked seatrades so a crafted cause can be reproduced.
+    """
+    joined = pd.DataFrame(
+        [
+            {
+                "camper_id": i,
+                "cabin": row["cabin"],
+                "camper": row["camper"],
+                "gender": row.get("gender", "F"),
+                "age": row.get("age", 14),
+                "seatrade_1": row["prefs"][0],
+                "seatrade_2": row["prefs"][1],
+                "seatrade_3": row["prefs"][2],
+                "seatrade_4": row["prefs"][3],
+            }
+            for i, row in enumerate(rows)
+        ]
+    )
+    return SchedulingProblem(joined, seatrade_setup, relationships=relationships)
+
+
+_POPULAR = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+
+
+def _crowd(cabin: str, n: int) -> list[dict]:
+    """n campers all wanting the four popular seatrades — healthy filler that runs."""
+    return [{"cabin": cabin, "camper": f"Crowd {i}", "prefs": _POPULAR} for i in range(n)]
+
+
+class TestDiagnoseInfeasibility:
+    """The single post-mortem call site: diagnosis runs only on INFEASIBLE."""
+
+    def test_names_the_capacity_cause_on_infeasible(self):
+        problem = _oversubscribed_problem()
+        findings = diagnose_infeasibility(SolverStatus(state=SolverState.INFEASIBLE), problem, OptimizationConfig())
+        assert findings, "an oversubscribed infeasible solve should be explained"
+        assert "campers" in findings[0].cause.lower()
+
+    def test_not_run_on_optimal(self):
+        problem = _oversubscribed_problem()
+        assert diagnose_infeasibility(SolverStatus(state=SolverState.OPTIMAL), problem, OptimizationConfig()) == []
+
+    def test_not_run_on_timeout(self):
+        problem = _oversubscribed_problem()
+        status = SolverStatus(state=SolverState.TIMEOUT, timed_out=True)
+        assert diagnose_infeasibility(status, problem, OptimizationConfig()) == []
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_the_capacity_shortfall(self):
+        """Reality check: the real solver returns INFEASIBLE on this fixture and the
+        capacity check agrees — proving the mode is real, not just a structural guess."""
+        solution = run(_oversubscribed_problem(), OptimizationConfig())
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Too many campers" in f.cause for f in solution.findings)
+
+
+def _frenemies_cycle_problem() -> SchedulingProblem:
+    """Five same-cabin frenemies wired in a 5-cycle, ranking only two live seatrades.
+
+    Their two other picks (C, D) are dead (``campers_min`` 6 > their popularity 5), so
+    they can use only A and B. A cabin shares one block, so the five must take distinct
+    seatrades where they are adjacent — but a 5-cycle needs three colours and only two
+    seatrades exist, so it is infeasible. The cycle is *not* a clique, so the frenemies
+    clash check stays quiet, and the backstop ignores frenemies coupling, so it too is
+    quiet — leaving the relaxation re-solve as the only thing that can name the cause.
+    """
+    names = [f"Fr{i}" for i in range(5)]
+    rows = [{"cabin": "Otter", "camper": n, "prefs": ["A", "B", "C", "D"]} for n in names]
+    setup = pd.DataFrame({"seatrade": ["A", "B", "C", "D"], "campers_min": [0, 0, 6, 6], "campers_max": 10})
+    cycle = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 0)]
+    rels = pd.DataFrame(
+        [("Otter", names[a], "Otter", names[b], "frenemies") for a, b in cycle],
+        columns=["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"],
+    )
+    return _roster_problem(rows, setup, relationships=rels)
+
+
+class TestRelaxationResolve:
+    """The as-needed fallback: drop a relationship group, see if the solve flips feasible."""
+
+    def test_resolve_is_time_capped_not_the_full_limit(self):
+        """The re-solve uses a bounded ~5–10s cap, never the full solve time budget."""
+        assert 5 <= _RELAXATION_TIME_LIMIT_S <= 10
+        assert _relaxation_solver().timeLimit == _RELAXATION_TIME_LIMIT_S
+        assert _relaxation_solver().timeLimit < OptimizationConfig().solver.timeLimit
+
+    def test_only_an_optimal_re_solve_counts_as_a_flip(self):
+        """A flip is a schedule actually found (OPTIMAL) — not a bare timeout.
+
+        CBC reports code 1 the instant it holds a valid schedule (proven or an
+        incumbent kept at the cap), and code 0 only when it found *no* usable
+        schedule in the cap. So a timeout is not evidence the group lets a schedule
+        form — naming it there would overclaim PROVEN. Only OPTIMAL is a real flip;
+        TIMEOUT (no schedule) and still-INFEASIBLE (drop didn't help) are not.
+        """
+        assert _relaxed_solve_found_schedule(1)  # OPTIMAL — a schedule was found
+        assert not _relaxed_solve_found_schedule(0)  # TIMEOUT — no schedule found
+        assert not _relaxed_solve_found_schedule(-1)  # INFEASIBLE — drop didn't help
+
+    def test_relationship_group_prefixes_match_built_constraint_names(self):
+        """Each ``_RELATIONSHIP_GROUPS`` prefix must name real constraints in the model.
+
+        The relaxation re-solve deletes a group's constraints by ``name.startswith(prefix)``
+        and its ``pairs_attr`` off the problem. Both are an unenforced convention shared with
+        ``problem.py``'s constraint naming — if a prefix (or attr) drifts, ``_flips_feasible_without``
+        silently deletes nothing, never flips feasible, and the fallback names no cause with no
+        error. Guard the contract: with a pair of every relationship type present, each prefix
+        matches ≥1 constraint and each ``pairs_attr`` is non-empty.
+        """
+        rows = [
+            {"cabin": "Otter", "camper": "a", "prefs": ["A", "B", "C", "D"]},
+            {"cabin": "Otter", "camper": "b", "prefs": ["A", "B", "C", "D"]},
+            {"cabin": "Otter", "camper": "c", "prefs": ["A", "B", "C", "D"]},
+            {"cabin": "Otter", "camper": "d", "prefs": ["A", "B", "C", "D"]},
+            {"cabin": "Seal", "camper": "e", "prefs": ["A", "B", "C", "D"]},
+        ]
+        setup = pd.DataFrame({"seatrade": ["A", "B", "C", "D"], "campers_min": 0, "campers_max": 10})
+        rels = _rel(
+            [
+                ("Otter", "a", "Otter", "b", "besties"),
+                ("Otter", "c", "Otter", "d", "friends"),
+                ("Seal", "e", "Otter", "a", "frenemies"),
+            ]
+        )
+        problem = _roster_problem(rows, setup, relationships=rels)
+        lp = problem.build(OptimizationConfig())
+        for _group, prefix, pairs_attr in _RELATIONSHIP_GROUPS:
+            assert getattr(problem, pairs_attr), f"no {pairs_attr} on the problem"
+            assert any(name.startswith(prefix) for name in lp.constraints), f"no constraint named {prefix}*"
+
+    def test_not_invoked_when_a_named_cause_already_fired(self, monkeypatch):
+        """A named cause short-circuits the fallback — the re-solve never runs."""
+        monkeypatch.setattr(
+            "seatrades.solver._relaxation_resolve",
+            lambda *_args, **_kwargs: pytest.fail("relaxation re-solve ran despite a named cause"),
+        )
+        findings = diagnose_infeasibility(
+            SolverStatus(state=SolverState.INFEASIBLE), _oversubscribed_problem(), OptimizationConfig()
+        )
+        assert any("Too many campers" in f.cause for f in findings)
+
+    def test_advisory_hints_alone_do_not_suppress_the_relaxation_resolve(self, monkeypatch):
+        """Suspected pressure hints aren't a proven cause, so the fallback still runs.
+
+        When only advisory hints fire, the proven relaxation result must lead and the
+        hints ride below it — a suspected-only diagnosis must never short-circuit the
+        re-solve the way a proven named cause does.
+        """
+        hint = Finding(tier=Tier.SUSPECTED, cause="something looks tight", fix="ease it")
+        named = Finding(tier=Tier.PROVEN, cause="dropping frenemies lets a schedule form", fix="drop a link")
+        monkeypatch.setattr("seatrades.solver.diagnostics.diagnose", lambda *_a, **_k: [hint])
+        monkeypatch.setattr("seatrades.solver._relaxation_resolve", lambda *_a, **_k: [named])
+
+        findings = diagnose_infeasibility(
+            SolverStatus(state=SolverState.INFEASIBLE), _oversubscribed_problem(), OptimizationConfig()
+        )
+
+        assert findings[0] is named, "the proven relaxation result should lead"
+        assert hint in findings, "the advisory hint should ride below the proven cause"
+
+    @pytest.mark.slow
+    def test_flips_feasible_re_solve_names_the_dropped_group(self):
+        """Reality: an infeasibility no pure check sees, named by dropping frenemies.
+
+        The real solver proves INFEASIBLE, the named checks and backstop come up empty
+        (``diagnose`` returns nothing on its own), and dropping the frenemies group flips
+        the solve feasible — so the fallback names frenemies as the load-bearing group.
+        """
+        problem = _frenemies_cycle_problem()
+        solution = run(problem, OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert solution.findings, "the relaxation re-solve should name a cause"
+        assert any("frenemies" in f.cause for f in solution.findings)
+
+
+class TestMatchingBackstopReality:
+    """Slow reality fixture: the real solver confirms the matching-backstop deficiency."""
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_subset_deficiency_the_named_checks_miss(self):
+        """Five campers over four seatrades seating one — 2·4 = 8 seats < 2·5 demand.
+
+        Every named check stays quiet (the demand-1 capacity bound sees 5 ≤ 8, the picks
+        are all live, no relationships), so only the matching backstop catches the
+        demand-2 shortfall. The real solver agrees it is INFEASIBLE and the backstop names
+        the deficient campers — proving the mode is real, not just a structural guess.
+        """
+        rows = [{"cabin": "Otter", "camper": f"Camper {i}", "prefs": ["A", "B", "C", "D"]} for i in range(5)]
+        setup = pd.DataFrame({"seatrade": ["A", "B", "C", "D"], "campers_min": 0, "campers_max": 1})
+        solution = run(_roster_problem(rows, setup), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("can't all be placed" in f.cause and "Camper 0" in f.cause for f in solution.findings)
+
+
+class TestStarvationReality:
+    """Slow reality fixtures: the real solver confirms M1/M2 are genuine infeasibility."""
+
+    def _starved_setup(self, niche: Sequence[str]) -> pd.DataFrame:
+        seatrades = [*_POPULAR, *niche]
+        # min campers 2: a seatrade only one camper ranks can never reach it, so it's dead.
+        return pd.DataFrame({"seatrade": seatrades, "campers_min": 2, "campers_max": 10})
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_starved_seatrade(self):
+        """M1: a camper whose four picks are all solo-ranked niche seatrades can't be placed."""
+        victim = {"cabin": "Cabin1", "camper": "Robin", "prefs": ["Whittling", "Birding", "Poetry", "Origami"]}
+        problem = _roster_problem(_crowd("Cabin1", 6) + [victim], self._starved_setup(victim["prefs"]))
+
+        solution = run(problem, OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Robin" in f.cause and "too few seatrades" in f.cause for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_top2_both_starved(self):
+        """M2: a camper whose top two picks are dead (but picks 3–4 live) breaks top-2."""
+        victim = {"cabin": "Cabin1", "camper": "Robin", "prefs": ["Whittling", "Birding", "Sailing", "Kayaking"]}
+        problem = _roster_problem(_crowd("Cabin1", 6) + [victim], self._starved_setup(["Whittling", "Birding"]))
+
+        solution = run(problem, OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Robin" in f.cause and "top two" in f.cause for f in solution.findings)
+
+
+def _besties_rel(pairs: list[tuple[str, str, str, str]]) -> pd.DataFrame:
+    """A besties relationships frame from (cabin_1, camper_1, cabin_2, camper_2) tuples."""
+    return pd.DataFrame(
+        [(*pair, "besties") for pair in pairs],
+        columns=["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"],
+    )
+
+
+class TestBestiesReality:
+    """Slow reality fixtures: the real solver confirms the besties causes B1/B2/B3."""
+
+    def test_transitive_besties_chain_slips_validation_then_named_by_postmortem(self):
+        """B1 / issue-112: a chain that is pairwise-valid but has no common pair.
+
+        Validation checks besties only pairwise, so this passes it — then the solver
+        proves INFEASIBLE and the post-mortem names the chain (the accepted trade of a
+        single post-mortem seam). Not marked slow: it must always run to guard the seam.
+        """
+        rows = [
+            {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+            {"cabin": "Otter", "camper": "Cy", "prefs": ["Kayaking", "Archery", "Climbing", "Dance"]},
+        ]
+        all_seatrades = sorted({s for row in rows for s in row["prefs"]})
+        setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 0, "campers_max": 10})
+        rels = _besties_rel([("Otter", "Ash", "Otter", "Bo"), ("Otter", "Bo", "Otter", "Cy")])
+        problem = _roster_problem(rows, setup, relationships=rels)
+
+        joined = problem.cabin_camper_prefs.reset_index()
+        validate_relationships(rels, joined)  # pairwise-valid → does not raise
+
+        solution = run(problem, OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any(all(name in f.cause for name in ("Ash", "Bo", "Cy")) for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_besties_too_big_for_seatrade(self):
+        """B3: a same-cabin besties trio whose only two shared seatrades seat two."""
+        rows = [
+            {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+            {"cabin": "Otter", "camper": "Cy", "prefs": ["Sailing", "Kayaking", "Climbing", "Dance"]},
+        ]
+        setup = pd.DataFrame(
+            {
+                "seatrade": ["Sailing", "Kayaking", "Rowing", "Canoeing", "Archery", "Crafts", "Climbing", "Dance"],
+                "campers_min": 0,
+                "campers_max": [2, 2, 10, 10, 10, 10, 10, 10],
+            }
+        )
+        rels = _besties_rel([("Otter", "Ash", "Otter", "Bo"), ("Otter", "Bo", "Otter", "Cy")])
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Ash" in f.cause and "seat fewer than" in f.cause for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_besties_too_big_for_cabin(self):
+        """B2: a same-cabin besties trio under a 25% cabin-share cap (per-cabin seats 2 < 3)."""
+        rows = [
+            {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+            {"cabin": "Otter", "camper": "Cy", "prefs": ["Sailing", "Kayaking", "Climbing", "Dance"]},
+        ]
+        all_seatrades = sorted({s for row in rows for s in row["prefs"]})
+        setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 0, "campers_max": 10})
+        rels = _besties_rel([("Otter", "Ash", "Otter", "Bo"), ("Otter", "Bo", "Otter", "Cy")])
+        config = OptimizationConfig(max_cabin_share_per_seatrade=0.25)
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), config)
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("cabin" in f.cause.lower() and "Ash" in f.cause for f in solution.findings)
+
+
+def _rel(rows: list[tuple[str, str, str, str, str]]) -> pd.DataFrame:
+    """A relationships frame from (cabin_1, camper_1, cabin_2, camper_2, type) tuples."""
+    return pd.DataFrame(rows, columns=["cabin_1", "camper_1", "cabin_2", "camper_2", "relationship"])
+
+
+class TestRelationshipCauseReality:
+    """Slow reality fixtures: the real solver confirms R1/FH/FC are genuine infeasibility."""
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_besties_frenemies_contradiction(self):
+        """R1: a besties chain with a frenemies pair inside it can't be satisfied."""
+        rows = [
+            {"cabin": "Otter", "camper": "Ash", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "Bo", "prefs": ["Sailing", "Kayaking", "Archery", "Crafts"]},
+            {"cabin": "Otter", "camper": "Cy", "prefs": ["Sailing", "Kayaking", "Climbing", "Dance"]},
+        ]
+        all_seatrades = sorted({s for row in rows for s in row["prefs"]})
+        setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 0, "campers_max": 10})
+        rels = _rel(
+            [
+                ("Otter", "Ash", "Otter", "Bo", "besties"),
+                ("Otter", "Bo", "Otter", "Cy", "besties"),
+                ("Otter", "Ash", "Otter", "Cy", "frenemies"),
+            ]
+        )
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Ash" in f.cause and "Cy" in f.cause and "besties group" in f.cause for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_friends_hub(self):
+        """FH: a hub whose four friends each want a different one of its seatrades."""
+        rows = [
+            {"cabin": "Otter", "camper": "Hub", "prefs": ["Sailing", "Kayaking", "Rowing", "Canoeing"]},
+            {"cabin": "Otter", "camper": "F1", "prefs": ["Sailing", "Archery", "Crafts", "Dance"]},
+            {"cabin": "Otter", "camper": "F2", "prefs": ["Kayaking", "Archery", "Crafts", "Dance"]},
+            {"cabin": "Otter", "camper": "F3", "prefs": ["Rowing", "Archery", "Crafts", "Dance"]},
+            {"cabin": "Otter", "camper": "F4", "prefs": ["Canoeing", "Archery", "Crafts", "Dance"]},
+        ]
+        all_seatrades = sorted({s for row in rows for s in row["prefs"]})
+        setup = pd.DataFrame({"seatrade": all_seatrades, "campers_min": 0, "campers_max": 10})
+        rels = _rel([("Otter", "Hub", "Otter", f"F{i}", "friends") for i in range(1, 5)])
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("Hub" in f.cause and "friends" in f.cause for f in solution.findings)
+
+    @pytest.mark.slow
+    def test_real_solver_confirms_frenemies_clash(self):
+        """FC: five same-cabin mutual frenemies sharing only four seatrades (pigeonhole)."""
+        shared = ["Sailing", "Kayaking", "Rowing", "Canoeing"]
+        names = [f"Fr{i}" for i in range(5)]
+        rows = [{"cabin": "Otter", "camper": n, "prefs": shared} for n in names]
+        setup = pd.DataFrame({"seatrade": shared, "campers_min": 0, "campers_max": 10})
+        rels = _rel([("Otter", a, "Otter", b, "frenemies") for a, b in itertools.combinations(names, 2)])
+
+        solution = run(_roster_problem(rows, setup, relationships=rels), OptimizationConfig())
+
+        assert solution.status.state is SolverState.INFEASIBLE
+        assert any("refuse to share" in f.cause for f in solution.findings)
 
 
 class TestSolverRun:
@@ -515,6 +939,14 @@ class TestStatusCodeMapping:
         # Gap may be None if CBC doesn't write a gap line (small problems solve instantly)
         # but the field should be populated when available
         assert solution.status.gap is None or isinstance(solution.status.gap, float)
+
+    def test_optimal_solution_that_finished_is_not_flagged_timed_out(self, scheduling_problem, default_config):
+        # A small problem solves to optimality well inside the time limit, so its CBC log
+        # carries no "Stopped on time limit" line — the final status must read proven, not
+        # stopped-on-time. (The True branch is covered by detect_timeout's own unit tests.)
+        solution = run(scheduling_problem, default_config)
+        assert solution.status.state == SolverState.OPTIMAL
+        assert solution.status.timed_out is False
 
     def test_infeasible_solution_has_no_gap(self):
         joined = pd.DataFrame(

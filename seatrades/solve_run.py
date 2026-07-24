@@ -6,7 +6,6 @@ imports ``threading``/``queue`` or reads the log file. The UI constructs a
 ``SolveRun``, calls ``start()``, polls ``progress()``/``result()``, and renders.
 """
 
-import re
 import threading
 import time
 from dataclasses import dataclass
@@ -19,8 +18,6 @@ from seatrades.config import OptimizationConfig
 from seatrades.problem import SchedulingProblem
 from seatrades.results import AssignmentSolution, SolverState, SolverStatus
 
-_TIMEOUT_LOG_PATTERN = re.compile(r"Result - Stopped on time limit")
-
 _OPTIMIZING_MESSAGE = "Optimizing seatrade assignments…"
 _TIMEOUT_MESSAGE = "Finishing up — time limit reached…"
 
@@ -28,11 +25,6 @@ _TIMEOUT_MESSAGE = "Finishing up — time limit reached…"
 def percent_from_elapsed(elapsed: float, time_limit: float) -> float:
     """Fraction of the solver time limit elapsed, capped at 1.0."""
     return min(elapsed / time_limit, 1.0)
-
-
-def detect_timeout(log_text: str) -> bool:
-    """Whether the CBC log shows the solve stopped on its time limit."""
-    return bool(_TIMEOUT_LOG_PATTERN.search(log_text))
 
 
 @dataclass
@@ -81,7 +73,7 @@ class SolveRun:
         elapsed = time.time() - self._start_time if self._start_time is not None else 0.0
         time_limit = self._config.solver.timeLimit
         log_text = self._read_log()
-        timed_out = detect_timeout(log_text) or elapsed > time_limit
+        timed_out = solver.detect_timeout(log_text) or elapsed > time_limit
         return SolveProgress(
             running=running,
             percent=percent_from_elapsed(elapsed, time_limit),
